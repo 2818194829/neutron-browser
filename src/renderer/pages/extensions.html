@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>扩展程序</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      background: #202124;
+      color: #e8eaed;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .page { max-width: 860px; margin: 0 auto; padding: 40px 24px; }
+    .page__header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+    h1 { font-size: 24px; font-weight: 400; color: #ffffff; }
+    .subtitle { color: #80868b; font-size: 13px; margin-top: 6px; }
+    .page__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn {
+      padding: 8px 14px;
+      border: 1px solid #5f6368;
+      border-radius: 6px;
+      background: transparent;
+      color: #8ab4f8;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn:hover { background: rgba(138,180,248,0.1); border-color: #8ab4f8; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .status {
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      background: rgba(52,168,83,0.12);
+      border: 1px solid #34a853;
+      color: #81c995;
+    }
+    .status--error {
+      background: rgba(242,139,130,0.12);
+      border-color: #f28b82;
+      color: #f28b82;
+    }
+    .empty { text-align: center; padding: 64px 20px; color: #5f6368; }
+    .empty__icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+    .ext-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 16px;
+      background: #292a2d;
+      border: 1px solid #3c4043;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+    .ext-card__icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: #3c4043;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .ext-card__icon img { width: 40px; height: 40px; object-fit: contain; }
+    .ext-card__body { flex: 1; min-width: 0; }
+    .ext-card__name { font-size: 15px; font-weight: 500; color: #e8eaed; }
+    .ext-card__version { color: #9aa0a6; font-size: 12px; font-weight: 400; margin-left: 8px; }
+    .ext-card__desc { color: #9aa0a6; font-size: 12px; line-height: 1.5; margin-top: 4px; }
+    .ext-card__path {
+      color: #5f6368;
+      font-size: 11px;
+      margin-top: 6px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ext-card__actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .toggle-switch { position: relative; width: 40px; height: 22px; display: inline-block; }
+    .toggle-switch input { display: none; }
+    .toggle-switch__slider {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: #5f6368; border-radius: 22px; cursor: pointer; transition: 0.2s;
+    }
+    .toggle-switch__slider::before {
+      content: ''; position: absolute; left: 2px; bottom: 2px;
+      width: 18px; height: 18px; background: #ffffff; border-radius: 50%; transition: 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-switch__slider { background: #8ab4f8; }
+    .toggle-switch input:checked + .toggle-switch__slider::before { transform: translateX(18px); }
+    .btn--danger { color: #f28b82; border-color: #f28b82; }
+    .btn--danger:hover { background: rgba(242,139,130,0.1); }
+    @media (max-width: 640px) {
+      .page { padding: 24px 16px; }
+      .page__header { flex-direction: column; }
+      .ext-card { flex-direction: column; }
+      .ext-card__actions { width: 100%; justify-content: flex-end; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="page__header">
+      <div>
+        <h1>扩展程序</h1>
+        <p class="subtitle">安装和管理浏览器扩展</p>
+      </div>
+      <div class="page__actions">
+        <button class="btn" id="btnInstallFile" type="button">安装扩展 (.crx/.zip)</button>
+        <button class="btn" id="btnInstallUnpacked" type="button">加载已解压扩展</button>
+      </div>
+    </div>
+
+    <div id="status" class="status" hidden></div>
+    <div id="extensionsList">
+      <div class="empty">
+        <div class="empty__icon">🧩</div>
+        <div>暂无已安装的扩展程序</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const api = window.NeutronBrowser || {};
+    const listEl = document.getElementById('extensionsList');
+    const statusEl = document.getElementById('status');
+    const btnInstallFile = document.getElementById('btnInstallFile');
+    const btnInstallUnpacked = document.getElementById('btnInstallUnpacked');
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text || '';
+      return div.innerHTML;
+    }
+
+    function showStatus(message, isError) {
+      statusEl.hidden = false;
+      statusEl.textContent = message;
+      statusEl.className = 'status' + (isError ? ' status--error' : '');
+      clearTimeout(showStatus.timer);
+      showStatus.timer = setTimeout(() => {
+        statusEl.hidden = true;
+      }, 5000);
+    }
+
+    function setBusy(busy) {
+      btnInstallFile.disabled = busy;
+      btnInstallUnpacked.disabled = busy;
+    }
+
+    function renderExtensions(extensions) {
+      if (!extensions || extensions.length === 0) {
+        listEl.innerHTML = '<div class="empty"><div class="empty__icon">🧩</div><div>暂无已安装的扩展程序</div></div>';
+        return;
+      }
+
+      listEl.innerHTML = '';
+      extensions.forEach((ext) => {
+        const card = document.createElement('div');
+        card.className = 'ext-card';
+
+        const icon = document.createElement('div');
+        icon.className = 'ext-card__icon';
+        if (ext.icon) {
+          const img = document.createElement('img');
+          img.src = 'file:///' + ext.icon.replace(/\\/g, '/');
+          img.alt = '';
+          icon.appendChild(img);
+        } else {
+          icon.textContent = '🧩';
+        }
+
+        const body = document.createElement('div');
+        body.className = 'ext-card__body';
+
+        const name = document.createElement('div');
+        name.className = 'ext-card__name';
+        name.innerHTML = `${escapeHtml(ext.name)}<span class="ext-card__version">v${escapeHtml(ext.version)}</span>`;
+
+        const desc = document.createElement('div');
+        desc.className = 'ext-card__desc';
+        desc.textContent = ext.description || '暂无描述';
+
+        const extPath = document.createElement('div');
+        extPath.className = 'ext-card__path';
+        extPath.textContent = ext.path || '';
+
+        body.appendChild(name);
+        body.appendChild(desc);
+        body.appendChild(extPath);
+
+        const actions = document.createElement('div');
+        actions.className = 'ext-card__actions';
+
+        const toggleLabel = document.createElement('label');
+        toggleLabel.className = 'toggle-switch';
+        const toggle = document.createElement('input');
+        toggle.type = 'checkbox';
+        toggle.checked = !!ext.enabled;
+        const slider = document.createElement('span');
+        slider.className = 'toggle-switch__slider';
+        toggleLabel.appendChild(toggle);
+        toggleLabel.appendChild(slider);
+
+        toggle.addEventListener('change', async () => {
+          const result = await api.toggleExtension(ext.id);
+          if (!result.success) {
+            toggle.checked = !!ext.enabled;
+            showStatus(result.message || '切换失败', true);
+          }
+          loadExtensions();
+        });
+
+        const uninstallBtn = document.createElement('button');
+        uninstallBtn.className = 'btn btn--danger';
+        uninstallBtn.type = 'button';
+        uninstallBtn.textContent = '卸载';
+        uninstallBtn.addEventListener('click', async () => {
+          if (!confirm(`确定卸载 ${ext.name} 吗？`)) return;
+          const result = await api.uninstallExtension(ext.id);
+          showStatus(result.success ? '已卸载' : result.message || '卸载失败', !result.success);
+          loadExtensions();
+        });
+
+        actions.appendChild(toggleLabel);
+        actions.appendChild(uninstallBtn);
+        card.appendChild(icon);
+        card.appendChild(body);
+        card.appendChild(actions);
+        listEl.appendChild(card);
+      });
+    }
+
+    async function loadExtensions() {
+      const extensions = await api.getExtensions();
+      renderExtensions(extensions || []);
+    }
+
+    btnInstallFile.addEventListener('click', async () => {
+      setBusy(true);
+      const result = await api.installExtension();
+      setBusy(false);
+      showStatus(result.success ? `已安装 ${result.extension.name}` : result.message || '安装失败', !result.success);
+      loadExtensions();
+    });
+
+    btnInstallUnpacked.addEventListener('click', async () => {
+      setBusy(true);
+      const result = await api.installUnpackedExtension();
+      setBusy(false);
+      showStatus(result.success ? `已加载 ${result.extension.name}` : result.message || '加载失败', !result.success);
+      loadExtensions();
+    });
+
+    loadExtensions();
+  </script>
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>下载内容</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      background: #202124;
+      color: #e8eaed;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .page { max-width: 800px; margin: 0 auto; padding: 40px 24px; }
+    h1 { font-size: 24px; font-weight: 400; margin-bottom: 24px; color: #ffffff; }
+    .list-item {
+      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+      border-radius: 8px; transition: background 0.15s;
+      border-bottom: 1px solid #2d2e31;
+    }
+    .list-item:hover { background: rgba(255,255,255,0.04); }
+    .list-item__icon {
+      width: 36px; height: 36px; border-radius: 8px; background: #3c4043;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      font-size: 18px;
+    }
+    .list-item__content { flex: 1; min-width: 0; }
+    .list-item__title { font-size: 13px; color: #e8eaed; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .list-item__subtitle { font-size: 11px; color: #80868b; margin-top: 2px; }
+    .list-item__progress {
+      width: 100%; height: 3px; background: #3c4043; border-radius: 2px; margin-top: 6px;
+      overflow: hidden;
+    }
+    .list-item__progress-bar {
+      height: 100%; background: #8ab4f8; border-radius: 2px; transition: width 0.3s;
+    }
+    .list-item__status {
+      font-size: 11px; padding: 2px 8px; border-radius: 12px; flex-shrink: 0;
+    }
+    .status--progress { color: #8ab4f8; }
+    .status--completed { color: #34a853; }
+    .status--failed { color: #ea4335; }
+    .status--cancelled { color: #5f6368; }
+    .list-item__actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .list-item__actions button {
+      padding: 4px 8px; border-radius: 4px; border: 1px solid #5f6368;
+      background: transparent; color: #8ab4f8; cursor: pointer; font-size: 11px;
+      transition: background 0.15s;
+    }
+    .list-item__actions button:hover { background: rgba(138,180,248,0.1); }
+    .empty { text-align: center; padding: 64px 20px; color: #5f6368; }
+    .empty__icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>📥 下载内容</h1>
+
+    <div id="downloadList">
+      <div class="empty">
+        <div class="empty__icon">📂</div>
+        <div>加载中...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const api = window.NeutronBrowser || {};
+
+    async function loadDownloads() {
+      const downloads = await api.getDownloads();
+      renderDownloads(downloads || []);
+    }
+
+    function renderDownloads(items) {
+      const container = document.getElementById('downloadList');
+
+      if (!items || items.length === 0) {
+        container.innerHTML = `<div class="empty"><div class="empty__icon">📂</div><div>没有下载内容</div></div>`;
+        return;
+      }
+
+      let html = '';
+      items.forEach(item => {
+        const progress = item.totalBytes > 0 ? Math.round((item.receivedBytes / item.totalBytes) * 100) : 0;
+        const size = formatBytes(item.totalBytes);
+        const received = formatBytes(item.receivedBytes);
+        const speed = formatSpeed(item.speed);
+        const date = new Date(item.startTime).toLocaleString('zh-CN');
+
+        let statusClass = '', statusText = '';
+        switch (item.state) {
+          case 'in_progress': statusClass = 'status--progress'; statusText = `${progress}%`; break;
+          case 'paused': statusClass = 'status--progress'; statusText = '已暂停'; break;
+          case 'completed': statusClass = 'status--completed'; statusText = '已完成'; break;
+          case 'failed': statusClass = 'status--failed'; statusText = '失败'; break;
+          case 'cancelled': statusClass = 'status--cancelled'; statusText = '已取消'; break;
+        }
+
+        const icon = getFileIcon(item.filename);
+
+        html += `
+          <div class="list-item">
+            <div class="list-item__icon">${icon}</div>
+            <div class="list-item__content">
+              <div class="list-item__title">${escapeHtml(item.filename)}</div>
+              <div class="list-item__subtitle">
+                ${received} / ${size}
+                ${item.state === 'in_progress' ? ` · ${speed}` : ''}
+                ${item.state === 'completed' ? ` · ${date}` : ''}
+              </div>
+              ${item.state === 'in_progress' ? `<div class="list-item__progress"><div class="list-item__progress-bar" style="width:${progress}%"></div></div>` : ''}
+            </div>
+            <span class="list-item__status ${statusClass}">${statusText}</span>
+            <div class="list-item__actions">
+              ${item.state === 'completed' ? `<button onclick="openFolder('${item.id}')">打开文件夹</button>` : ''}
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes <= 0) return '未知大小';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function formatSpeed(bytesPerSecond) {
+      if (!bytesPerSecond || bytesPerSecond <= 0) return '';
+      return formatBytes(bytesPerSecond) + '/s';
+    }
+
+    function getFileIcon(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      const icons = {
+        'pdf': '📄', 'doc': '📝', 'docx': '📝', 'xls': '📊', 'xlsx': '📊',
+        'ppt': '📽️', 'pptx': '📽️', 'zip': '📦', 'rar': '📦', '7z': '📦',
+        'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️', 'svg': '🖼️',
+        'mp3': '🎵', 'wav': '🎵', 'mp4': '🎬', 'avi': '🎬', 'mkv': '🎬',
+        'exe': '⚙️', 'msi': '⚙️', 'txt': '📃', 'html': '🌐', 'js': '📜',
+        'py': '🐍', 'json': '📋',
+      };
+      return icons[ext] || '📎';
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text || '';
+      return div.innerHTML;
+    }
+
+    window.openFolder = async function(id) {
+      await api.openDownloadFolder(id);
+    };
+
+    // 监听下载更新
+    const unsub = api.onDownloadsUpdated(() => {
+      loadDownloads();
+    });
+
+    loadDownloads();
+  </script>
+</body>
+</html>

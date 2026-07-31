@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>新标签页</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: #1a1a2e;
+      color: #e8eaed;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .logo {
+      margin-bottom: 24px;
+      opacity: 0.9;
+    }
+    .logo svg {
+      width: 80px;
+      height: 80px;
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 300;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+    p {
+      font-size: 14px;
+      color: #9aa0a6;
+      margin-bottom: 32px;
+    }
+    .search-box {
+      position: relative;
+      width: 560px;
+      max-width: 90vw;
+    }
+    .search-box input {
+      width: 100%;
+      padding: 14px 20px 14px 48px;
+      border: 2px solid #3c4043;
+      border-radius: 28px;
+      background: #292a2d;
+      color: #e8eaed;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .search-box input:focus {
+      border-color: #8ab4f8;
+      background: #303134;
+    }
+    .search-box input::placeholder {
+      color: #80868b;
+    }
+    .search-box__icon {
+      position: absolute;
+      left: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #80868b;
+    }
+    .shortcuts {
+      display: flex;
+      gap: 16px;
+      margin-top: 40px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .shortcut {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 16px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      width: 96px;
+      text-decoration: none;
+      color: inherit;
+    }
+    .shortcut:hover {
+      background: rgba(255,255,255,0.08);
+    }
+    .shortcut__icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: #3c4043;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    .shortcut__name {
+      font-size: 12px;
+      text-align: center;
+      color: #9aa0a6;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#8ab4f8" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="2" y1="12" x2="22" y2="12"/>
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+    </svg>
+  </div>
+  <h1>Neutron Browser</h1>
+  <p>快速、安全、现代化的浏览体验</p>
+  <div class="search-box">
+    <span class="search-box__icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </span>
+    <input type="text" id="searchInput" placeholder="在 Google 上搜索，或输入网址" autofocus>
+  </div>
+  <div class="shortcuts">
+    <a class="shortcut" href="https://www.google.com">
+      <div class="shortcut__icon">🔍</div>
+      <span class="shortcut__name">Google</span>
+    </a>
+    <a class="shortcut" href="https://www.bing.com">
+      <div class="shortcut__icon">🔎</div>
+      <span class="shortcut__name">Bing</span>
+    </a>
+    <a class="shortcut" href="https://github.com">
+      <div class="shortcut__icon">💻</div>
+      <span class="shortcut__name">GitHub</span>
+    </a>
+    <a class="shortcut" href="https://www.youtube.com">
+      <div class="shortcut__icon">▶️</div>
+      <span class="shortcut__name">YouTube</span>
+    </a>
+  </div>
+
+  <script>
+    const { navigateTo, createTab } = window.NeutronBrowser || {};
+    const searchInput = document.getElementById('searchInput');
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const query = searchInput.value.trim();
+        if (query) {
+          if (navigateTo) {
+            navigateTo(query);
+          }
+        }
+      }
+    });
+
+    // 快捷键点击：在当前标签页中打开
+    document.querySelectorAll('.shortcut').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const url = link.getAttribute('href');
+        if (navigateTo && url) {
+          navigateTo(url);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

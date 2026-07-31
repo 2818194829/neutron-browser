@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>书签管理器</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      background: #202124;
+      color: #e8eaed;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .page { max-width: 800px; margin: 0 auto; padding: 40px 24px; }
+    h1 { font-size: 24px; font-weight: 400; margin-bottom: 24px; color: #ffffff; }
+    .search-box { position: relative; margin-bottom: 24px; }
+    .search-box input {
+      width: 100%; padding: 10px 16px 10px 40px;
+      border: 1px solid #3c4043; border-radius: 24px;
+      background: #303134; color: #e8eaed; font-size: 14px; outline: none;
+    }
+    .search-box input:focus { border-color: #8ab4f8; }
+    .search-box input::placeholder { color: #80868b; }
+    .search-box__icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #80868b; }
+    .folder { margin-bottom: 16px; }
+    .folder__header {
+      display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+      border-radius: 8px; cursor: pointer; font-weight: 500; color: #9aa0a6;
+    }
+    .folder__header:hover { background: rgba(255,255,255,0.04); }
+    .folder__header svg { transition: transform 0.2s; }
+    .folder__header.collapsed svg { transform: rotate(-90deg); }
+    .folder__items { padding-left: 24px; }
+    .list-item {
+      display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+      border-radius: 8px; cursor: pointer; transition: background 0.15s;
+    }
+    .list-item:hover { background: rgba(255,255,255,0.06); }
+    .list-item__icon {
+      width: 32px; height: 32px; border-radius: 50%; background: #3c4043;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      color: #fcc934; font-size: 14px;
+    }
+    .list-item__content { flex: 1; min-width: 0; }
+    .list-item__title { font-size: 13px; color: #e8eaed; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .list-item__subtitle { font-size: 11px; color: #80868b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .list-item__delete {
+      width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      color: #5f6368; cursor: pointer; opacity: 0; transition: opacity 0.15s, background 0.15s;
+      font-size: 16px; flex-shrink: 0; background: none; border: none;
+    }
+    .list-item:hover .list-item__delete { opacity: 1; }
+    .list-item__delete:hover { background: rgba(255,255,255,0.1); color: #f28b82; }
+    .empty { text-align: center; padding: 40px 20px; color: #5f6368; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>⭐ 书签管理器</h1>
+
+    <div class="search-box">
+      <span class="search-box__icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </span>
+      <input type="text" id="searchInput" placeholder="搜索书签" />
+    </div>
+
+    <div id="bookmarkList"></div>
+  </div>
+
+  <script>
+    const api = window.NeutronBrowser || {};
+
+    let allBookmarks = {};
+
+    async function loadBookmarks() {
+      allBookmarks = await api.getBookmarks();
+      renderBookmarks(allBookmarks);
+    }
+
+    function renderBookmarks(bookmarks) {
+      const container = document.getElementById('bookmarkList');
+      let html = '';
+
+      const folderNames = {
+        'bookmark_bar': '书签栏',
+        'other': '其他书签',
+        'mobile': '移动设备书签',
+      };
+
+      for (const [key, folder] of Object.entries(bookmarks)) {
+        if (folder.type === 'folder') {
+          const hasChildren = folder.children && folder.children.length > 0;
+          html += `<div class="folder">
+            <div class="folder__header" data-folder="${key}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              <span>📁 ${folderNames[key] || folder.title} (${folder.children ? folder.children.length : 0})</span>
+            </div>
+            <div class="folder__items">`;
+
+          if (hasChildren) {
+            folder.children.forEach(child => {
+              if (child.type === 'bookmark') {
+                html += `
+                  <div class="list-item" data-url="${escapeHtml(child.url)}">
+                    <div class="list-item__icon">⭐</div>
+                    <div class="list-item__content">
+                      <div class="list-item__title">${escapeHtml(child.title)}</div>
+                      <div class="list-item__subtitle">${escapeHtml(child.url)}</div>
+                    </div>
+                    <button class="list-item__delete" data-id="${child.id}" title="删除">×</button>
+                  </div>`;
+              }
+            });
+          } else {
+            html += `<div class="empty">空文件夹</div>`;
+          }
+
+          html += `</div></div>`;
+        }
+      }
+
+      container.innerHTML = html;
+
+      // 绑定文件夹展开/折叠
+      container.querySelectorAll('.folder__header').forEach(header => {
+        header.addEventListener('click', function() {
+          this.classList.toggle('collapsed');
+          const items = this.nextElementSibling;
+          items.style.display = items.style.display === 'none' ? 'block' : 'none';
+        });
+      });
+
+      // 绑定书签点击
+      container.querySelectorAll('.list-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          if (e.target.classList.contains('list-item__delete')) return;
+          const url = el.dataset.url;
+          if (url && api.navigateTo) {
+            api.navigateTo(url);
+          }
+        });
+      });
+
+      // 绑定删除
+      container.querySelectorAll('.list-item__delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (confirm('确定要删除这个书签吗？')) {
+            await api.removeBookmark(btn.dataset.id);
+            loadBookmarks();
+          }
+        });
+      });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text || '';
+      return div.innerHTML;
+    }
+
+    document.getElementById('searchInput').addEventListener('input', () => {
+      const query = document.getElementById('searchInput').value.trim().toLowerCase();
+      const items = document.querySelectorAll('.list-item');
+      items.forEach(item => {
+        const title = item.querySelector('.list-item__title').textContent.toLowerCase();
+        const url = item.querySelector('.list-item__subtitle').textContent.toLowerCase();
+        if (query && !title.includes(query) && !url.includes(query)) {
+          item.style.display = 'none';
+        } else {
+          item.style.display = '';
+        }
+      });
+    });
+
+    loadBookmarks();
+  </script>
+</body>
+</html>

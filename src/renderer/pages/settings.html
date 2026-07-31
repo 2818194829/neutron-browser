@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>设置</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      background: #202124;
+      color: #e8eaed;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .page { max-width: 720px; margin: 0 auto; padding: 40px 24px; }
+    h1 { font-size: 24px; font-weight: 400; margin-bottom: 32px; color: #ffffff; }
+    .section { margin-bottom: 36px; }
+    .section__title { font-size: 13px; font-weight: 600; color: #9aa0a6; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #3c4043; text-transform: uppercase; letter-spacing: 0.5px; }
+    .row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #2d2e31; }
+    .row__label { flex: 1; }
+    .row__label span { display: block; color: #e8eaed; font-size: 14px; }
+    .row__label small { display: block; color: #80868b; font-size: 11px; margin-top: 2px; }
+    .row select, .row input[type="text"], .row input[type="number"] { padding: 6px 10px; border: 1px solid #3c4043; border-radius: 4px; background: #303134; color: #e8eaed; font-size: 13px; min-width: 200px; outline: none; }
+    .row select:focus, .row input:focus { border-color: #8ab4f8; }
+    .row button { padding: 8px 16px; border-radius: 4px; border: 1px solid #5f6368; background: transparent; color: #8ab4f8; cursor: pointer; font-size: 13px; transition: background 0.15s; }
+    .row button:hover { background: rgba(138,180,248,0.1); }
+    .row button.danger { color: #f28b82; border-color: #f28b82; }
+    .row button.danger:hover { background: rgba(242,139,130,0.1); }
+    .version { text-align: center; padding: 24px; color: #5f6368; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>⚙️ 设置</h1>
+
+    <!-- 外观 -->
+    <div class="section">
+      <div class="section__title">外观</div>
+      <div class="row">
+        <div class="row__label">
+          <span>主题</span>
+          <small>选择浏览器的外观主题</small>
+        </div>
+        <select id="theme">
+          <option value="system">跟随系统</option>
+          <option value="light">浅色</option>
+          <option value="dark">深色</option>
+        </select>
+      </div>
+      <div class="row">
+        <div class="row__label">
+          <span>显示书签栏</span>
+          <small>在地址栏下方显示书签栏</small>
+        </div>
+        <select id="showBookmarkBar">
+          <option value="true">显示</option>
+          <option value="false">隐藏</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 搜索 -->
+    <div class="section">
+      <div class="section__title">搜索引擎</div>
+      <div class="row">
+        <div class="row__label">
+          <span>默认搜索引擎</span>
+          <small>在地址栏中使用的搜索引擎</small>
+        </div>
+        <select id="searchEngine">
+          <option value="google">Google</option>
+          <option value="bing">Bing</option>
+          <option value="duckduckgo">DuckDuckGo</option>
+          <option value="baidu">百度</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 启动 -->
+    <div class="section">
+      <div class="section__title">启动时</div>
+      <div class="row">
+        <div class="row__label">
+          <span>启动行为</span>
+          <small>浏览器启动时打开的内容</small>
+        </div>
+        <select id="startupBehavior">
+          <option value="newTab">打开新标签页</option>
+          <option value="restore">继续上次浏览</option>
+          <option value="custom">打开特定页面</option>
+        </select>
+      </div>
+      <div class="row">
+        <div class="row__label">
+          <span>主页</span>
+          <small>点击主页按钮时打开的页面</small>
+        </div>
+        <input type="text" id="homePage" placeholder="https://www.google.com" />
+      </div>
+    </div>
+
+    <!-- 下载 -->
+    <div class="section">
+      <div class="section__title">下载</div>
+      <div class="row">
+        <div class="row__label">
+          <span>下载前询问保存位置</span>
+          <small>每次下载时是否询问文件保存位置</small>
+        </div>
+        <select id="askDownloadPath">
+          <option value="true">是</option>
+          <option value="false">否</option>
+        </select>
+      </div>
+      <div class="row">
+        <div class="row__label">
+          <span>下载路径</span>
+          <small id="downloadPathLabel">使用系统默认下载目录</small>
+        </div>
+        <button id="btnSetDownloadPath">更改</button>
+      </div>
+    </div>
+
+    <!-- 隐私与安全 -->
+    <div class="section">
+      <div class="section__title">隐私与安全</div>
+      <div class="row">
+        <div class="row__label">
+          <span>清除浏览数据</span>
+          <small>清除历史记录、缓存等浏览数据</small>
+        </div>
+        <button class="danger" id="btnClearData">清除数据</button>
+      </div>
+    </div>
+
+    <!-- 关于 -->
+    <div class="section">
+      <div class="section__title">关于</div>
+      <div class="version">
+        <strong>Neutron Browser</strong> v1.0.0<br>
+        基于 Electron 和 Chromium 内核构建
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const api = window.NeutronBrowser || {};
+
+    async function loadSettings() {
+      const settings = await api.getAllSettings();
+
+      document.getElementById('theme').value = settings.theme || 'system';
+      document.getElementById('showBookmarkBar').value = String(settings.showBookmarkBar ?? true);
+      document.getElementById('searchEngine').value = settings.searchEngine || 'google';
+      document.getElementById('startupBehavior').value = settings.startupBehavior || 'newTab';
+      document.getElementById('homePage').value = settings.homePage || 'https://www.google.com';
+      document.getElementById('askDownloadPath').value = String(settings.askDownloadPath ?? true);
+
+      if (settings.downloadPath) {
+        document.getElementById('downloadPathLabel').textContent = settings.downloadPath;
+      }
+    }
+
+    async function saveSetting(key, value) {
+      await api.setSetting(key, value);
+    }
+
+    // 主题切换
+    document.getElementById('theme').addEventListener('change', function() {
+      const theme = this.value;
+      saveSetting('theme', theme);
+      if (theme === 'system') {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+    });
+
+    document.getElementById('showBookmarkBar').addEventListener('change', function() {
+      saveSetting('showBookmarkBar', this.value === 'true');
+    });
+
+    document.getElementById('searchEngine').addEventListener('change', function() {
+      saveSetting('searchEngine', this.value);
+    });
+
+    document.getElementById('startupBehavior').addEventListener('change', function() {
+      saveSetting('startupBehavior', this.value);
+    });
+
+    document.getElementById('homePage').addEventListener('change', function() {
+      saveSetting('homePage', this.value);
+    });
+
+    document.getElementById('askDownloadPath').addEventListener('change', function() {
+      saveSetting('askDownloadPath', this.value === 'true');
+    });
+
+    document.getElementById('btnSetDownloadPath').addEventListener('click', async function() {
+      const path = await api.setDownloadPath();
+      if (path) {
+        document.getElementById('downloadPathLabel').textContent = path;
+      }
+    });
+
+    document.getElementById('btnClearData').addEventListener('click', async function() {
+      if (confirm('确定要清除所有浏览数据吗？此操作无法撤销。')) {
+        await api.clearHistory();
+        alert('浏览数据已清除');
+      }
+    });
+
+    loadSettings();
+  </script>
+</body>
+</html>
