@@ -6,6 +6,8 @@ Neutron Browser 是一款基于 Electron 的现代 PC 级浏览器，支持多�
 
 GitHub：[https://github.com/2818194829/neutron-browser](https://github.com/2818194829/neutron-browser)
 
+Release：[v1.2.0](https://github.com/2818194829/neutron-browser/releases/tag/v1.2.0)
+
 ## 功能特性
 
 ### 浏览器核心
