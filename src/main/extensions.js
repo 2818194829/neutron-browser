@@ -2,7 +2,7 @@
  * 扩展管理模块
  * 支持安装 .zip/.crx、加载已解压扩展，并通过 Electron session 实际启用扩展
  */
-const { app, session } = require('electron');
+const { app, session, net } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
@@ -180,6 +180,57 @@ async function installUnpackedExtension(dirPath) {
   }
 }
 
+function parseEdgeCrxId(input) {
+  const trimmed = String(input || '').trim();
+
+  if (/^[a-p]{32}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    const last = segments[segments.length - 1] || '';
+    if (/^[a-p]{32}$/i.test(last)) {
+      return last.toLowerCase();
+    }
+  } catch (e) { /* 保留下方错误 */ }
+
+  throw new Error('无法识别 Edge 扩展 ID，请粘贴扩展详情页链接或 32 位扩展 ID');
+}
+
+async function installFromEdgeStore(input) {
+  const crxId = parseEdgeCrxId(input);
+  const downloadUrl =
+    'https://edge.microsoft.com/extensionwebstorebase/v1/crx' +
+    '?response=redirect&prod=CHROMECRX' +
+    `&x=id%3D${encodeURIComponent(crxId)}%26installsource%3Dondemand%26uc`;
+
+  const response = await net.fetch(downloadUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36 Edg/120.0.0.0',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Edge 商店下载失败: HTTP ${response.status}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length < 12 || buffer.toString('latin1', 0, 4) !== 'Cr24') {
+    throw new Error('Edge 商店返回的不是有效的 CRX 文件');
+  }
+
+  const tempFile = path.join(app.getPath('temp'), `neutron-edge-${crxId}-${Date.now()}.crx`);
+  fs.writeFileSync(tempFile, buffer);
+
+  try {
+    return await installExtensionFile(tempFile);
+  } finally {
+    fs.rmSync(tempFile, { force: true });
+  }
+}
+
 async function initExtensions() {
   fs.mkdirSync(extensionsRoot(), { recursive: true });
 
@@ -247,6 +298,7 @@ module.exports = {
   getInstalledExtensions,
   installExtensionFile,
   installUnpackedExtension,
+  installFromEdgeStore,
   setExtensionEnabled,
   uninstallExtension,
 };

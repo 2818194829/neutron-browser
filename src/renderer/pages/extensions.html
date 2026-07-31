@@ -23,6 +23,27 @@
       margin-bottom: 28px;
       flex-wrap: wrap;
     }
+    .edge-install {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .edge-install input {
+      flex: 1;
+      min-width: 260px;
+      padding: 8px 12px;
+      border: 1px solid #5f6368;
+      border-radius: 6px;
+      background: #303134;
+      color: #e8eaed;
+      font-size: 13px;
+      outline: none;
+    }
+    .edge-install input:focus {
+      border-color: #8ab4f8;
+    }
     h1 { font-size: 24px; font-weight: 400; color: #ffffff; }
     .subtitle { color: #80868b; font-size: 13px; margin-top: 6px; }
     .page__actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -124,6 +145,12 @@
       </div>
     </div>
 
+    <div class="edge-install">
+      <input id="edgeStoreInput" type="text" placeholder="粘贴微软 Edge 扩展链接或 32 位扩展 ID" />
+      <button class="btn" id="btnOpenEdgeStore" type="button">打开微软扩展商店</button>
+      <button class="btn" id="btnInstallFromEdge" type="button">从商店安装</button>
+    </div>
+
     <div id="status" class="status" hidden></div>
     <div id="extensionsList">
       <div class="empty">
@@ -139,6 +166,9 @@
     const statusEl = document.getElementById('status');
     const btnInstallFile = document.getElementById('btnInstallFile');
     const btnInstallUnpacked = document.getElementById('btnInstallUnpacked');
+    const btnOpenEdgeStore = document.getElementById('btnOpenEdgeStore');
+    const btnInstallFromEdge = document.getElementById('btnInstallFromEdge');
+    const edgeStoreInput = document.getElementById('edgeStoreInput');
 
     function escapeHtml(text) {
       const div = document.createElement('div');
@@ -159,6 +189,9 @@
     function setBusy(busy) {
       btnInstallFile.disabled = busy;
       btnInstallUnpacked.disabled = busy;
+      btnOpenEdgeStore.disabled = busy;
+      btnInstallFromEdge.disabled = busy;
+      edgeStoreInput.disabled = busy;
     }
 
     function renderExtensions(extensions) {
@@ -262,6 +295,25 @@
       const result = await api.installUnpackedExtension();
       setBusy(false);
       showStatus(result.success ? `已加载 ${result.extension.name}` : result.message || '加载失败', !result.success);
+      loadExtensions();
+    });
+
+    btnOpenEdgeStore.addEventListener('click', () => {
+      api.createTab('https://microsoftedge.microsoft.com/addons');
+    });
+
+    btnInstallFromEdge.addEventListener('click', async () => {
+      const input = edgeStoreInput.value.trim();
+      if (!input) {
+        showStatus('请粘贴微软 Edge 扩展链接或 32 位扩展 ID', true);
+        return;
+      }
+
+      setBusy(true);
+      const result = await api.installFromEdgeStore(input);
+      setBusy(false);
+      showStatus(result.success ? `已安装 ${result.extension.name}` : result.message || '安装失败', !result.success);
+      if (result.success) edgeStoreInput.value = '';
       loadExtensions();
     });
 

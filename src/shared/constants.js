@@ -44,6 +44,7 @@ const IPC_CHANNELS = {
   BOOKMARKS_MOVE: 'bookmarks:move',
   BOOKMARKS_SEARCH: 'bookmarks:search',
   BOOKMARKS_IS_BOOKMARKED: 'bookmarks:isBookmarked',
+  BOOKMARKS_CONTEXT_MENU: 'bookmarks:contextMenu',
   BOOKMARKS_IMPORT: 'bookmarks:import',
   BOOKMARKS_EXPORT: 'bookmarks:export',
 
@@ -84,6 +85,7 @@ const IPC_CHANNELS = {
   EXTENSIONS_GET_ALL: 'extensions:getAll',
   EXTENSIONS_INSTALL: 'extensions:install',
   EXTENSIONS_INSTALL_UNPACKED: 'extensions:installUnpacked',
+  EXTENSIONS_INSTALL_FROM_EDGE: 'extensions:installFromEdge',
   EXTENSIONS_TOGGLE: 'extensions:toggle',
   EXTENSIONS_UNINSTALL: 'extensions:uninstall',
 };

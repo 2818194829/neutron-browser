@@ -2,7 +2,7 @@
  * IPC 处理器注册
  * 处理来自渲染进程的所有 IPC 请求
  */
-const { ipcMain, dialog, shell, app } = require('electron');
+const { ipcMain, dialog, shell, app, Menu, clipboard } = require('electron');
 const path = require('path');
 const { IPC_CHANNELS, INTERNAL_PAGES, DEFAULT_SETTINGS } = require('../shared/constants');
 const { getStore } = require('./storage');
@@ -10,6 +10,7 @@ const {
   getInstalledExtensions,
   installExtensionFile,
   installUnpackedExtension,
+  installFromEdgeStore,
   setExtensionEnabled,
   uninstallExtension,
 } = require('./extensions');
@@ -192,6 +193,41 @@ function registerIpcHandlers() {
     return getStore('bookmarks').getAll();
   });
 
+  ipcMain.on(IPC_CHANNELS.BOOKMARKS_CONTEXT_MENU, (event, payload) => {
+    const wm = getWM();
+    if (!wm || !wm.mainWindow || !payload || !payload.bookmark) return;
+
+    const bookmark = payload.bookmark;
+    const template = [
+      { label: '在新标签页中打开', click: () => wm.createTab(bookmark.url) },
+      { label: '在新标签页中后台打开', click: () => wm.createTab(bookmark.url, false) },
+      { type: 'separator' },
+      {
+        label: '编辑',
+        click: () => wm.mainWindow.webContents.send(IPC_CHANNELS.MENU_EVENT, {
+          action: 'editBookmark',
+          bookmark,
+        }),
+      },
+      {
+        label: '删除',
+        click: () => wm.mainWindow.webContents.send(IPC_CHANNELS.MENU_EVENT, {
+          action: 'deleteBookmark',
+          bookmarkId: bookmark.id,
+        }),
+      },
+      { type: 'separator' },
+      {
+        label: '复制链接地址',
+        enabled: Boolean(bookmark.url),
+        click: () => clipboard.writeText(bookmark.url),
+      },
+    ];
+
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({ window: wm.mainWindow, x: payload.x, y: payload.y });
+  });
+
   ipcMain.handle(IPC_CHANNELS.BOOKMARKS_ADD, (event, bookmark) => {
     const store = getStore('bookmarks');
     const data = store.getAll();
@@ -230,6 +266,34 @@ function registerIpcHandlers() {
     store.set('other', data.other);
     store.set('mobile', data.mobile);
     return newBookmark;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.BOOKMARKS_UPDATE, (event, { id, bookmark }) => {
+    const store = getStore('bookmarks');
+    const data = store.getAll();
+
+    const updateInFolder = (folder) => {
+      if (!folder.children) return false;
+
+      for (const child of folder.children) {
+        if (child.id === id && child.type === 'bookmark') {
+          Object.assign(child, bookmark, { id: child.id, type: 'bookmark' });
+          return true;
+        }
+        if (child.type === 'folder' && updateInFolder(child)) return true;
+      }
+
+      return false;
+    };
+
+    for (const key of Object.keys(data)) {
+      if (data[key].type === 'folder' && updateInFolder(data[key])) break;
+    }
+
+    store.set('bookmark_bar', data.bookmark_bar);
+    store.set('other', data.other);
+    store.set('mobile', data.mobile);
+    return true;
   });
 
   ipcMain.handle(IPC_CHANNELS.BOOKMARKS_REMOVE, (event, bookmarkId) => {
@@ -440,6 +504,15 @@ function registerIpcHandlers() {
 
     try {
       const extension = await installUnpackedExtension(result.filePaths[0]);
+      return { success: true, extension };
+    } catch (e) {
+      return { success: false, message: e.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_INSTALL_FROM_EDGE, async (event, input) => {
+    try {
+      const extension = await installFromEdgeStore(input);
       return { success: true, extension };
     } catch (e) {
       return { success: false, message: e.message };

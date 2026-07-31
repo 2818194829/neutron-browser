@@ -2,7 +2,7 @@
 
 Neutron Browser 是一款基于 Electron 的现代 PC 级浏览器，支持多标签页、书签管理、历史记录、下载管理、扩展安装，以及接近 Edge 的网页右键菜单体验。
 
-当前版本：**1.1.0**
+当前版本：**1.2.0**
 
 GitHub：[https://github.com/2818194829/neutron-browser](https://github.com/2818194829/neutron-browser)
 
@@ -15,6 +15,7 @@ GitHub：[https://github.com/2818194829/neutron-browser](https://github.com/2818
 - **导航控制**：后退、前进、刷新、停止、主页，支持鼠标侧键
 - **网页右键菜单**：参考 Edge 提供链接、图片、媒体、文本编辑、页面导航、打印和检查元素等操作
 - **书签栏网站图标**：自动读取网站 favicon，失败时自动回退
+- **书签栏右键菜单**：打开、后台打开、编辑、删除、复制链接
 - **无边框窗口**：自定义标题栏、窗口控制按钮和窗口状态记忆
 - **亮色 / 暗色主题**：支持跟随系统
 - **完整快捷键**：Chrome 风格快捷键
@@ -31,6 +32,7 @@ GitHub：[https://github.com/2818194829/neutron-browser](https://github.com/2818
 - 工具栏 Edge 风格扩展图标
 - 扩展管理页
 - 安装 `.crx` / `.zip` 扩展包
+- 从微软 Edge 扩展商店按链接或扩展 ID 安装
 - 加载已解压的扩展目录
 - 启用 / 禁用扩展
 - 卸载扩展
@@ -91,7 +93,7 @@ npm run build:installer
 生成位置：
 
 ```text
-build\Neutron Browser Setup 1.1.0.exe
+build\Neutron Browser Setup 1.2.0.exe
 ```
 
 安装包支持：
@@ -218,6 +220,12 @@ npm run build:win
 - 暂不支持完整 Manifest V3 后台 Service Worker 生态
 
 ## 版本记录
+
+### 1.2.0
+
+- 新增从微软 Edge 扩展商店安装扩展
+- 新增书签栏右键菜单
+- 针对微软扩展商店使用 Edge User-Agent，避免页面提示浏览器不兼容
 
 ### 1.1.0
 

@@ -12,6 +12,16 @@ const APP_ICON_PATH = app.isPackaged
   ? path.join(__dirname, '..', '..', '..', 'icon', 'Rocket Browser.png')
   : path.join(__dirname, '..', '..', 'icon', 'Rocket Browser.png');
 
+const EDGE_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0';
+
+function isEdgeStoreUrl(url) {
+  try {
+    return new URL(url).hostname === 'microsoftedge.microsoft.com';
+  } catch (e) {
+    return false;
+  }
+}
+
 class WindowManager {
   constructor() {
     /** @type {BrowserWindow|null} 主窗口实例 */
@@ -167,6 +177,10 @@ class WindowManager {
 
     // 监听页面事件
     this.setupViewEvents(view, tabId);
+
+    if (isEdgeStoreUrl(resolvedUrl)) {
+      view.webContents.setUserAgent(EDGE_USER_AGENT);
+    }
 
     // 添加视图到窗口
     this.mainWindow.addBrowserView(view);
@@ -428,7 +442,10 @@ class WindowManager {
     });
 
     // 加载进度
-    wc.on('did-start-navigation', () => {
+    wc.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
+      if (isMainFrame && isEdgeStoreUrl(url)) {
+        wc.setUserAgent(EDGE_USER_AGENT);
+      }
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
         tab.loadingProgress = 10;

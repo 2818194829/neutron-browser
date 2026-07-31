@@ -66,6 +66,7 @@
     isLoading: false,
     isBookmarked: false,
     bookmarks: {},
+    editingBookmark: null,
     theme: 'system',
     unsubscribers: [],
   };
@@ -434,7 +435,7 @@
   async function bindBookmarkEvents() {
     dom.btnBookmark.addEventListener('click', () => {
       if (state.isBookmarked) {
-        showBookmarkDialog(true);
+        showBookmarkDialog(true, findBookmarkByUrl(state.bookmarks, state.currentUrl));
       } else {
         showBookmarkDialog(false);
       }
@@ -473,7 +474,8 @@
     });
   }
 
-  async function showBookmarkDialog(isEditing) {
+  async function showBookmarkDialog(isEditing, bookmark = null) {
+    state.editingBookmark = bookmark || null;
     api.setModalVisible(true);
     dom.bookmarkDialog.style.display = 'flex';
     if (isEditing) {
@@ -483,24 +485,31 @@
       dom.bookmarkDialogTitle.textContent = '添加书签';
       dom.bookmarkDialogRemove.style.display = 'none';
     }
-    dom.bookmarkName.value = state.currentTitle || '';
-    dom.bookmarkUrl.value = state.currentUrl || '';
+    dom.bookmarkName.value = (bookmark && bookmark.title) || state.currentTitle || '';
+    dom.bookmarkUrl.value = (bookmark && bookmark.url) || state.currentUrl || '';
+    if (bookmark && bookmark.parentId) {
+      dom.bookmarkFolder.value = bookmark.parentId;
+    }
     dom.bookmarkName.focus();
     dom.bookmarkName.select();
   }
 
   function closeBookmarkDialog() {
     dom.bookmarkDialog.style.display = 'none';
+    state.editingBookmark = null;
     api.setModalVisible(false);
   }
 
   async function saveBookmark() {
     const activeTab = state.tabs.find(tab => tab.id === state.activeTabId);
+    const favicon = state.editingBookmark && state.editingBookmark.favicon
+      ? state.editingBookmark.favicon
+      : (activeTab && activeTab.favicon ? activeTab.favicon : '');
     const bookmark = {
       title: dom.bookmarkName.value || '未命名书签',
       url: dom.bookmarkUrl.value || state.currentUrl,
       parentId: dom.bookmarkFolder.value,
-      favicon: activeTab && activeTab.favicon ? activeTab.favicon : '',
+      favicon,
     };
 
     if (!bookmark.url) {
@@ -508,35 +517,40 @@
       return;
     }
 
-    await api.addBookmark(bookmark);
-    state.bookmarks = await api.getBookmarks();
+    if (state.editingBookmark) {
+      await api.updateBookmark(state.editingBookmark.id, bookmark);
+    } else {
+      await api.addBookmark(bookmark);
+    }
+    await refreshBookmarks();
     await updateBookmarkState();
-    renderBookmarkBar();
     closeBookmarkDialog();
   }
 
   async function removeBookmark() {
-    // 查找并移除当前 URL 的书签
-    const findAndRemove = (folder) => {
-      if (!folder.children) return false;
-      for (const child of folder.children) {
-        if (child.type === 'bookmark' && child.url === state.currentUrl) {
-          api.removeBookmark(child.id);
-          return true;
+    if (state.editingBookmark) {
+      await api.removeBookmark(state.editingBookmark.id);
+    } else {
+      const findAndRemove = (folder) => {
+        if (!folder.children) return false;
+        for (const child of folder.children) {
+          if (child.type === 'bookmark' && child.url === state.currentUrl) {
+            api.removeBookmark(child.id);
+            return true;
+          }
+          if (child.type === 'folder' && findAndRemove(child)) return true;
         }
-        if (child.type === 'folder' && findAndRemove(child)) return true;
-      }
-      return false;
-    };
+        return false;
+      };
 
-    const bookmarks = await api.getBookmarks();
-    for (const key of Object.keys(bookmarks)) {
-      if (findAndRemove(bookmarks[key])) break;
+      const bookmarks = await api.getBookmarks();
+      for (const key of Object.keys(bookmarks)) {
+        if (findAndRemove(bookmarks[key])) break;
+      }
     }
 
-    state.bookmarks = await api.getBookmarks();
+    await refreshBookmarks();
     await updateBookmarkState();
-    renderBookmarkBar();
     closeBookmarkDialog();
   }
 
@@ -591,8 +605,46 @@
       el.addEventListener('click', () => {
         api.navigateTo(item.url);
       });
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        api.showBookmarkContextMenu({
+          x: e.clientX,
+          y: e.clientY,
+          bookmark: {
+            id: item.id,
+            title: item.title,
+            url: item.url,
+            parentId: item.parentId,
+          },
+        });
+      });
       dom.bookmarkBarItems.appendChild(el);
     });
+  }
+
+  async function refreshBookmarks() {
+    state.bookmarks = await api.getBookmarks();
+    renderBookmarkBar();
+  }
+
+  function findBookmarkByUrl(bookmarks, url) {
+    const findInFolder = (folder) => {
+      if (!folder || !folder.children) return null;
+      for (const child of folder.children) {
+        if (child.type === 'bookmark' && child.url === url) return child;
+        if (child.type === 'folder') {
+          const found = findInFolder(child);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    for (const key of Object.keys(bookmarks || {})) {
+      const found = findInFolder(bookmarks[key]);
+      if (found) return found;
+    }
+    return null;
   }
 
   function getSiteFaviconUrl(url) {
@@ -730,7 +782,10 @@
       // Ctrl+D: 添加书签
       else if (isCtrl && e.key === 'd') {
         e.preventDefault();
-        showBookmarkDialog(state.isBookmarked);
+        showBookmarkDialog(
+          state.isBookmarked,
+          state.isBookmarked ? findBookmarkByUrl(state.bookmarks, state.currentUrl) : null
+        );
       }
       // Ctrl+H: 历史记录
       else if (isCtrl && e.key === 'h') {
@@ -875,7 +930,19 @@
   function handleMenuEvent(data) {
     switch (data.action) {
       case 'addBookmark':
-        showBookmarkDialog(state.isBookmarked);
+        showBookmarkDialog(
+          state.isBookmarked,
+          state.isBookmarked ? findBookmarkByUrl(state.bookmarks, state.currentUrl) : null
+        );
+        break;
+      case 'editBookmark':
+        showBookmarkDialog(true, data.bookmark);
+        break;
+      case 'deleteBookmark':
+        api.removeBookmark(data.bookmarkId).then(async () => {
+          await refreshBookmarks();
+          await updateBookmarkState();
+        });
         break;
       case 'clearBrowsingData':
         // TODO: 显示清除浏览数据对话框
