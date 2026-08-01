@@ -149,6 +149,17 @@
       }
     });
     dom.btnHome.addEventListener('click', () => api.goHome());
+    api.getSetting('showHomeButton').then((show) => {
+      dom.btnHome.style.display = show === false ? 'none' : '';
+    });
+    if (api.onSettingsChanged) {
+      const unsubSettings = api.onSettingsChanged(({ key, value }) => {
+        if (key === 'showHomeButton') {
+          dom.btnHome.style.display = value === false ? 'none' : '';
+        }
+      });
+      state.unsubscribers.push(unsubSettings);
+    }
 
     // 鼠标侧键导航
     document.addEventListener('mousedown', (e) => {

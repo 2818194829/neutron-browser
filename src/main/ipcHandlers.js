@@ -130,6 +130,14 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle(IPC_CHANNELS.TABS_GET_CURRENT, () => {
+    const wm = getWM();
+    if (!wm) return [];
+    return wm.tabs
+      .map(tab => tab.url)
+      .filter(url => url && !url.startsWith('neutron://'));
+  });
+
   // ==================== 导航 ====================
   ipcMain.on(IPC_CHANNELS.NAV_GO, (event, { url }) => {
     const wm = getWM();
@@ -187,9 +195,11 @@ function registerIpcHandlers() {
     if (wm) {
       const settings = getStore('settings');
       const homePage = settings.get('homePage', 'https://www.google.com');
+      const homeButtonTarget = settings.get('homeButtonTarget', 'custom');
+      const targetUrl = homeButtonTarget === 'newtab' ? INTERNAL_PAGES.NEW_TAB : homePage;
       const activeTab = wm.tabs.find(t => t.id === wm.activeTabId);
       if (activeTab && activeTab.view) {
-        activeTab.view.webContents.loadURL(homePage);
+        activeTab.view.webContents.loadURL(targetUrl);
       }
     }
   });
@@ -681,6 +691,13 @@ function registerIpcHandlers() {
 
   ipcMain.on(IPC_CHANNELS.SETTINGS_SET, (event, { key, value }) => {
     getStore('settings').set(key, value);
+    if (key === 'launchAtLogin') {
+      app.setLoginItemSettings({ openAtLogin: value === true });
+    }
+    const wm = getWM();
+    if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+      wm.mainWindow.webContents.send(IPC_CHANNELS.SETTINGS_CHANGED, { key, value });
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_ALL, () => {
@@ -694,6 +711,10 @@ function registerIpcHandlers() {
 
   ipcMain.on(IPC_CHANNELS.THEME_SET, (event, theme) => {
     getStore('settings').set('theme', theme);
+    const wm = getWM();
+    if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+      wm.mainWindow.webContents.send(IPC_CHANNELS.THEME_CHANGED, theme);
+    }
   });
 
   // ==================== 扩展 ====================
