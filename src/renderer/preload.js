@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
     ipcRenderer.send(IPC_CHANNELS.TAB_DUPLICATE, { tabId }),
   reloadTab: (tabId, ignoreCache = false) =>
     ipcRenderer.send(IPC_CHANNELS.TAB_RELOAD, { tabId, ignoreCache }),
+  getCurrentTabs: () => ipcRenderer.invoke(IPC_CHANNELS.TABS_GET_CURRENT),
 
   // ==================== 导航 ====================
   navigateTo: (url) =>
@@ -93,6 +94,11 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   getSetting: (key) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET, key),
   setSetting: (key, value) => ipcRenderer.send(IPC_CHANNELS.SETTINGS_SET, { key, value }),
   getAllSettings: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_ALL),
+  onSettingsChanged: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.SETTINGS_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SETTINGS_CHANGED, handler);
+  },
 
   // ==================== 主题 ====================
   getTheme: () => ipcRenderer.invoke(IPC_CHANNELS.THEME_GET),

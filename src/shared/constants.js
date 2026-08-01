@@ -25,6 +25,7 @@ const IPC_CHANNELS = {
   TAB_UPDATE: 'tab:update',
   TAB_LIST_UPDATED: 'tab:listUpdated',
   TAB_FOCUS_ADDRESS_BAR: 'tab:focusAddressBar',
+  TABS_GET_CURRENT: 'tabs:getCurrent',
 
   // 导航
   NAV_GO: 'nav:go',
@@ -71,6 +72,7 @@ const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   SETTINGS_GET_ALL: 'settings:getAll',
+  SETTINGS_CHANGED: 'settings:changed',
 
   // 主题
   THEME_GET: 'theme:get',
@@ -103,8 +105,12 @@ const DEFAULT_SETTINGS = {
     { id: 'baidu', name: '百度', url: 'https://www.baidu.com/s?wd=%s' },
   ],
   homePage: 'https://www.google.com',
+  showHomeButton: true,
+  homeButtonTarget: 'custom', // 'newtab' | 'custom'
   newTabPage: 'home',        // 'home' | 'blank' | 'custom'
   newTabCustomUrl: '',
+  preloadNewTabPage: false,
+  launchAtLogin: false,
   showBookmarkBar: true,
   downloadPath: '',           // 空表示使用系统默认下载目录
   askDownloadPath: true,

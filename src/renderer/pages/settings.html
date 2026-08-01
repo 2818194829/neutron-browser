@@ -1,182 +1,481 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>设置</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-      font-size: 14px;
-      background: #202124;
-      color: #e8eaed;
-      height: 100vh;
-      overflow-y: auto;
-    }
-    .page { max-width: 720px; margin: 0 auto; padding: 40px 24px; }
-    h1 { font-size: 24px; font-weight: 400; margin-bottom: 32px; color: #ffffff; }
-    .section { margin-bottom: 36px; }
-    .section__title { font-size: 13px; font-weight: 600; color: #9aa0a6; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #3c4043; text-transform: uppercase; letter-spacing: 0.5px; }
-    .row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #2d2e31; }
-    .row__label { flex: 1; }
-    .row__label span { display: block; color: #e8eaed; font-size: 14px; }
-    .row__label small { display: block; color: #80868b; font-size: 11px; margin-top: 2px; }
-    .row select, .row input[type="text"], .row input[type="number"] { padding: 6px 10px; border: 1px solid #3c4043; border-radius: 4px; background: #303134; color: #e8eaed; font-size: 13px; min-width: 200px; outline: none; }
-    .row select:focus, .row input:focus { border-color: #8ab4f8; }
-    .row button { padding: 8px 16px; border-radius: 4px; border: 1px solid #5f6368; background: transparent; color: #8ab4f8; cursor: pointer; font-size: 13px; transition: background 0.15s; }
-    .row button:hover { background: rgba(138,180,248,0.1); }
-    .row button.danger { color: #f28b82; border-color: #f28b82; }
-    .row button.danger:hover { background: rgba(242,139,130,0.1); }
-    .version { text-align: center; padding: 24px; color: #5f6368; font-size: 12px; }
-  </style>
+  <link rel="stylesheet" href="settings.css">
 </head>
-<body>
-  <div class="page">
-    <h1>⚙️ 设置</h1>
+<body class="bg-edge-bg text-edge-text antialiased">
+  <div class="mx-auto flex h-screen max-w-[1180px] px-6 py-8">
+    <aside class="settings-scroll w-[240px] shrink-0 overflow-y-auto">
+      <div class="nav-group-title">基础</div>
+      <button class="nav-item" type="button" data-section="profile">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="8" r="4"></circle>
+          <path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"></path>
+        </svg>
+        <span>个人资料</span>
+      </button>
+      <button class="nav-item" type="button" data-section="appearance">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.9 2-2 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.6 1.6-1.6H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8Z"></path>
+          <circle cx="7.5" cy="10.5" r="1"></circle>
+          <circle cx="10.5" cy="7.5" r="1"></circle>
+          <circle cx="14.5" cy="7.5" r="1"></circle>
+        </svg>
+        <span>外观</span>
+      </button>
+      <button class="nav-item" type="button" data-section="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="m20 20-4-4"></path>
+        </svg>
+        <span>搜索引擎</span>
+      </button>
 
-    <!-- 外观 -->
-    <div class="section">
-      <div class="section__title">外观</div>
-      <div class="row">
-        <div class="row__label">
-          <span>主题</span>
-          <small>选择浏览器的外观主题</small>
-        </div>
-        <select id="theme">
-          <option value="system">跟随系统</option>
-          <option value="light">浅色</option>
-          <option value="dark">深色</option>
-        </select>
-      </div>
-      <div class="row">
-        <div class="row__label">
-          <span>显示书签栏</span>
-          <small>在地址栏下方显示书签栏</small>
-        </div>
-        <select id="showBookmarkBar">
-          <option value="true">显示</option>
-          <option value="false">隐藏</option>
-        </select>
-      </div>
-    </div>
+      <div class="nav-group-title">启动与下载</div>
+      <button class="nav-item" type="button" data-section="startup">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3 4 9v11h5v-6h6v6h5V9l-8-6Z"></path>
+        </svg>
+        <span>启动、主页和新选项卡页</span>
+      </button>
+      <button class="nav-item" type="button" data-section="downloads">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3v12"></path>
+          <path d="m7 10 5 5 5-5"></path>
+          <path d="M4 21h16"></path>
+        </svg>
+        <span>下载</span>
+      </button>
 
-    <!-- 搜索 -->
-    <div class="section">
-      <div class="section__title">搜索引擎</div>
-      <div class="row">
-        <div class="row__label">
-          <span>默认搜索引擎</span>
-          <small>在地址栏中使用的搜索引擎</small>
-        </div>
-        <select id="searchEngine">
-          <option value="google">Google</option>
-          <option value="bing">Bing</option>
-          <option value="duckduckgo">DuckDuckGo</option>
-          <option value="baidu">百度</option>
-        </select>
-      </div>
-    </div>
+      <div class="nav-group-title">隐私与安全</div>
+      <button class="nav-item" type="button" data-section="privacy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2 4 6v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V6l-8-4Z"></path>
+          <path d="m9 12 2 2 4-4"></path>
+        </svg>
+        <span>隐私与安全</span>
+      </button>
 
-    <!-- 启动 -->
-    <div class="section">
-      <div class="section__title">启动时</div>
-      <div class="row">
-        <div class="row__label">
-          <span>启动行为</span>
-          <small>浏览器启动时打开的内容</small>
-        </div>
-        <select id="startupBehavior">
-          <option value="newTab">打开新标签页</option>
-          <option value="restore">继续上次浏览</option>
-          <option value="custom">打开特定页面</option>
-        </select>
-      </div>
-      <div class="row">
-        <div class="row__label">
-          <span>主页</span>
-          <small>点击主页按钮时打开的页面</small>
-        </div>
-        <input type="text" id="homePage" placeholder="https://www.google.com" />
-      </div>
-    </div>
+      <div class="nav-group-title">关于</div>
+      <button class="nav-item" type="button" data-section="about">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M12 11v5"></path>
+          <path d="M12 8h.01"></path>
+        </svg>
+        <span>关于</span>
+      </button>
+    </aside>
 
-    <!-- 下载 -->
-    <div class="section">
-      <div class="section__title">下载</div>
-      <div class="row">
-        <div class="row__label">
-          <span>下载前询问保存位置</span>
-          <small>每次下载时是否询问文件保存位置</small>
-        </div>
-        <select id="askDownloadPath">
-          <option value="true">是</option>
-          <option value="false">否</option>
-        </select>
-      </div>
-      <div class="row">
-        <div class="row__label">
-          <span>下载路径</span>
-          <small id="downloadPathLabel">使用系统默认下载目录</small>
-        </div>
-        <button id="btnSetDownloadPath">更改</button>
-      </div>
-    </div>
+    <main class="settings-scroll min-w-0 flex-1 overflow-y-auto pl-8">
+      <div class="max-w-[720px]">
+        <section id="section-profile" class="section-panel">
+          <h1 class="text-2xl font-semibold leading-8">个人资料</h1>
+          <p class="mt-2 text-sm text-edge-muted">管理本机浏览器数据与账户信息</p>
+          <div class="mt-6">
+            <div class="setting-block">
+              <div class="text-[15px] font-medium">本机数据</div>
+              <p class="mt-2 text-sm text-edge-muted">
+                当前未登录账户，书签、历史记录和设置仅保存在本机。
+              </p>
+            </div>
+          </div>
+        </section>
 
-    <!-- 隐私与安全 -->
-    <div class="section">
-      <div class="section__title">隐私与安全</div>
-      <div class="row">
-        <div class="row__label">
-          <span>清除浏览数据</span>
-          <small>清除历史记录、缓存等浏览数据</small>
-        </div>
-        <button class="danger" id="btnClearData">清除数据</button>
-      </div>
-    </div>
+        <section id="section-appearance" class="section-panel active">
+          <h1 class="text-2xl font-semibold leading-8">外观</h1>
+          <p class="mt-2 text-sm text-edge-muted">调整浏览器窗口、书签栏和页面的显示方式</p>
 
-    <!-- 关于 -->
-    <div class="section">
-      <div class="section__title">关于</div>
-      <div class="version">
-        <strong>Neutron Browser</strong> v1.3.0<br>
-        基于 Electron 和 Chromium 内核构建
+          <div class="appearance-groups">
+            <div>
+              <div class="appearance-group-title">整体外观</div>
+              <div class="appearance-card">
+                <div class="appearance-row">
+                  <div class="appearance-row__text">
+                    <div class="appearance-row__name">主题</div>
+                    <div class="appearance-row__desc">选择浏览器的外观主题</div>
+                  </div>
+                  <select class="settings-control" id="theme">
+                    <option value="system">跟随系统</option>
+                    <option value="light">浅色</option>
+                    <option value="dark">深色</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="appearance-group-title">书签</div>
+              <div class="appearance-card">
+                <div class="appearance-row">
+                  <div class="appearance-row__text">
+                    <div class="appearance-row__name">显示书签栏</div>
+                    <div class="appearance-row__desc">在地址栏下方显示书签栏</div>
+                  </div>
+                  <select class="settings-control" id="showBookmarkBar">
+                    <option value="true">显示</option>
+                    <option value="false">隐藏</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-search" class="section-panel">
+          <h1 class="text-2xl font-semibold leading-8">搜索引擎</h1>
+          <p class="mt-2 text-sm text-edge-muted">选择在地址栏中使用的搜索服务</p>
+
+          <div class="mt-6">
+            <div class="setting-block">
+              <div class="text-[15px] font-medium">默认搜索引擎</div>
+              <p class="mt-2 mb-4 text-sm text-edge-muted">在地址栏中使用的搜索引擎</p>
+              <select class="settings-control" id="searchEngine">
+                <option value="google">Google</option>
+                <option value="bing">Bing</option>
+                <option value="duckduckgo">DuckDuckGo</option>
+                <option value="baidu">百度</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-startup" class="section-panel">
+          <input class="settings-search" type="search" id="settingsSearch" placeholder="搜索设置" aria-label="搜索设置">
+          <h1 class="text-2xl font-semibold leading-8">启动、主页和新选项卡页</h1>
+          <p class="mt-2 text-sm text-edge-muted">设置浏览器启动时以及主页按钮打开的内容</p>
+
+          <div class="startup-groups">
+            <section class="startup-card">
+              <h2 class="startup-card__title">启动时</h2>
+              <p class="startup-card__desc">选择浏览器启动时显示的内容</p>
+              <div class="startup-card__body">
+                <label class="startup-option">
+                  <input class="startup-radio" type="radio" name="startupBehavior" value="newTab">
+                  <span class="startup-option__text">打开新选项卡页</span>
+                </label>
+                <label class="startup-option">
+                  <input class="startup-radio" type="radio" name="startupBehavior" value="restore">
+                  <span class="startup-option__text">打开上一个会话中的选项卡页</span>
+                </label>
+                <label class="startup-option">
+                  <input class="startup-radio" type="radio" name="startupBehavior" value="custom">
+                  <span class="startup-option__text">打开自定义网站</span>
+                </label>
+
+                <div class="startup-subpanel" id="startupCustomPanel" hidden>
+                  <div class="startup-site-list" id="startupSiteList"></div>
+                  <div class="startup-subpanel__actions">
+                    <button class="settings-button" type="button" id="btnAddStartupSite">添加站点</button>
+                    <div class="startup-more">
+                      <button class="settings-button" type="button" id="btnStartupMore" title="更多操作" aria-label="更多操作">...</button>
+                      <div class="startup-more__menu" id="startupMoreMenu" hidden>
+                        <button type="button" id="btnClearStartupSites">清除列表</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="startup-subpanel__footer">
+                    <button class="startup-link" type="button" id="btnUseCurrentTabs">清除列表并将其设置为当前打开的所有标签页</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="startup-card">
+              <h2 class="startup-card__title">开始按钮</h2>
+              <div class="startup-card__body">
+                <div class="startup-row">
+                  <div class="startup-row__text">
+                    <div class="startup-row__name">在工具栏上显示“首页”按钮</div>
+                    <div class="startup-row__desc">在浏览器工具栏中显示首页按钮</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="showHomeButton">
+                    <span class="switch__slider"></span>
+                  </label>
+                </div>
+
+                <div class="startup-card__body" id="homeButtonOptions" hidden>
+                  <label class="startup-option">
+                    <input class="startup-radio" type="radio" name="homeButtonTarget" value="newtab">
+                    <span class="startup-option__text">新选项卡页</span>
+                  </label>
+                  <label class="startup-option">
+                    <input class="startup-radio" type="radio" name="homeButtonTarget" value="custom">
+                    <span class="startup-option__text">设置自定义网站</span>
+                  </label>
+                  <div class="startup-subpanel" id="homePageInputWrap" hidden>
+                    <input class="settings-control" type="text" id="homePage" placeholder="www.hao123.com" spellcheck="false">
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="startup-card">
+              <h2 class="startup-card__title">新选项卡页</h2>
+              <div class="startup-card__body">
+                <div class="startup-row">
+                  <div class="startup-row__text">
+                    <div class="startup-row__name">自定义新选项卡页</div>
+                    <div class="startup-row__desc">控制新闻源、背景图像、主题等</div>
+                  </div>
+                  <button class="startup-link" type="button" id="btnCustomizeNewTab">自定义</button>
+                </div>
+                <div class="startup-row">
+                  <div class="startup-row__text">
+                    <div class="startup-row__name">预加载新选项卡页</div>
+                    <div class="startup-row__desc">在您打开新选项卡页以获得更快的体验</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="preloadNewTabPage">
+                    <span class="switch__slider"></span>
+                  </label>
+                </div>
+              </div>
+            </section>
+
+            <section class="startup-card">
+              <h2 class="startup-card__title">在 Windows 设备启动时</h2>
+              <div class="startup-card__body">
+                <div class="startup-row">
+                  <div class="startup-row__text">
+                    <div class="startup-row__name">登录到 Windows 时自动打开 Neutron Browser</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="launchAtLogin">
+                    <span class="switch__slider"></span>
+                  </label>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div class="startup-footer">
+            <button class="settings-button" type="button" id="btnSendFeedback">发送反馈</button>
+          </div>
+        </section>
+
+        <section id="section-downloads" class="section-panel">
+          <h1 class="text-2xl font-semibold leading-8">下载</h1>
+          <p class="mt-2 text-sm text-edge-muted">管理下载文件的保存方式和位置</p>
+
+          <div class="mt-6">
+            <div class="setting-block">
+              <div class="text-[15px] font-medium">下载前询问保存位置</div>
+              <p class="mt-2 mb-4 text-sm text-edge-muted">每次下载时是否询问文件保存位置</p>
+              <select class="settings-control" id="askDownloadPath">
+                <option value="true">是</option>
+                <option value="false">否</option>
+              </select>
+            </div>
+
+            <div class="setting-block">
+              <div class="text-[15px] font-medium">下载路径</div>
+              <p class="mt-2 mb-4 text-sm text-edge-muted" id="downloadPathLabel">使用系统默认下载目录</p>
+              <button class="settings-button" type="button" id="btnSetDownloadPath">更改</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-privacy" class="section-panel">
+          <h1 class="text-2xl font-semibold leading-8">隐私与安全</h1>
+          <p class="mt-2 text-sm text-edge-muted">清除本机保存的浏览数据</p>
+
+          <div class="mt-6">
+            <div class="setting-block">
+              <div class="text-[15px] font-medium">清除浏览数据</div>
+              <p class="mt-2 mb-4 text-sm text-edge-muted">清除历史记录、缓存等浏览数据</p>
+              <button class="settings-button settings-button--danger" type="button" id="btnClearData">清除数据</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-about" class="section-panel">
+          <h1 class="text-2xl font-semibold leading-8">关于</h1>
+          <p class="mt-2 text-sm text-edge-muted">查看浏览器版本和内核信息</p>
+
+          <div class="mt-6">
+            <div class="setting-block">
+              <div class="text-[15px] font-medium">Neutron Browser</div>
+              <p class="mt-2 text-sm text-edge-muted">版本 1.4.0</p>
+              <p class="mt-1 text-sm text-edge-muted">基于 Electron 和 Chromium 内核构建</p>
+            </div>
+          </div>
+        </section>
       </div>
-    </div>
+    </main>
   </div>
 
   <script>
     const api = window.NeutronBrowser || {};
+    let startupPages = [];
+
+    const sectionTitles = {
+      profile: '个人资料',
+      appearance: '外观',
+      search: '搜索引擎',
+      startup: '启动、主页和新选项卡页',
+      downloads: '下载',
+      privacy: '隐私与安全',
+      about: '关于',
+    };
+
+    function resolveSection() {
+      const section = location.hash.replace('#', '');
+      return sectionTitles[section] ? section : 'appearance';
+    }
+
+    function switchSection(section) {
+      document.querySelectorAll('.section-panel').forEach((panel) => {
+        panel.classList.toggle('active', panel.id === `section-${section}`);
+      });
+      document.querySelectorAll('.nav-item').forEach((item) => {
+        item.classList.toggle('active', item.dataset.section === section);
+      });
+      document.title = `${sectionTitles[section]} - 设置`;
+    }
+
+    function applyTheme(theme) {
+      const resolved = theme === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : theme;
+      document.documentElement.setAttribute('data-theme', resolved);
+      document.documentElement.classList.toggle('dark', resolved === 'dark');
+    }
 
     async function loadSettings() {
       const settings = await api.getAllSettings();
+      applyTheme(settings.theme || 'system');
 
       document.getElementById('theme').value = settings.theme || 'system';
       document.getElementById('showBookmarkBar').value = String(settings.showBookmarkBar ?? true);
       document.getElementById('searchEngine').value = settings.searchEngine || 'google';
-      document.getElementById('startupBehavior').value = settings.startupBehavior || 'newTab';
-      document.getElementById('homePage').value = settings.homePage || 'https://www.google.com';
       document.getElementById('askDownloadPath').value = String(settings.askDownloadPath ?? true);
+
+      const startupBehavior = settings.startupBehavior === 'home'
+        ? 'custom'
+        : (settings.startupBehavior || 'newTab');
+      if (settings.startupBehavior === 'home') {
+        saveSetting('startupBehavior', 'custom');
+      }
+      const startupRadio = document.querySelector(`input[name="startupBehavior"][value="${startupBehavior}"]`);
+      if (startupRadio) startupRadio.checked = true;
+
+      startupPages = Array.isArray(settings.startupPages) ? settings.startupPages : [];
+      renderStartupSites();
+      updateStartupCustomPanel();
+
+      document.getElementById('showHomeButton').checked = settings.showHomeButton !== false;
+      const homeButtonTarget = settings.homeButtonTarget || 'custom';
+      const homeTargetRadio = document.querySelector(`input[name="homeButtonTarget"][value="${homeButtonTarget}"]`);
+      if (homeTargetRadio) homeTargetRadio.checked = true;
+      document.getElementById('homePage').value = settings.homePage || '';
+      document.getElementById('preloadNewTabPage').checked = settings.preloadNewTabPage === true;
+      document.getElementById('launchAtLogin').checked = settings.launchAtLogin === true;
+      updateHomeButtonVisibility();
 
       if (settings.downloadPath) {
         document.getElementById('downloadPathLabel').textContent = settings.downloadPath;
       }
     }
 
-    async function saveSetting(key, value) {
-      await api.setSetting(key, value);
+    function saveSetting(key, value) {
+      api.setSetting(key, value);
     }
 
-    // 主题切换
-    document.getElementById('theme').addEventListener('change', function() {
-      const theme = this.value;
-      saveSetting('theme', theme);
-      if (theme === 'system') {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
-      } else {
-        document.documentElement.setAttribute('data-theme', theme);
+    function normalizeUrl(value) {
+      const trimmed = String(value || '').trim();
+      if (!trimmed) return '';
+      if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) return trimmed;
+      return `https://${trimmed}`;
+    }
+
+    function saveStartupPages() {
+      saveSetting('startupPages', startupPages.slice());
+    }
+
+    function renderStartupSites() {
+      const list = document.getElementById('startupSiteList');
+      if (!startupPages.length) {
+        list.innerHTML = '<div class="startup-site-list__empty">尚未添加站点</div>';
+        return;
       }
+
+      list.innerHTML = '';
+      startupPages.forEach((url, index) => {
+        const row = document.createElement('div');
+        row.className = 'startup-site-row';
+
+        const displayUrl = String(url || '');
+        let title = displayUrl;
+        try {
+          const parsed = new URL(normalizeUrl(displayUrl));
+          title = parsed.hostname.replace(/^www\./, '');
+        } catch (e) {
+          title = displayUrl;
+        }
+
+        const titleEl = document.createElement('span');
+        titleEl.className = 'startup-site-row__title';
+        titleEl.textContent = title;
+
+        const urlEl = document.createElement('span');
+        urlEl.className = 'startup-site-row__url';
+        urlEl.textContent = displayUrl;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'startup-site-row__remove';
+        removeBtn.type = 'button';
+        removeBtn.dataset.index = String(index);
+        removeBtn.setAttribute('aria-label', '移除站点');
+        removeBtn.textContent = '×';
+        removeBtn.addEventListener('click', () => {
+          startupPages.splice(Number(removeBtn.dataset.index), 1);
+          saveStartupPages();
+          renderStartupSites();
+        });
+
+        row.appendChild(titleEl);
+        row.appendChild(urlEl);
+        row.appendChild(removeBtn);
+        list.appendChild(row);
+      });
+    }
+
+    function updateStartupCustomPanel() {
+      const selected = document.querySelector('input[name="startupBehavior"]:checked');
+      document.getElementById('startupCustomPanel').hidden = !selected || selected.value !== 'custom';
+    }
+
+    function updateHomeButtonVisibility() {
+      const show = document.getElementById('showHomeButton').checked;
+      document.getElementById('homeButtonOptions').hidden = !show;
+      updateHomeTargetVisibility();
+    }
+
+    function updateHomeTargetVisibility() {
+      const show = document.getElementById('showHomeButton').checked;
+      const selected = document.querySelector('input[name="homeButtonTarget"]:checked');
+      document.getElementById('homePageInputWrap').hidden = !show || !selected || selected.value !== 'custom';
+    }
+
+    document.querySelectorAll('.nav-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        location.hash = item.dataset.section;
+      });
+    });
+
+    window.addEventListener('hashchange', () => {
+      switchSection(resolveSection());
+    });
+
+    document.getElementById('theme').addEventListener('change', function() {
+      saveSetting('theme', this.value);
+      if (api.setTheme) api.setTheme(this.value);
+      applyTheme(this.value);
     });
 
     document.getElementById('showBookmarkBar').addEventListener('change', function() {
@@ -187,8 +486,83 @@
       saveSetting('searchEngine', this.value);
     });
 
-    document.getElementById('startupBehavior').addEventListener('change', function() {
-      saveSetting('startupBehavior', this.value);
+    document.querySelectorAll('input[name="startupBehavior"]').forEach((radio) => {
+      radio.addEventListener('change', function() {
+        saveSetting('startupBehavior', this.value);
+        updateStartupCustomPanel();
+      });
+    });
+
+    document.getElementById('showHomeButton').addEventListener('change', function() {
+      saveSetting('showHomeButton', this.checked);
+      updateHomeButtonVisibility();
+    });
+
+    document.querySelectorAll('input[name="homeButtonTarget"]').forEach((radio) => {
+      radio.addEventListener('change', function() {
+        saveSetting('homeButtonTarget', this.value);
+        updateHomeTargetVisibility();
+      });
+    });
+
+    document.getElementById('preloadNewTabPage').addEventListener('change', function() {
+      saveSetting('preloadNewTabPage', this.checked);
+    });
+
+    document.getElementById('launchAtLogin').addEventListener('change', function() {
+      saveSetting('launchAtLogin', this.checked);
+    });
+
+    document.getElementById('btnAddStartupSite').addEventListener('click', () => {
+      const input = prompt('请输入要打开的网站地址：');
+      if (!input || !input.trim()) return;
+      const url = normalizeUrl(input);
+      startupPages.push(url);
+      saveStartupPages();
+      renderStartupSites();
+    });
+
+    document.getElementById('btnStartupMore').addEventListener('click', (event) => {
+      event.stopPropagation();
+      const menu = document.getElementById('startupMoreMenu');
+      menu.hidden = !menu.hidden;
+    });
+
+    document.getElementById('btnClearStartupSites').addEventListener('click', () => {
+      startupPages = [];
+      saveStartupPages();
+      renderStartupSites();
+      document.getElementById('startupMoreMenu').hidden = true;
+    });
+
+    document.getElementById('btnUseCurrentTabs').addEventListener('click', async () => {
+      const tabs = api.getCurrentTabs ? await api.getCurrentTabs() : [];
+      startupPages = tabs.filter(Boolean);
+      saveStartupPages();
+      renderStartupSites();
+    });
+
+    document.getElementById('btnCustomizeNewTab').addEventListener('click', () => {
+      const input = prompt('请输入新选项卡页地址：');
+      if (!input || !input.trim()) return;
+      const url = normalizeUrl(input);
+      saveSetting('newTabPage', 'custom');
+      saveSetting('newTabCustomUrl', url);
+    });
+
+    document.getElementById('btnSendFeedback').addEventListener('click', () => {
+      api.createTab('https://github.com/2818194829/neutron-browser/issues');
+    });
+
+    document.getElementById('settingsSearch').addEventListener('input', function() {
+      const query = this.value.trim().toLowerCase();
+      document.querySelectorAll('#section-startup .startup-card').forEach((card) => {
+        card.hidden = Boolean(query && !card.textContent.toLowerCase().includes(query));
+      });
+    });
+
+    document.addEventListener('click', () => {
+      document.getElementById('startupMoreMenu').hidden = true;
     });
 
     document.getElementById('homePage').addEventListener('change', function() {
@@ -213,6 +587,15 @@
       }
     });
 
+    if (api.onThemeChanged) {
+      api.onThemeChanged(applyTheme);
+    }
+
+    const initialSection = resolveSection();
+    if (!location.hash) {
+      history.replaceState(null, '', `#${initialSection}`);
+    }
+    switchSection(initialSection);
     loadSettings();
   </script>
 </body>
