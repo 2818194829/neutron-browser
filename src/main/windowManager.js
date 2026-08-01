@@ -7,10 +7,8 @@ const path = require('path');
 const { IPC_CHANNELS, INTERNAL_PAGES, INTERNAL_PAGE_TITLES } = require('../shared/constants');
 const { getStore } = require('./storage');
 
-// 应用图标路径（打包后 icon/ 在 ASAR 外部，需多一级向上）
-const APP_ICON_PATH = app.isPackaged
-  ? path.join(__dirname, '..', '..', '..', 'icon', 'Rocket Browser.png')
-  : path.join(__dirname, '..', '..', 'icon', 'Rocket Browser.png');
+// 应用图标路径（开发与 ASAR 打包路径均从 src/main 上两级到项目根目录）
+const APP_ICON_PATH = path.join(__dirname, '..', '..', 'icon', 'Rocket Browser.png');
 
 const EDGE_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0';
 

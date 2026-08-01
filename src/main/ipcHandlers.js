@@ -2,7 +2,8 @@
  * IPC 处理器注册
  * 处理来自渲染进程的所有 IPC 请求
  */
-const { ipcMain, dialog, shell, app, Menu, clipboard, net } = require('electron');
+const { ipcMain, dialog, shell, app, Menu, clipboard } = require('electron');
+const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const { IPC_CHANNELS, INTERNAL_PAGES, DEFAULT_SETTINGS } = require('../shared/constants');
@@ -29,6 +30,45 @@ function compareVersions(a, b) {
   return 0;
 }
 
+function fetchLatestRelease() {
+  return new Promise((resolve, reject) => {
+    const request = https.get(
+      'https://api.github.com/repos/2818194829/neutron-browser/releases/latest',
+      {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Neutron-Browser',
+          Accept: 'application/vnd.github+json',
+          'Accept-Encoding': 'identity',
+        },
+        timeout: 15000,
+      },
+      (response) => {
+        const chunks = [];
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8');
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            reject(new Error(`GitHub API HTTP ${response.statusCode}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(body));
+          } catch (e) {
+            reject(new Error('GitHub API 响应格式无效'));
+          }
+        });
+        response.on('error', reject);
+      }
+    );
+
+    request.on('timeout', () => {
+      request.destroy(new Error('检查更新超时'));
+    });
+    request.on('error', reject);
+  });
+}
+
 function registerIpcHandlers() {
   const getWM = () => global.windowManager;
   const sendMenuEvent = (action, data = {}) => {
@@ -49,20 +89,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.APP_CHECK_UPDATE, async () => {
     try {
-      const response = await net.fetch(
-        'https://api.github.com/repos/2818194829/neutron-browser/releases/latest',
-        {
-          headers: {
-            'User-Agent': 'Neutron-Browser',
-            Accept: 'application/vnd.github+json',
-          },
-        }
-      );
-      if (!response.ok) {
-        throw new Error(`GitHub API HTTP ${response.status}`);
-      }
-
-      const release = await response.json();
+      const release = await fetchLatestRelease();
       const currentVersion = app.getVersion();
       const latestVersion = String(release.tag_name || '').replace(/^v/i, '');
       const asset = (release.assets || []).find((item) =>

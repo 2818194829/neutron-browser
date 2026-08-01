@@ -10,6 +10,9 @@ $env:CSC_IDENTITY_AUTO_DISCOVERY = "false"
 $env:ELECTRON_MIRROR = "https://npmmirror.com/mirrors/electron/"
 $env:ELECTRON_BUILDER_BINARIES_MIRROR = "https://npmmirror.com/mirrors/electron-builder-binaries/"
 
+Write-Host "[0/4] Regenerating icons from canonical source..."
+& (Join-Path $root "scripts\generate-icons.ps1")
+
 Write-Host "[1/4] Building unpacked app..."
 npx electron-builder --win --dir --config.electronDist=node_modules/electron/dist --config.win.signAndEditExecutable=false
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

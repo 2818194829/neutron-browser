@@ -318,7 +318,7 @@ function createAppMenu() {
             dialog.showMessageBox({
               type: 'info',
               title: '关于 Neutron Browser',
-              message: 'Neutron Browser v1.0.0',
+              message: `Neutron Browser v${app.getVersion()}`,
               detail: '一款基于 Electron 的现代 PC 级浏览器。\n具备多标签页、书签管理、历史记录、下载管理等核心功能。\n\n基于 Chromium 内核构建。',
             });
           },
