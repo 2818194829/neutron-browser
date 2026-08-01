@@ -45,6 +45,8 @@ const IPC_CHANNELS = {
   BOOKMARKS_SEARCH: 'bookmarks:search',
   BOOKMARKS_IS_BOOKMARKED: 'bookmarks:isBookmarked',
   BOOKMARKS_CONTEXT_MENU: 'bookmarks:contextMenu',
+  BOOKMARKS_FOLDER_MENU: 'bookmarks:folderMenu',
+  BOOKMARKS_BAR_CONTEXT_MENU: 'bookmarks:barContextMenu',
   BOOKMARKS_IMPORT: 'bookmarks:import',
   BOOKMARKS_EXPORT: 'bookmarks:export',
 

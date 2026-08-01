@@ -15,7 +15,18 @@
       overflow-y: auto;
     }
     .page { max-width: 800px; margin: 0 auto; padding: 40px 24px; }
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; margin-bottom: 24px;
+    }
     h1 { font-size: 24px; font-weight: 400; margin-bottom: 24px; color: #ffffff; }
+    .page-header h1 { margin-bottom: 0; }
+    .page-header button {
+      padding: 8px 16px; border: 1px solid #5f6368; border-radius: 6px;
+      background: transparent; color: #8ab4f8; cursor: pointer; font-size: 13px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .page-header button:hover { background: rgba(138,180,248,0.1); border-color: #8ab4f8; }
     .search-box { position: relative; margin-bottom: 24px; }
     .search-box input {
       width: 100%; padding: 10px 16px 10px 40px;
@@ -44,6 +55,7 @@
       display: flex; align-items: center; justify-content: center; flex-shrink: 0;
       color: #fcc934; font-size: 14px;
     }
+    .list-item--folder .list-item__icon { background: #174ea6; color: #8ab4f8; }
     .list-item__content { flex: 1; min-width: 0; }
     .list-item__title { font-size: 13px; color: #e8eaed; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .list-item__subtitle { font-size: 11px; color: #80868b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -59,7 +71,10 @@
 </head>
 <body>
   <div class="page">
-    <h1>⭐ 书签管理器</h1>
+    <div class="page-header">
+      <h1>⭐ 书签管理器</h1>
+      <button id="newFolderBtn">新建文件夹</button>
+    </div>
 
     <div class="search-box">
       <span class="search-box__icon">
@@ -113,6 +128,16 @@
                     </div>
                     <button class="list-item__delete" data-id="${child.id}" title="删除">×</button>
                   </div>`;
+              } else if (child.type === 'folder') {
+                html += `
+                  <div class="list-item list-item--folder" data-folder-id="${child.id}">
+                    <div class="list-item__icon">📁</div>
+                    <div class="list-item__content">
+                      <div class="list-item__title">${escapeHtml(child.title)}</div>
+                      <div class="list-item__subtitle">文件夹 · ${child.children ? child.children.length : 0} 项</div>
+                    </div>
+                    <button class="list-item__delete" data-id="${child.id}" title="删除">×</button>
+                  </div>`;
               }
             });
           } else {
@@ -145,11 +170,23 @@
         });
       });
 
+      // 打开文件夹
+      container.querySelectorAll('.list-item--folder').forEach(el => {
+        el.addEventListener('click', (e) => {
+          if (e.target.classList.contains('list-item__delete')) return;
+          const folder = findFolderById(allBookmarks, el.dataset.folderId);
+          if (folder && api.showBookmarkFolderMenu) {
+            const rect = el.getBoundingClientRect();
+            api.showBookmarkFolderMenu({ folder, x: rect.left, y: rect.bottom + 4 });
+          }
+        });
+      });
+
       // 绑定删除
       container.querySelectorAll('.list-item__delete').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          if (confirm('确定要删除这个书签吗？')) {
+          if (confirm('确定要删除这个书签/文件夹吗？')) {
             await api.removeBookmark(btn.dataset.id);
             loadBookmarks();
           }
@@ -162,6 +199,34 @@
       div.textContent = text || '';
       return div.innerHTML;
     }
+
+    function findFolderById(bookmarks, id) {
+      const findInFolder = (folder) => {
+        if (!folder) return null;
+        if (folder.id === id) return folder;
+        for (const child of (folder.children || [])) {
+          if (child.type === 'folder') {
+            const found = findInFolder(child);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      for (const key of Object.keys(bookmarks || {})) {
+        const found = findInFolder(bookmarks[key]);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    document.getElementById('newFolderBtn').addEventListener('click', async () => {
+      const name = prompt('请输入文件夹名称：');
+      if (name && name.trim()) {
+        await api.addFolder({ title: name.trim(), parentId: 'bookmark_bar' });
+        loadBookmarks();
+      }
+    });
 
     document.getElementById('searchInput').addEventListener('input', () => {
       const query = document.getElementById('searchInput').value.trim().toLowerCase();

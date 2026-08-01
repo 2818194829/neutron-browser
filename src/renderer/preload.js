@@ -55,10 +55,17 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   // ==================== 书签 ====================
   getBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_GET_ALL),
   addBookmark: (bookmark) => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_ADD, bookmark),
+  addFolder: (folder) => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_ADD, { ...folder, type: 'folder' }),
   updateBookmark: (id, bookmark) => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_UPDATE, { id, bookmark }),
+  moveBookmark: (id, targetId, position = 'before') =>
+    ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_MOVE, { id, targetId, position }),
+  moveBookmarkIntoFolder: (id, folderId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_MOVE, { id, folderId }),
   removeBookmark: (id) => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_REMOVE, id),
   isBookmarked: (url) => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_IS_BOOKMARKED, url),
   showBookmarkContextMenu: (payload) => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_CONTEXT_MENU, payload),
+  showBookmarkFolderMenu: (payload) => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_FOLDER_MENU, payload),
+  showBookmarkBarContextMenu: (payload) => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_BAR_CONTEXT_MENU, payload),
   importBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_IMPORT),
   exportBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_EXPORT),
 

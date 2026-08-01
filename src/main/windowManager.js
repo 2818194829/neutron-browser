@@ -14,12 +14,47 @@ const APP_ICON_PATH = app.isPackaged
 
 const EDGE_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0';
 
+const EDGE_SEC_CH_UA = '"Microsoft Edge";v="120", "Not=A?Brand";v="24", "Chromium";v="120"';
+const EDGE_SEC_CH_UA_PLATFORM = '"Windows"';
+
+const EDGE_STORE_JS_PATCH = `
+if (!navigator.userAgentData || !navigator.userAgentData.brands.some(b => b.brand === 'Microsoft Edge')) {
+  Object.defineProperty(navigator, 'userAgentData', {
+    get: () => ({
+      brands: [
+        { brand: "Microsoft Edge", version: "120" },
+        { brand: "Not=A?Brand", version: "24" },
+        { brand: "Chromium", version: "120" }
+      ],
+      mobile: false,
+      platform: "Windows"
+    }),
+    configurable: true,
+    enumerable: true
+  });
+}
+`;
+
 function isEdgeStoreUrl(url) {
   try {
     return new URL(url).hostname === 'microsoftedge.microsoft.com';
   } catch (e) {
     return false;
   }
+}
+
+let edgeStoreHeadersSetup = false;
+function setupEdgeStoreHeaders() {
+  if (edgeStoreHeadersSetup) return;
+  edgeStoreHeadersSetup = true;
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['*://microsoftedge.microsoft.com/*'] },
+    (details, callback) => {
+      details.requestHeaders['Sec-CH-UA'] = EDGE_SEC_CH_UA;
+      details.requestHeaders['Sec-CH-UA-Platform'] = EDGE_SEC_CH_UA_PLATFORM;
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
 }
 
 class WindowManager {
@@ -179,6 +214,7 @@ class WindowManager {
     this.setupViewEvents(view, tabId);
 
     if (isEdgeStoreUrl(resolvedUrl)) {
+      setupEdgeStoreHeaders();
       view.webContents.setUserAgent(EDGE_USER_AGENT);
     }
 
@@ -187,6 +223,12 @@ class WindowManager {
 
     // 加载 URL
     view.webContents.loadURL(resolvedUrl);
+
+    if (isEdgeStoreUrl(resolvedUrl)) {
+      view.webContents.once('dom-ready', () => {
+        view.webContents.executeJavaScript(EDGE_STORE_JS_PATCH).catch(() => {});
+      });
+    }
 
     // 创建标签页数据
     const tab = {
@@ -444,7 +486,9 @@ class WindowManager {
     // 加载进度
     wc.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
       if (isMainFrame && isEdgeStoreUrl(url)) {
+        setupEdgeStoreHeaders();
         wc.setUserAgent(EDGE_USER_AGENT);
+        wc.executeJavaScript(EDGE_STORE_JS_PATCH).catch(() => {});
       }
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {

@@ -17,6 +17,12 @@ const {
 
 function registerIpcHandlers() {
   const getWM = () => global.windowManager;
+  const sendMenuEvent = (action, data = {}) => {
+    const wm = getWM();
+    if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+      wm.mainWindow.webContents.send(IPC_CHANNELS.MENU_EVENT, { action, ...data });
+    }
+  };
 
   // ==================== 窗口控制 ====================
   ipcMain.on(IPC_CHANNELS.WINDOW_MINIMIZE, () => {
@@ -225,22 +231,96 @@ function registerIpcHandlers() {
     ];
 
     const menu = Menu.buildFromTemplate(template);
+    menu.popup({ window: wm.mainWindow });
+  });
+
+  ipcMain.on(IPC_CHANNELS.BOOKMARKS_FOLDER_MENU, (event, payload) => {
+    const wm = getWM();
+    if (!wm || !wm.mainWindow || !payload || !payload.folder) return;
+
+    const folder = payload.folder;
+    const buildFolderItems = (parent) => {
+      const items = [];
+      for (const child of (parent.children || [])) {
+        if (child.type === 'folder') {
+          items.push({
+            label: child.title || '未命名文件夹',
+            submenu: buildFolderItems(child),
+          });
+        } else if (child.type === 'bookmark') {
+          items.push({
+            label: child.title || child.url || '未命名书签',
+            click: () => wm.createTab(child.url),
+          });
+        }
+      }
+      if (items.length === 0) {
+        items.push({ label: '空文件夹', enabled: false });
+      }
+      return items;
+    };
+
+    const template = [
+      ...buildFolderItems(folder),
+      { type: 'separator' },
+      {
+        label: '新建书签',
+        click: () => sendMenuEvent('addBookmarkToFolder', { folderId: folder.id }),
+      },
+      {
+        label: '新建文件夹',
+        click: () => sendMenuEvent('createBookmarkFolder', { parentId: folder.id }),
+      },
+      { type: 'separator' },
+      {
+        label: '编辑文件夹',
+        click: () => sendMenuEvent('editBookmarkFolder', { folder }),
+      },
+      {
+        label: '删除文件夹',
+        click: () => sendMenuEvent('deleteBookmarkFolder', { folderId: folder.id }),
+      },
+    ];
+
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({ window: wm.mainWindow });
+  });
+
+  ipcMain.on(IPC_CHANNELS.BOOKMARKS_BAR_CONTEXT_MENU, (event, payload) => {
+    const wm = getWM();
+    if (!wm || !wm.mainWindow || !payload) return;
+
+    const template = [
+      {
+        label: '新建书签',
+        click: () => sendMenuEvent('addBookmarkToFolder', { folderId: 'bookmark_bar' }),
+      },
+      {
+        label: '新建文件夹',
+        click: () => sendMenuEvent('createBookmarkFolder', { parentId: 'bookmark_bar' }),
+      },
+    ];
+
+    const menu = Menu.buildFromTemplate(template);
     menu.popup({ window: wm.mainWindow, x: payload.x, y: payload.y });
   });
 
   ipcMain.handle(IPC_CHANNELS.BOOKMARKS_ADD, (event, bookmark) => {
     const store = getStore('bookmarks');
     const data = store.getAll();
+    const input = bookmark || {};
+    const isFolder = input.type === 'folder';
 
     const newBookmark = {
       id: `bm_${Date.now()}`,
-      title: bookmark.title || '未命名书签',
-      url: bookmark.url || '',
-      type: 'bookmark',
-      parentId: bookmark.parentId || 'bookmark_bar',
+      title: input.title || (isFolder ? '未命名文件夹' : '未命名书签'),
+      url: isFolder ? '' : (input.url || ''),
+      type: isFolder ? 'folder' : 'bookmark',
+      parentId: input.parentId || 'bookmark_bar',
       dateAdded: Date.now(),
-      ...bookmark,
+      favicon: input.favicon || '',
     };
+    if (isFolder) newBookmark.children = [];
 
     // 添加到指定父文件夹
     const addToFolder = (folder) => {
@@ -272,27 +352,177 @@ function registerIpcHandlers() {
     const store = getStore('bookmarks');
     const data = store.getAll();
 
-    const updateInFolder = (folder) => {
-      if (!folder.children) return false;
-
+    const findItem = (folder, itemId) => {
+      if (!folder || !folder.children) return null;
+      const index = folder.children.findIndex(child => child.id === itemId);
+      if (index !== -1) return { folder, index };
       for (const child of folder.children) {
-        if (child.id === id && child.type === 'bookmark') {
-          Object.assign(child, bookmark, { id: child.id, type: 'bookmark' });
-          return true;
+        if (child.type === 'folder') {
+          const found = findItem(child, itemId);
+          if (found) return found;
         }
-        if (child.type === 'folder' && updateInFolder(child)) return true;
       }
-
-      return false;
+      return null;
     };
 
+    const findFolder = (folder, folderIdToFind) => {
+      if (!folder) return null;
+      if (folder.id === folderIdToFind) return folder;
+      for (const child of (folder.children || [])) {
+        if (child.type === 'folder') {
+          const found = findFolder(child, folderIdToFind);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const isDescendantOf = (folder, candidateId) => {
+      if (!folder) return false;
+      if (folder.id === candidateId) return true;
+      return (folder.children || []).some(child =>
+        child.type === 'folder' && isDescendantOf(child, candidateId)
+      );
+    };
+
+    let source = null;
     for (const key of Object.keys(data)) {
-      if (data[key].type === 'folder' && updateInFolder(data[key])) break;
+      if (data[key].type !== 'folder') continue;
+      source = source || findItem(data[key], id);
+    }
+
+    if (!source) return false;
+
+    const item = source.folder.children[source.index];
+    const input = bookmark || {};
+    const updates = { ...input };
+    delete updates.parentId;
+
+    Object.assign(item, updates, { id: item.id, type: item.type });
+    if (item.type === 'folder' && !Array.isArray(item.children)) {
+      item.children = [];
+    }
+
+    const newParentId = input.parentId;
+    if (newParentId && newParentId !== source.folder.id) {
+      let targetFolder = null;
+      for (const key of Object.keys(data)) {
+        if (data[key].type !== 'folder') continue;
+        targetFolder = targetFolder || findFolder(data[key], newParentId);
+      }
+
+      const canMove = targetFolder &&
+        targetFolder.id !== item.id &&
+        !(item.type === 'folder' && isDescendantOf(item, targetFolder.id));
+
+      if (canMove) {
+        source.folder.children.splice(source.index, 1);
+        item.parentId = targetFolder.id;
+        if (!Array.isArray(targetFolder.children)) targetFolder.children = [];
+        targetFolder.children.push(item);
+      }
     }
 
     store.set('bookmark_bar', data.bookmark_bar);
     store.set('other', data.other);
     store.set('mobile', data.mobile);
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.BOOKMARKS_MOVE, (event, { id, targetId, folderId, position }) => {
+    const store = getStore('bookmarks');
+    const data = store.getAll();
+
+    const findItem = (folder, itemId) => {
+      if (!folder || !folder.children) return null;
+      const index = folder.children.findIndex(child => child.id === itemId);
+      if (index !== -1) return { folder, index };
+      for (const child of folder.children) {
+        if (child.type === 'folder') {
+          const found = findItem(child, itemId);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const findFolder = (folder, folderIdToFind) => {
+      if (!folder) return null;
+      if (folder.id === folderIdToFind) return folder;
+      for (const child of (folder.children || [])) {
+        if (child.type === 'folder') {
+          const found = findFolder(child, folderIdToFind);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const isDescendantOf = (folder, candidateId) => {
+      if (!folder) return false;
+      if (folder.id === candidateId) return true;
+      return (folder.children || []).some(child =>
+        child.type === 'folder' && isDescendantOf(child, candidateId)
+      );
+    };
+
+    let source = null;
+    for (const key of Object.keys(data)) {
+      if (data[key].type !== 'folder') continue;
+      source = source || findItem(data[key], id);
+    }
+
+    if (!source) return false;
+    const moved = source.folder.children[source.index];
+
+    if (folderId) {
+      let targetFolder = null;
+      for (const key of Object.keys(data)) {
+        if (data[key].type !== 'folder') continue;
+        targetFolder = targetFolder || findFolder(data[key], folderId);
+      }
+
+      if (!targetFolder || targetFolder.id === moved.id) return false;
+      if (moved.type === 'folder' && isDescendantOf(moved, targetFolder.id)) return false;
+
+      source.folder.children.splice(source.index, 1);
+      moved.parentId = targetFolder.id;
+      if (!Array.isArray(targetFolder.children)) targetFolder.children = [];
+      targetFolder.children.push(moved);
+
+      for (const key of Object.keys(data)) {
+        store.set(key, data[key]);
+      }
+      return true;
+    }
+
+    let target = null;
+    for (const key of Object.keys(data)) {
+      if (data[key].type !== 'folder') continue;
+      target = target || findItem(data[key], targetId);
+    }
+
+    if (!target || source.index === target.index && source.folder === target.folder) {
+      return false;
+    }
+
+    source.folder.children.splice(source.index, 1);
+    const insertIndex = target.folder.children.findIndex(child => child.id === targetId);
+
+    if (insertIndex === -1) {
+      source.folder.children.splice(source.index, 0, moved);
+      return false;
+    }
+
+    const finalIndex = position === 'after' ? insertIndex + 1 : insertIndex;
+    if (source.folder !== target.folder) {
+      moved.parentId = target.folder.id;
+    }
+    target.folder.children.splice(finalIndex, 0, moved);
+
+    for (const key of Object.keys(data)) {
+      store.set(key, data[key]);
+    }
     return true;
   });
 
