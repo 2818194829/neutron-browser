@@ -61,6 +61,8 @@ const IPC_CHANNELS = {
   HISTORY_ADD: 'history:add',
   HISTORY_CLEAR: 'history:clear',
   HISTORY_DELETE_ITEM: 'history:deleteItem',
+  HISTORY_GET_RECENT_CLOSED: 'history:getRecentClosed',
+  HISTORY_RESTORE_RECENT_CLOSED: 'history:restoreRecentClosed',
 
   // 下载
   DOWNLOADS_GET_ALL: 'downloads:getAll',
@@ -68,6 +70,11 @@ const IPC_CHANNELS = {
   DOWNLOADS_RESUME: 'downloads:resume',
   DOWNLOADS_CANCEL: 'downloads:cancel',
   DOWNLOADS_OPEN_FOLDER: 'downloads:openFolder',
+  DOWNLOADS_OPEN_FILE: 'downloads:openFile',
+  DOWNLOADS_OPEN_DIRECTORY: 'downloads:openDirectory',
+  DOWNLOADS_DELETE: 'downloads:delete',
+  DOWNLOADS_CLEAR_COMPLETED: 'downloads:clearCompleted',
+  DOWNLOADS_CLEAR_ALL: 'downloads:clearAll',
   DOWNLOADS_RETRY: 'downloads:retry',
   DOWNLOADS_SET_PATH: 'downloads:setPath',
   DOWNLOADS_UPDATED: 'downloads:updated',
@@ -85,6 +92,10 @@ const IPC_CHANNELS = {
 
   // 菜单事件
   MENU_EVENT: 'menu:event',
+
+  // 应用信息与更新
+  APP_GET_INFO: 'app:getInfo',
+  APP_CHECK_UPDATE: 'app:checkUpdate',
 
   // 搜索建议
   SEARCH_SUGGEST: 'search:suggest',

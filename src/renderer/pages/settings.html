@@ -300,8 +300,18 @@
           <div class="mt-6">
             <div class="setting-block">
               <div class="text-[15px] font-medium">Neutron Browser</div>
-              <p class="mt-2 text-sm text-edge-muted">版本 1.4.0</p>
-              <p class="mt-1 text-sm text-edge-muted">基于 Electron 和 Chromium 内核构建</p>
+              <p class="mt-2 text-sm text-edge-muted">版本 <span id="aboutVersion">-</span></p>
+              <p class="mt-1 text-sm text-edge-muted">
+                Electron <span id="aboutElectron">-</span> · Chromium <span id="aboutChromium">-</span>
+              </p>
+              <div class="mt-6 flex" style="align-items: center; gap: 12px;">
+                <button class="settings-button" type="button" id="btnCheckUpdate">检查更新</button>
+                <span id="updateStatus" class="text-sm text-edge-muted"></span>
+                <a id="updateDownloadLink" href="#" hidden
+                   style="color: var(--settings-accent); text-decoration: underline; font-size: 13px;">
+                  前往下载
+                </a>
+              </div>
             </div>
           </div>
         </section>
@@ -380,6 +390,49 @@
       if (settings.downloadPath) {
         document.getElementById('downloadPathLabel').textContent = settings.downloadPath;
       }
+    }
+
+    async function loadAppInfo() {
+      try {
+        const info = await api.getAppInfo();
+        if (!info) return;
+        document.getElementById('aboutVersion').textContent = info.version || '-';
+        document.getElementById('aboutElectron').textContent = info.electron || '-';
+        document.getElementById('aboutChromium').textContent = info.chrome || '-';
+      } catch (e) {
+        document.getElementById('aboutVersion').textContent = '-';
+      }
+    }
+
+    async function checkForUpdate() {
+      const button = document.getElementById('btnCheckUpdate');
+      const status = document.getElementById('updateStatus');
+      const link = document.getElementById('updateDownloadLink');
+      button.disabled = true;
+      link.hidden = true;
+      status.textContent = '正在检查更新...';
+
+      let result;
+      try {
+        result = await api.checkForUpdate();
+      } catch (e) {
+        result = { ok: false, error: e.message };
+      }
+
+      if (!result || !result.ok) {
+        status.textContent = result && result.error ? `检查失败：${result.error}` : '检查失败';
+        button.disabled = false;
+        return;
+      }
+
+      if (result.updateAvailable) {
+        status.textContent = `发现新版本 ${result.latestVersion}`;
+        link.href = result.assetUrl || result.releaseUrl;
+        link.hidden = false;
+      } else {
+        status.textContent = `已是最新版本（${result.currentVersion}）`;
+      }
+      button.disabled = false;
     }
 
     function saveSetting(key, value) {
@@ -587,6 +640,8 @@
       }
     });
 
+    document.getElementById('btnCheckUpdate').addEventListener('click', checkForUpdate);
+
     if (api.onThemeChanged) {
       api.onThemeChanged(applyTheme);
     }
@@ -597,6 +652,7 @@
     }
     switchSection(initialSection);
     loadSettings();
+    loadAppInfo();
   </script>
 </body>
 </html>

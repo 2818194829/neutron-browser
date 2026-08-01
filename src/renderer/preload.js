@@ -88,10 +88,17 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   addHistory: (entry) => ipcRenderer.send(IPC_CHANNELS.HISTORY_ADD, entry),
   clearHistory: () => ipcRenderer.send(IPC_CHANNELS.HISTORY_CLEAR),
   deleteHistoryItem: (id) => ipcRenderer.send(IPC_CHANNELS.HISTORY_DELETE_ITEM, { id }),
+  getRecentClosedTabs: () => ipcRenderer.invoke(IPC_CHANNELS.HISTORY_GET_RECENT_CLOSED),
+  restoreRecentClosedTab: (id) => ipcRenderer.invoke(IPC_CHANNELS.HISTORY_RESTORE_RECENT_CLOSED, { id }),
 
   // ==================== 下载 ====================
   getDownloads: () => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_GET_ALL),
   openDownloadFolder: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_OPEN_FOLDER, { id }),
+  openDownloadFile: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_OPEN_FILE, { id }),
+  openDownloadDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_OPEN_DIRECTORY),
+  deleteDownload: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_DELETE, { id }),
+  clearCompletedDownloads: () => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_CLEAR_COMPLETED),
+  clearDownloads: () => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_CLEAR_ALL),
   setDownloadPath: () => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_SET_PATH),
 
   // ==================== 扩展 ====================
@@ -147,6 +154,8 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
     ipcRenderer.on(IPC_CHANNELS.MENU_EVENT, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.MENU_EVENT, handler);
   },
+  getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_INFO),
+  checkForUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.APP_CHECK_UPDATE),
   onLoadingProgress: (callback) => {
     const handler = (event, data) => callback(data);
     ipcRenderer.on(IPC_CHANNELS.NAV_LOADING_PROGRESS, handler);

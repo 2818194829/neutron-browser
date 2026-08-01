@@ -2,8 +2,9 @@
  * IPC 处理器注册
  * 处理来自渲染进程的所有 IPC 请求
  */
-const { ipcMain, dialog, shell, app, Menu, clipboard } = require('electron');
+const { ipcMain, dialog, shell, app, Menu, clipboard, net } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { IPC_CHANNELS, INTERNAL_PAGES, DEFAULT_SETTINGS } = require('../shared/constants');
 const { getStore } = require('./storage');
 const {
@@ -15,6 +16,19 @@ const {
   uninstallExtension,
 } = require('./extensions');
 
+function compareVersions(a, b) {
+  const pa = String(a || '').replace(/^v/i, '').split('.').map(Number);
+  const pb = String(b || '').replace(/^v/i, '').split('.').map(Number);
+  const length = Math.max(pa.length, pb.length);
+  for (let i = 0; i < length; i++) {
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x > y) return 1;
+    if (x < y) return -1;
+  }
+  return 0;
+}
+
 function registerIpcHandlers() {
   const getWM = () => global.windowManager;
   const sendMenuEvent = (action, data = {}) => {
@@ -23,6 +37,54 @@ function registerIpcHandlers() {
       wm.mainWindow.webContents.send(IPC_CHANNELS.MENU_EVENT, { action, ...data });
     }
   };
+
+  // ==================== 应用信息与更新 ====================
+  ipcMain.handle(IPC_CHANNELS.APP_GET_INFO, () => {
+    return {
+      version: app.getVersion(),
+      electron: process.versions.electron || '',
+      chrome: process.versions.chrome || '',
+    };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.APP_CHECK_UPDATE, async () => {
+    try {
+      const response = await net.fetch(
+        'https://api.github.com/repos/2818194829/neutron-browser/releases/latest',
+        {
+          headers: {
+            'User-Agent': 'Neutron-Browser',
+            Accept: 'application/vnd.github+json',
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error(`GitHub API HTTP ${response.status}`);
+      }
+
+      const release = await response.json();
+      const currentVersion = app.getVersion();
+      const latestVersion = String(release.tag_name || '').replace(/^v/i, '');
+      const asset = (release.assets || []).find((item) =>
+        /Setup.*\.exe$/i.test(item.name || '')
+      ) || (release.assets || [])[0];
+
+      return {
+        ok: true,
+        currentVersion,
+        latestVersion,
+        updateAvailable: Boolean(latestVersion) && compareVersions(latestVersion, currentVersion) > 0,
+        releaseUrl: release.html_url || '',
+        assetUrl: asset && asset.browser_download_url ? asset.browser_download_url : (release.html_url || ''),
+        releaseName: release.name || release.tag_name || '',
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error.message || String(error),
+      };
+    }
+  });
 
   // ==================== 窗口控制 ====================
   ipcMain.on(IPC_CHANNELS.WINDOW_MINIMIZE, () => {
@@ -630,7 +692,7 @@ function registerIpcHandlers() {
     );
   });
 
-  ipcMain.on(IPC_CHANNELS.HISTORY_ADD, (event, { url, title }) => {
+  ipcMain.on(IPC_CHANNELS.HISTORY_ADD, (event, { url, title, favicon }) => {
     const store = getStore('history');
     const visits = store.get('visits', []);
 
@@ -643,11 +705,13 @@ function registerIpcHandlers() {
     if (existing) {
       existing.visitCount = (existing.visitCount || 1) + 1;
       existing.lastVisitTime = Date.now();
+      if (favicon) existing.favicon = favicon;
     } else {
       visits.unshift({
         id: `hist_${Date.now()}`,
         url,
         title: title || url,
+        favicon: favicon || '',
         visitCount: 1,
         firstVisitTime: Date.now(),
         lastVisitTime: Date.now(),
@@ -672,7 +736,27 @@ function registerIpcHandlers() {
     store.set('visits', visits.filter(v => v.id !== id));
   });
 
+  ipcMain.handle(IPC_CHANNELS.HISTORY_GET_RECENT_CLOSED, () => {
+    const wm = getWM();
+    return wm ? wm.getRecentlyClosed() : [];
+  });
+
+  ipcMain.handle(IPC_CHANNELS.HISTORY_RESTORE_RECENT_CLOSED, (event, { id }) => {
+    const wm = getWM();
+    return wm ? wm.restoreRecentlyClosed(id) : false;
+  });
+
   // ==================== 下载 ====================
+  const resolveDownloadPath = (item) => {
+    if (!item || !item.filename) return '';
+    if (item.savePath && fs.existsSync(item.savePath)) return item.savePath;
+
+    const settings = getStore('settings');
+    const downloadDir = settings.get('downloadPath') || app.getPath('downloads');
+    const candidate = path.join(downloadDir, item.filename);
+    return fs.existsSync(candidate) ? candidate : '';
+  };
+
   ipcMain.handle(IPC_CHANNELS.DOWNLOADS_GET_ALL, () => {
     return getStore('downloads').get('items', []);
   });
@@ -680,9 +764,52 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.DOWNLOADS_OPEN_FOLDER, (event, { id }) => {
     const items = getStore('downloads').get('items', []);
     const item = items.find(d => d.id === id);
-    if (item) {
-      shell.showItemInFolder(item.savePath);
+    const savePath = resolveDownloadPath(item);
+    if (savePath) {
+      shell.showItemInFolder(savePath);
     }
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_OPEN_FILE, (event, { id }) => {
+    const items = getStore('downloads').get('items', []);
+    const item = items.find(d => d.id === id);
+    const savePath = resolveDownloadPath(item);
+    if (savePath) {
+      shell.openPath(savePath);
+    }
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_OPEN_DIRECTORY, () => {
+    const settings = getStore('settings');
+    const downloadPath = settings.get('downloadPath') || app.getPath('downloads');
+    shell.openPath(downloadPath);
+    return downloadPath;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_DELETE, (event, { id }) => {
+    const store = getStore('downloads');
+    const items = store.get('items', []);
+    const item = items.find(d => d.id === id);
+    if (item) {
+      item.deleted = true;
+      item.state = 'deleted';
+      item.endTime = Date.now();
+      store.set('items', items);
+    }
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_CLEAR_COMPLETED, () => {
+    const store = getStore('downloads');
+    const items = store.get('items', []);
+    store.set('items', items.filter(d => d.state !== 'completed' && d.state !== 'deleted'));
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_CLEAR_ALL, () => {
+    getStore('downloads').set('items', []);
     return true;
   });
 

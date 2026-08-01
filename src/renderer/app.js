@@ -32,7 +32,16 @@
     btnBookmark: $('#btnBookmark'),
     bookmarkIcon: $('#bookmarkIcon'),
     btnDownloads: $('#btnDownloads'),
+    downloadPanel: $('#downloadPanel'),
+    downloadList: $('#downloadList'),
+    downloadSearch: $('#downloadSearch'),
+    downloadSearchWrap: $('#downloadSearchWrap'),
+    downloadMoreMenu: $('#downloadMoreMenu'),
     btnHistory: $('#btnHistory'),
+    historyPanel: $('#historyPanel'),
+    historyList: $('#historyList'),
+    historySearch: $('#historySearch'),
+    historyMoreMenu: $('#historyMoreMenu'),
     btnExtensions: $('#btnExtensions'),
     extensionPopup: $('#extensionPopup'),
     extensionSiteLabel: $('#extensionSiteLabel'),
@@ -75,11 +84,23 @@
     isMaximized: false,
     currentUrl: '',
     currentTitle: '',
+    currentFavicon: '',
     canGoBack: false,
     canGoForward: false,
     isLoading: false,
     isBookmarked: false,
     bookmarks: {},
+    downloads: [],
+    downloadPanelOpen: false,
+    downloadPanelToken: 0,
+    downloadSearchQuery: '',
+    historyItems: [],
+    historyPanelOpen: false,
+    historyPanelToken: 0,
+    historyPanelPinned: false,
+    historyActiveTab: 'all',
+    historySearchQuery: '',
+    recentClosedTabs: [],
     editingBookmark: null,
     editingFolder: null,
     folderParentId: 'bookmark_bar',
@@ -116,6 +137,7 @@
     // 加载书签
     state.bookmarks = await api.getBookmarks();
     renderBookmarkBar();
+    loadDownloads();
 
     // 绑定事件
     bindWindowControls();
@@ -127,6 +149,8 @@
     bindBookmarkDialog();
     bindFolderDialog();
     bindToolButtons();
+    bindDownloadPanel();
+    bindHistoryPanel();
     bindExtensionPopup();
     bindKeyboardShortcuts();
     bindIPCListeners();
@@ -236,8 +260,16 @@
 
   function navigateToUrl(input) {
     // 检查是否是内部页面
-    if (input === 'neutron://settings' || input === 'neutron://history' ||
-        input === 'neutron://bookmarks' || input === 'neutron://downloads' ||
+    if (input === 'neutron://downloads') {
+      openDownloadPanel();
+      return;
+    }
+    if (input === 'neutron://history') {
+      openHistoryPanel();
+      return;
+    }
+    if (input === 'neutron://settings' ||
+        input === 'neutron://bookmarks' ||
         input === 'neutron://extensions' || input === 'neutron://newtab') {
       api.createTab(input);
       return;
@@ -548,6 +580,8 @@
   }
 
   function showFolderDialog(isEditing, folder = null, parentId = 'bookmark_bar') {
+    if (state.downloadPanelOpen) closeDownloadPanel();
+    if (state.historyPanelOpen) closeHistoryPanel();
     state.editingFolder = folder || null;
     state.folderParentId = parentId;
     api.setModalVisible(true);
@@ -605,6 +639,8 @@
   }
 
   async function showBookmarkDialog(isEditing, bookmark = null, defaultFolderId = null) {
+    if (state.downloadPanelOpen) closeDownloadPanel();
+    if (state.historyPanelOpen) closeHistoryPanel();
     state.editingBookmark = bookmark || null;
     api.setModalVisible(true);
     dom.bookmarkDialog.style.display = 'flex';
@@ -886,6 +922,7 @@
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           e.preventDefault();
+          if (state.downloadPanelOpen) closeDownloadPanel();
           const rect = el.getBoundingClientRect();
           api.showBookmarkFolderMenu({
             folder: item,
@@ -899,6 +936,7 @@
           if (dom.bookmarkFolderPopup.style.display === 'block') {
             closeBookmarkFolderPopup();
           }
+          if (state.downloadPanelOpen) closeDownloadPanel();
           api.navigateTo(item.url);
         });
       }
@@ -907,6 +945,7 @@
         e.preventDefault();
         e.stopPropagation();
         if (item.type === 'folder') {
+          if (state.downloadPanelOpen) closeDownloadPanel();
           if (dom.bookmarkFolderPopup.style.display === 'block') {
             closeBookmarkFolderPopup();
           }
@@ -917,6 +956,7 @@
           });
           return;
         }
+        if (state.downloadPanelOpen) closeDownloadPanel();
         api.showBookmarkContextMenu({
           x: e.clientX,
           y: e.clientY,
@@ -985,11 +1025,21 @@
 
   // ==================== 工具按钮 ====================
   function bindToolButtons() {
-    dom.btnDownloads.addEventListener('click', () => {
-      api.createTab('neutron://downloads');
+    dom.btnDownloads.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state.downloadPanelOpen) {
+        closeDownloadPanel();
+      } else {
+        openDownloadPanel();
+      }
     });
-    dom.btnHistory.addEventListener('click', () => {
-      api.createTab('neutron://history');
+    dom.btnHistory.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state.historyPanelOpen) {
+        closeHistoryPanel();
+      } else {
+        openHistoryPanel();
+      }
     });
     dom.btnExtensions.addEventListener('click', () => {
       if (state.extensionPopupOpen) {
@@ -999,8 +1049,662 @@
       }
     });
     dom.btnSettings.addEventListener('click', () => {
+      if (state.downloadPanelOpen) closeDownloadPanel();
+      if (state.historyPanelOpen) closeHistoryPanel();
       api.createTab('neutron://settings');
     });
+  }
+
+  function bindDownloadPanel() {
+    document.addEventListener('mousedown', (e) => {
+      if (!state.downloadPanelOpen || dom.downloadPanel.hidden) return;
+      if (dom.downloadPanel.contains(e.target) || dom.btnDownloads.contains(e.target)) return;
+      closeDownloadPanel();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && state.downloadPanelOpen) closeDownloadPanel();
+    });
+
+    document.getElementById('btnDownloadOpenDir').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await api.openDownloadDirectory();
+    });
+
+    document.getElementById('btnDownloadSearch').addEventListener('click', (e) => {
+      e.stopPropagation();
+      dom.downloadSearchWrap.hidden = !dom.downloadSearchWrap.hidden;
+      if (!dom.downloadSearchWrap.hidden) dom.downloadSearch.focus();
+    });
+
+    dom.downloadSearch.addEventListener('input', () => {
+      state.downloadSearchQuery = dom.downloadSearch.value.trim().toLowerCase();
+      renderDownloadPanel();
+    });
+
+    document.getElementById('btnDownloadMore').addEventListener('click', (e) => {
+      e.stopPropagation();
+      dom.downloadMoreMenu.hidden = !dom.downloadMoreMenu.hidden;
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!dom.downloadMoreMenu.hidden && !e.target.closest('.download-panel__more-wrap')) {
+        dom.downloadMoreMenu.hidden = true;
+      }
+    });
+
+    document.getElementById('btnClearCompletedDownloads').addEventListener('click', async () => {
+      await api.clearCompletedDownloads();
+      dom.downloadMoreMenu.hidden = true;
+      await loadDownloads();
+    });
+
+    document.getElementById('btnClearAllDownloads').addEventListener('click', async () => {
+      await api.clearDownloads();
+      dom.downloadMoreMenu.hidden = true;
+      await loadDownloads();
+    });
+
+    window.addEventListener('resize', () => {
+      if (state.downloadPanelOpen) positionDownloadPanel();
+    });
+  }
+
+  async function loadDownloads() {
+    try {
+      const items = await api.getDownloads();
+      state.downloads = Array.isArray(items) ? items : [];
+    } catch (e) {
+      state.downloads = [];
+    }
+    renderDownloadPanel();
+  }
+
+  function renderDownloadPanel() {
+    const list = dom.downloadList;
+    list.innerHTML = '';
+
+    const query = state.downloadSearchQuery;
+    const items = state.downloads.filter((item) => {
+      if (!query) return true;
+      return String(item.filename || '').toLowerCase().includes(query);
+    });
+
+    if (items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'download-empty';
+      empty.textContent = query ? '没有匹配的下载内容' : '没有下载内容';
+      list.appendChild(empty);
+      return;
+    }
+
+    items.forEach((item) => {
+      const row = document.createElement('div');
+      row.className = 'download-item';
+      if (item.state === 'deleted') row.classList.add('download-item--deleted');
+
+      const icon = document.createElement('div');
+      icon.className = 'download-item__icon';
+      icon.textContent = getFileIcon(item.filename);
+
+      const body = document.createElement('div');
+      body.className = 'download-item__body';
+
+      const name = document.createElement('div');
+      name.className = 'download-item__name';
+      name.textContent = item.filename || '未命名文件';
+
+      const meta = document.createElement('div');
+      meta.className = 'download-item__meta';
+      meta.textContent = getDownloadMeta(item);
+
+      body.appendChild(name);
+      body.appendChild(meta);
+
+      if (item.state === 'in_progress') {
+        const progress = document.createElement('div');
+        progress.className = 'download-item__progress';
+
+        const bar = document.createElement('div');
+        bar.className = 'download-item__progress-bar';
+        const percent = item.totalBytes > 0
+          ? Math.min(100, Math.round((item.receivedBytes / item.totalBytes) * 100))
+          : 0;
+        bar.style.width = `${percent}%`;
+
+        progress.appendChild(bar);
+        body.appendChild(progress);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'download-item__actions';
+
+      if (item.state === 'completed') {
+        const openFile = document.createElement('button');
+        openFile.type = 'button';
+        openFile.className = 'download-item__open-file';
+        openFile.textContent = '打开文件';
+        openFile.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await api.openDownloadFile(item.id);
+        });
+        actions.appendChild(openFile);
+      }
+
+      if (item.state !== 'deleted') {
+        const openFolder = document.createElement('button');
+        openFolder.type = 'button';
+        openFolder.className = 'download-item__action';
+        openFolder.title = '打开文件夹';
+        openFolder.setAttribute('aria-label', '打开文件夹');
+        openFolder.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+        openFolder.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await api.openDownloadFolder(item.id);
+        });
+        actions.appendChild(openFolder);
+      }
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'download-item__action download-item__action--danger';
+      remove.title = '删除';
+      remove.setAttribute('aria-label', '删除');
+      remove.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+      remove.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await api.deleteDownload(item.id);
+        await loadDownloads();
+      });
+      actions.appendChild(remove);
+
+      row.appendChild(icon);
+      row.appendChild(body);
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+  }
+
+  function getDownloadMeta(item) {
+    if (item.state === 'in_progress') {
+      const size = `${formatBytes(item.receivedBytes)} / ${formatBytes(item.totalBytes)}`;
+      const speed = item.speed ? ` · ${formatSpeed(item.speed)}` : '';
+      return size + speed;
+    }
+    if (item.state === 'completed') {
+      return `已完成 · ${new Date(item.endTime || item.startTime).toLocaleString('zh-CN')}`;
+    }
+    if (item.state === 'deleted') return '已删除';
+    if (item.state === 'paused') return '已暂停';
+    if (item.state === 'failed') return '失败';
+    if (item.state === 'cancelled') return '已取消';
+    return '';
+  }
+
+  function formatBytes(bytes) {
+    const value = Number(bytes) || 0;
+    if (value <= 0) return '未知大小';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const index = Math.min(units.length - 1, Math.floor(Math.log(value) / Math.log(1024)));
+    return `${parseFloat((value / Math.pow(1024, index)).toFixed(1))} ${units[index]}`;
+  }
+
+  function formatSpeed(bytesPerSecond) {
+    return `${formatBytes(bytesPerSecond)}/s`;
+  }
+
+  function getFileIcon(filename) {
+    const ext = String(filename || '').split('.').pop().toLowerCase();
+    const icons = {
+      pdf: 'PDF', doc: 'DOC', docx: 'DOC', xls: 'XLS', xlsx: 'XLS',
+      ppt: 'PPT', pptx: 'PPT', zip: 'ZIP', rar: 'RAR', '7z': '7Z',
+      jpg: 'IMG', jpeg: 'IMG', png: 'IMG', gif: 'IMG', svg: 'SVG',
+      mp3: 'MP3', wav: 'WAV', mp4: 'MP4', avi: 'AVI', mkv: 'MKV',
+      exe: 'EXE', msi: 'MSI', txt: 'TXT', html: 'HTML', js: 'JS',
+      py: 'PY', json: 'JSON',
+    };
+    return icons[ext] || 'FILE';
+  }
+
+  async function openDownloadPanel() {
+    if (state.downloadPanelOpen) return;
+    if (state.historyPanelOpen) closeHistoryPanel();
+    if (state.extensionPopupOpen) closeExtensionPopup();
+    if (dom.bookmarkFolderPopup.style.display === 'block') closeBookmarkFolderPopup();
+
+    const token = ++state.downloadPanelToken;
+    state.downloadPanelOpen = true;
+    dom.downloadPanel.hidden = false;
+    dom.downloadPanel.style.visibility = 'hidden';
+
+    const snapshotReady = new Promise((resolve) => {
+      state.modalSnapshotResolver = resolve;
+      setTimeout(() => {
+        if (state.modalSnapshotResolver === resolve) {
+          state.modalSnapshotResolver = null;
+          resolve(null);
+        }
+      }, 1000);
+    });
+
+    api.setModalVisible(true);
+    await snapshotReady;
+
+    if (token !== state.downloadPanelToken || !state.downloadPanelOpen) return;
+
+    await loadDownloads();
+    if (token !== state.downloadPanelToken || !state.downloadPanelOpen) return;
+
+    positionDownloadPanel();
+    dom.downloadPanel.style.visibility = 'visible';
+    requestAnimationFrame(positionDownloadPanel);
+  }
+
+  function closeDownloadPanel() {
+    if (!state.downloadPanelOpen) return;
+    state.downloadPanelToken++;
+    state.downloadPanelOpen = false;
+    dom.downloadPanel.hidden = true;
+    dom.downloadPanel.style.visibility = '';
+    dom.downloadMoreMenu.hidden = true;
+    api.setModalVisible(false);
+  }
+
+  function positionDownloadPanel() {
+    const rect = dom.btnDownloads.getBoundingClientRect();
+    const width = dom.downloadPanel.offsetWidth || 380;
+    const height = dom.downloadPanel.offsetHeight || 420;
+    let left = rect.right - width;
+    let top = rect.bottom + 8;
+
+    if (left < 8) left = 8;
+    if (left + width > window.innerWidth - 8) {
+      left = Math.max(8, window.innerWidth - width - 8);
+    }
+    if (top + height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - height - 8);
+    }
+
+    dom.downloadPanel.style.left = `${left}px`;
+    dom.downloadPanel.style.top = `${top}px`;
+  }
+
+  function bindHistoryPanel() {
+    document.addEventListener('mousedown', (e) => {
+      if (!state.historyPanelOpen || dom.historyPanel.hidden) return;
+      if (state.historyPanelPinned) return;
+      if (dom.historyPanel.contains(e.target) || dom.btnHistory.contains(e.target)) return;
+      closeHistoryPanel();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && state.historyPanelOpen) closeHistoryPanel();
+    });
+
+    document.getElementById('btnHistoryClear').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('确定要清除所有历史记录吗？此操作无法撤销。')) return;
+      await api.clearHistory();
+      state.historyItems = [];
+      renderHistoryPanel();
+    });
+
+    document.getElementById('btnHistoryMore').addEventListener('click', (e) => {
+      e.stopPropagation();
+      dom.historyMoreMenu.hidden = !dom.historyMoreMenu.hidden;
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!dom.historyMoreMenu.hidden && !e.target.closest('.history-panel__more-wrap')) {
+        dom.historyMoreMenu.hidden = true;
+      }
+    });
+
+    document.getElementById('btnHistoryFullPage').addEventListener('click', () => {
+      closeHistoryPanel();
+      api.createTab('neutron://history');
+    });
+
+    document.getElementById('btnHistoryPin').addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.historyPanelPinned = !state.historyPanelPinned;
+      const btn = document.getElementById('btnHistoryPin');
+      btn.classList.toggle('history-panel__tool--active', state.historyPanelPinned);
+      btn.title = state.historyPanelPinned ? '取消固定面板' : '固定面板';
+    });
+
+    dom.historySearch.addEventListener('input', () => {
+      state.historySearchQuery = dom.historySearch.value.trim().toLowerCase();
+      renderHistoryPanel();
+    });
+
+    document.querySelectorAll('.history-panel__tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        state.historyActiveTab = tab.dataset.tab;
+        document.querySelectorAll('.history-panel__tab').forEach((item) => {
+          item.classList.toggle('active', item === tab);
+        });
+        renderHistoryPanel();
+      });
+    });
+
+    window.addEventListener('resize', () => {
+      if (state.historyPanelOpen) positionHistoryPanel();
+    });
+  }
+
+  async function loadHistoryPanel() {
+    try {
+      const [history, recentClosed] = await Promise.all([
+        api.getHistory(),
+        api.getRecentClosedTabs(),
+      ]);
+      state.historyItems = Array.isArray(history) ? history : [];
+      state.recentClosedTabs = Array.isArray(recentClosed) ? recentClosed : [];
+    } catch (e) {
+      state.historyItems = [];
+      state.recentClosedTabs = [];
+    }
+    renderHistoryPanel();
+  }
+
+  function renderHistoryPanel() {
+    const list = dom.historyList;
+    list.innerHTML = '';
+
+    if (state.historyActiveTab === 'devices') {
+      const empty = document.createElement('div');
+      empty.className = 'history-empty';
+      empty.textContent = '暂无可同步的跨设备标签页';
+      list.appendChild(empty);
+      return;
+    }
+
+    if (state.historyActiveTab === 'recent') {
+      renderRecentClosed(list);
+      return;
+    }
+
+    const query = state.historySearchQuery;
+    const items = state.historyItems.filter((item) => {
+      if (!query) return true;
+      const title = String(item.title || '').toLowerCase();
+      const url = String(item.url || '').toLowerCase();
+      return title.includes(query) || url.includes(query);
+    });
+
+    if (items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'history-empty';
+      empty.textContent = query ? '没有匹配的历史记录' : '暂无历史记录';
+      list.appendChild(empty);
+      return;
+    }
+
+    const groups = groupHistoryItems(items);
+    groups.forEach((group) => {
+      const header = document.createElement('div');
+      header.className = 'history-group__title';
+      header.textContent = group.label;
+      list.appendChild(header);
+
+      group.items.forEach((item) => {
+        list.appendChild(createHistoryRow(item));
+      });
+    });
+  }
+
+  function renderRecentClosed(container) {
+    const query = state.historySearchQuery;
+    const items = state.recentClosedTabs.filter((item) => {
+      if (!query) return true;
+      const title = String(item.title || '').toLowerCase();
+      const url = String(item.url || '').toLowerCase();
+      return title.includes(query) || url.includes(query);
+    });
+
+    if (items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'history-empty';
+      empty.textContent = query ? '没有匹配的最近关闭标签页' : '暂无最近关闭的标签页';
+      container.appendChild(empty);
+      return;
+    }
+
+    items.forEach((item) => {
+      container.appendChild(createHistoryRow(item, true));
+    });
+  }
+
+  function groupHistoryItems(items) {
+    const now = Date.now();
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startToday = startOfToday.getTime();
+    const startYesterday = startToday - 86400000;
+
+    const recent = [];
+    const today = [];
+    const yesterday = [];
+    const earlier = {};
+
+    items.forEach((item) => {
+      const time = Number(item.lastVisitTime) || 0;
+      if (time >= now - 3600000) {
+        recent.push(item);
+      } else if (time >= startToday) {
+        today.push(item);
+      } else if (time >= startYesterday) {
+        yesterday.push(item);
+      } else {
+        const date = new Date(time);
+        const key = date.toLocaleDateString('zh-CN', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        });
+        if (!earlier[key]) earlier[key] = [];
+        earlier[key].push(item);
+      }
+    });
+
+    const sortDesc = (arr) => arr.sort((a, b) => (b.lastVisitTime || 0) - (a.lastVisitTime || 0));
+    const groups = [];
+    if (recent.length) groups.push({ label: '最近', items: sortDesc(recent) });
+    if (today.length) groups.push({ label: '今天', items: sortDesc(today) });
+    if (yesterday.length) groups.push({ label: '昨天', items: sortDesc(yesterday) });
+
+    const earlierGroups = Object.entries(earlier)
+      .map(([label, entries]) => ({
+        label,
+        items: sortDesc(entries),
+        firstTime: Math.max(...entries.map((item) => item.lastVisitTime || 0)),
+      }))
+      .sort((a, b) => b.firstTime - a.firstTime);
+
+    groups.push(...earlierGroups);
+    return groups;
+  }
+
+  function getHistoryFaviconCandidates(item) {
+    const candidates = [];
+    if (item.favicon) candidates.push(item.favicon);
+
+    const siteFavicon = getSiteFaviconUrl(item.url);
+    if (siteFavicon) candidates.push(siteFavicon);
+
+    const googleFavicon = getGoogleFaviconUrl(item.url);
+    if (googleFavicon) candidates.push(googleFavicon);
+
+    try {
+      const host = new URL(item.url).hostname;
+      if (host) {
+        candidates.push(`https://icons.duckduckgo.com/ip3/${encodeURIComponent(host)}.ico`);
+      }
+    } catch (e) { /* 忽略无效 URL */ }
+
+    return candidates.filter((value, index, arr) => value && arr.indexOf(value) === index);
+  }
+
+  function createHistoryRow(item, isRecentClosed = false) {
+    const row = document.createElement('div');
+    row.className = 'history-item';
+    row.title = `${item.title || item.url}\n${item.url || ''}`;
+
+    const icon = document.createElement('div');
+    icon.className = 'history-item__icon';
+    const faviconSources = getHistoryFaviconCandidates(item);
+    if (faviconSources.length === 0) {
+      icon.textContent = '★';
+    } else {
+      const img = document.createElement('img');
+      let index = 0;
+      img.alt = '';
+      img.draggable = false;
+      img.referrerPolicy = 'no-referrer';
+      img.addEventListener('error', () => {
+        index += 1;
+        if (index >= faviconSources.length) {
+          img.remove();
+          icon.textContent = '★';
+          return;
+        }
+        img.src = faviconSources[index];
+      });
+      img.src = faviconSources[index];
+      icon.appendChild(img);
+    }
+
+    const body = document.createElement('div');
+    body.className = 'history-item__body';
+
+    const title = document.createElement('div');
+    title.className = 'history-item__title';
+    title.textContent = item.title || item.url || '未命名页面';
+    body.appendChild(title);
+
+    const time = document.createElement('span');
+    time.className = 'history-item__time';
+    time.textContent = formatHistoryTime(item.lastVisitTime || item.closedAt);
+
+    row.appendChild(icon);
+    row.appendChild(body);
+    row.appendChild(time);
+
+    row.addEventListener('click', async () => {
+      if (isRecentClosed) {
+        await api.restoreRecentClosedTab(item.id);
+      } else {
+        api.navigateTo(item.url);
+      }
+      closeHistoryPanel();
+    });
+
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isRecentClosed) {
+        showHistoryContextMenu(e.clientX, e.clientY, item.id);
+      }
+    });
+
+    return row;
+  }
+
+  function formatHistoryTime(timestamp) {
+    const time = Number(timestamp) || 0;
+    if (!time) return '';
+    const date = new Date(time);
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startYesterday = startToday - 86400000;
+
+    if (time >= startToday) {
+      return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    }
+    if (time >= startYesterday) return '昨天';
+    return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+  }
+
+  function showHistoryContextMenu(x, y, id) {
+    dom.contextMenu.innerHTML = '';
+
+    const item = document.createElement('div');
+    item.className = 'context-menu__item context-menu__item--danger';
+    item.textContent = '从历史记录中删除';
+    item.addEventListener('click', async () => {
+      dom.contextMenu.style.display = 'none';
+      await api.deleteHistoryItem(id);
+      await loadHistoryPanel();
+    });
+
+    dom.contextMenu.appendChild(item);
+    dom.contextMenu.style.display = 'block';
+    dom.contextMenu.style.left = Math.min(x, window.innerWidth - 220) + 'px';
+    dom.contextMenu.style.top = Math.min(y, window.innerHeight - 200) + 'px';
+  }
+
+  async function openHistoryPanel() {
+    if (state.historyPanelOpen) return;
+    if (state.downloadPanelOpen) closeDownloadPanel();
+    if (state.extensionPopupOpen) closeExtensionPopup();
+    if (dom.bookmarkFolderPopup.style.display === 'block') closeBookmarkFolderPopup();
+
+    const token = ++state.historyPanelToken;
+    state.historyPanelOpen = true;
+    dom.historyPanel.hidden = false;
+    dom.historyPanel.style.visibility = 'hidden';
+
+    const snapshotReady = new Promise((resolve) => {
+      state.modalSnapshotResolver = resolve;
+      setTimeout(() => {
+        if (state.modalSnapshotResolver === resolve) {
+          state.modalSnapshotResolver = null;
+          resolve(null);
+        }
+      }, 1000);
+    });
+
+    api.setModalVisible(true);
+    await snapshotReady;
+
+    if (token !== state.historyPanelToken || !state.historyPanelOpen) return;
+
+    await loadHistoryPanel();
+    if (token !== state.historyPanelToken || !state.historyPanelOpen) return;
+
+    positionHistoryPanel();
+    dom.historyPanel.style.visibility = 'visible';
+    requestAnimationFrame(positionHistoryPanel);
+  }
+
+  function closeHistoryPanel() {
+    if (!state.historyPanelOpen) return;
+    state.historyPanelToken++;
+    state.historyPanelOpen = false;
+    dom.historyPanel.hidden = true;
+    dom.historyPanel.style.visibility = '';
+    dom.historyMoreMenu.hidden = true;
+    api.setModalVisible(false);
+  }
+
+  function positionHistoryPanel() {
+    const rect = dom.btnHistory.getBoundingClientRect();
+    const width = dom.historyPanel.offsetWidth || 420;
+    const height = dom.historyPanel.offsetHeight || 460;
+    let left = rect.right - width;
+    let top = rect.bottom + 8;
+
+    if (left < 8) left = 8;
+    if (left + width > window.innerWidth - 8) {
+      left = Math.max(8, window.innerWidth - width - 8);
+    }
+    if (top + height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - height - 8);
+    }
+
+    dom.historyPanel.style.left = `${left}px`;
+    dom.historyPanel.style.top = `${top}px`;
   }
 
   function bindExtensionPopup() {
@@ -1037,6 +1741,8 @@
   }
 
   async function openExtensionPopup() {
+    if (state.downloadPanelOpen) closeDownloadPanel();
+    if (state.historyPanelOpen) closeHistoryPanel();
     const token = ++state.extensionPopupToken;
     state.extensionPopupOpen = true;
 
@@ -1557,12 +2263,20 @@
       // Ctrl+H: 历史记录
       else if (isCtrl && e.key === 'h') {
         e.preventDefault();
-        api.createTab('neutron://history');
+        if (state.historyPanelOpen) {
+          closeHistoryPanel();
+        } else {
+          openHistoryPanel();
+        }
       }
       // Ctrl+J: 下载内容
       else if (isCtrl && e.key === 'j') {
         e.preventDefault();
-        api.createTab('neutron://downloads');
+        if (state.downloadPanelOpen) {
+          closeDownloadPanel();
+        } else {
+          openDownloadPanel();
+        }
       }
       // Ctrl+Shift+O: 书签管理器
       else if (isCtrl && e.shiftKey && e.key === 'O') {
@@ -1629,6 +2343,7 @@
       state.tabs = data.tabs || [];
       state.activeTabId = data.activeTabId;
       renderTabs();
+      if (state.historyPanelOpen) closeHistoryPanel();
 
       // 更新内容区域占位符
       if (state.tabs.length === 0) {
@@ -1644,6 +2359,7 @@
       if (data.tabId === state.activeTabId) {
         state.currentUrl = data.url || '';
         state.currentTitle = data.title || '';
+        state.currentFavicon = data.favicon || '';
         state.canGoBack = data.canGoBack || false;
         state.canGoForward = data.canGoForward || false;
         state.isLoading = data.isLoading || false;
@@ -1658,7 +2374,11 @@
 
         // 添加历史记录
         if (data.url && !data.url.startsWith('neutron://') && !data.isLoading) {
-          api.addHistory({ url: data.url, title: data.title });
+          api.addHistory({
+            url: data.url,
+            title: data.title,
+            favicon: state.currentFavicon,
+          });
         }
       }
     });
@@ -1730,8 +2450,18 @@
 
     // 下载更新
     const unsub5 = api.onDownloadsUpdated((data) => {
-      // 可以在此更新下载计数徽标
-      console.log('[Renderer] 下载更新:', data.filename, data.state);
+      const isNew = !state.downloads.some((item) => item.id === data.id);
+      const index = state.downloads.findIndex((item) => item.id === data.id);
+      if (index !== -1) {
+        state.downloads[index] = { ...state.downloads[index], ...data };
+      } else {
+        state.downloads.unshift(data);
+      }
+      renderDownloadPanel();
+
+      if (isNew && data.state === 'in_progress' && !state.downloadPanelOpen) {
+        openDownloadPanel();
+      }
     });
     state.unsubscribers.push(unsub5);
 
@@ -1773,6 +2503,20 @@
           await refreshBookmarks();
           await updateBookmarkState();
         });
+        break;
+      case 'toggleDownloadsPanel':
+        if (state.downloadPanelOpen) {
+          closeDownloadPanel();
+        } else {
+          openDownloadPanel();
+        }
+        break;
+      case 'toggleHistoryPanel':
+        if (state.historyPanelOpen) {
+          closeHistoryPanel();
+        } else {
+          openHistoryPanel();
+        }
         break;
       case 'clearBrowsingData':
         // TODO: 显示清除浏览数据对话框

@@ -206,7 +206,9 @@ function createAppMenu() {
           accelerator: 'CmdOrCtrl+H',
           click: () => {
             const wm = getWM();
-            if (wm) wm.createTab(INTERNAL_PAGES.HISTORY);
+            if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+              wm.mainWindow.webContents.send(IPC_CHANNELS.MENU_EVENT, { action: 'toggleHistoryPanel' });
+            }
           },
         },
         {
@@ -282,7 +284,9 @@ function createAppMenu() {
           accelerator: 'CmdOrCtrl+J',
           click: () => {
             const wm = getWM();
-            if (wm) wm.createTab(INTERNAL_PAGES.DOWNLOADS);
+            if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+              wm.mainWindow.webContents.send(IPC_CHANNELS.MENU_EVENT, { action: 'toggleDownloadsPanel' });
+            }
           },
         },
         {

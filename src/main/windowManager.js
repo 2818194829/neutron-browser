@@ -65,6 +65,9 @@ class WindowManager {
     /** @type {Array} 标签页列表 */
     this.tabs = [];
 
+    /** @type {Array} 最近关闭的标签页 */
+    this.recentlyClosed = [];
+
     /** @type {string|null} 当前活动标签页 ID */
     this.activeTabId = null;
 
@@ -85,6 +88,7 @@ class WindowManager {
     this.modalSnapshotResolve = null;
     this.modalOperationId = 0;
     this.sharedSessionHandlersReady = false;
+    this.htmlFullScreenTabId = null;
 
     // 绑定方法
     this.handleNewWindow = this.handleNewWindow.bind(this);
@@ -173,6 +177,14 @@ class WindowManager {
       this.isMaximized = false;
       this.sendToRenderer(IPC_CHANNELS.WINDOW_STATE_CHANGED, { maximized: false });
       this.layoutViews(); // 还原时调整页面布局
+    });
+
+    this.mainWindow.on('enter-full-screen', () => {
+      if (this.htmlFullScreenTabId) this.layoutViews();
+    });
+
+    this.mainWindow.on('leave-full-screen', () => {
+      if (!this.htmlFullScreenTabId) this.layoutViews();
     });
 
     this.mainWindow.on('resize', () => {
@@ -328,6 +340,11 @@ class WindowManager {
     const targetTab = this.tabs.find(t => t.id === tabId);
     if (!targetTab) return;
 
+    if (this.htmlFullScreenTabId && this.htmlFullScreenTabId !== tabId) {
+      this.htmlFullScreenTabId = null;
+      this.mainWindow.setFullScreen(false);
+    }
+
     // 隐藏之前活动的标签页（从窗口中移除）
     if (this.activeTabId) {
       const prevTab = this.tabs.find(t => t.id === this.activeTabId);
@@ -359,6 +376,17 @@ class WindowManager {
     // 不允许关闭固定标签页
     if (tab.isPinned) return;
 
+    this.recentlyClosed.unshift({
+      id: tabId,
+      url: tab.url || '',
+      title: tab.title || tab.url || '已关闭的标签页',
+      favicon: tab.favicon || '',
+      closedAt: Date.now(),
+    });
+    if (this.recentlyClosed.length > 30) {
+      this.recentlyClosed.length = 30;
+    }
+
     // 从窗口中移除视图
     if (tab.view) {
       this.mainWindow.removeBrowserView(tab.view);
@@ -367,6 +395,12 @@ class WindowManager {
 
     // 从列表中移除
     this.tabs.splice(tabIndex, 1);
+
+    if (this.htmlFullScreenTabId === tabId) {
+      this.htmlFullScreenTabId = null;
+      this.mainWindow.setFullScreen(false);
+      this.layoutViews();
+    }
 
     // 如果关闭的是活动标签页，切换到相邻标签页
     if (this.activeTabId === tabId) {
@@ -383,10 +417,66 @@ class WindowManager {
   }
 
   /**
+   * 获取最近关闭的标签页
+   */
+  getRecentlyClosed() {
+    return this.recentlyClosed;
+  }
+
+  /**
+   * 恢复最近关闭的标签页
+   * @param {string} id
+   */
+  restoreRecentlyClosed(id) {
+    const index = this.recentlyClosed.findIndex(item => item.id === id);
+    if (index === -1) return false;
+    const item = this.recentlyClosed[index];
+    this.recentlyClosed.splice(index, 1);
+    this.createTab(item.url, true);
+    return true;
+  }
+
+  /**
+   * 处理网页 HTML5 全屏
+   * @param {string} tabId
+   * @param {boolean} entering
+   */
+  handleHtmlFullScreen(tabId, entering) {
+    const tab = this.tabs.find(item => item.id === tabId);
+    if (!tab) return;
+
+    if (entering) {
+      this.htmlFullScreenTabId = tabId;
+      this.mainWindow.setFullScreen(true);
+      this.layoutViews();
+      return;
+    }
+
+    if (this.htmlFullScreenTabId !== tabId) return;
+    this.htmlFullScreenTabId = null;
+    this.mainWindow.setFullScreen(false);
+    this.layoutViews();
+  }
+
+  /**
    * 重排视图布局
    */
   layoutViews() {
     if (!this.mainWindow) return;
+
+    if (this.htmlFullScreenTabId) {
+      const fullScreenTab = this.tabs.find(t => t.id === this.htmlFullScreenTabId);
+      if (fullScreenTab && fullScreenTab.view) {
+        const display = screen.getDisplayMatching(this.mainWindow.getBounds());
+        fullScreenTab.view.setBounds({
+          x: 0,
+          y: 0,
+          width: display.bounds.width,
+          height: display.bounds.height,
+        });
+      }
+      return;
+    }
 
     // 浏览器 UI 高度（与 app.css 中的 CSS 变量保持一致）
     const titleBarHeight = 38;
@@ -497,6 +587,14 @@ class WindowManager {
         tab.title = title;
         this.syncTabsToRenderer();
       }
+    });
+
+    wc.on('enter-html-full-screen', () => {
+      this.handleHtmlFullScreen(tabId, true);
+    });
+
+    wc.on('leave-html-full-screen', () => {
+      this.handleHtmlFullScreen(tabId, false);
     });
 
     // 页面 favicon 更新
@@ -742,6 +840,7 @@ class WindowManager {
       tabId: tab.id,
       url: tab.url,
       title: tab.title,
+      favicon: tab.favicon || '',
       canGoBack: tab.canGoBack,
       canGoForward: tab.canGoForward,
       isLoading: tab.isLoading,
@@ -847,6 +946,7 @@ class WindowManager {
       endTime: null,
       savePath: item.getSavePath(),
       tabId: tabId,
+      deleted: false,
     };
 
     // 保存下载项
@@ -862,6 +962,7 @@ class WindowManager {
       downloadItem.receivedBytes = item.getReceivedBytes();
       downloadItem.totalBytes = item.getTotalBytes();
       downloadItem.speed = item.getCurrentSpeed ? item.getCurrentSpeed() : 0;
+      downloadItem.savePath = item.getSavePath() || downloadItem.savePath;
 
       if (state === 'progressing') {
         downloadItem.state = 'in_progress';
@@ -888,6 +989,10 @@ class WindowManager {
     });
 
     item.once('done', (event, state) => {
+      downloadItem.receivedBytes = item.getReceivedBytes();
+      downloadItem.totalBytes = item.getTotalBytes();
+      downloadItem.savePath = item.getSavePath() || downloadItem.savePath;
+
       if (state === 'completed') {
         downloadItem.state = 'completed';
         downloadItem.endTime = Date.now();
@@ -897,6 +1002,12 @@ class WindowManager {
       } else {
         downloadItem.state = 'failed';
         downloadItem.endTime = Date.now();
+      }
+
+      if (!downloadItem.savePath && downloadItem.filename) {
+        const settings = getStore('settings');
+        const downloadDir = settings.get('downloadPath') || app.getPath('downloads');
+        downloadItem.savePath = path.join(downloadDir, downloadItem.filename);
       }
 
       const allDownloads = downloadsStore.get('items', []);
