@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   isBookmarked: (url) => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_IS_BOOKMARKED, url),
   showBookmarkContextMenu: (payload) => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_CONTEXT_MENU, payload),
   showBookmarkFolderMenu: (payload) => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_FOLDER_MENU, payload),
+  showBookmarkFolderContextMenu: (payload) => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_FOLDER_CONTEXT_MENU, payload),
   onBookmarkFolderMenuOpen: (callback) => {
     const handler = (event, data) => callback(data);
     ipcRenderer.on(IPC_CHANNELS.BOOKMARKS_FOLDER_MENU_OPEN, handler);

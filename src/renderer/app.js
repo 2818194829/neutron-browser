@@ -493,6 +493,18 @@
       e.preventDefault();
       api.showBookmarkBarContextMenu({ x: e.clientX, y: e.clientY });
     });
+
+    dom.bookmarkBarItems.addEventListener('dragover', (e) => {
+      if (!e.target.closest('.bookmark-item')) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      }
+    });
+
+    dom.bookmarkBarItems.addEventListener('drop', (e) => {
+      if (e.target.closest('.bookmark-item')) return;
+      handleBookmarkDropToBar(e);
+    });
   }
 
   async function updateBookmarkState() {
@@ -693,7 +705,7 @@
   }
 
   function clearBookmarkDragVisuals() {
-    dom.bookmarkBarItems.querySelectorAll(
+    document.querySelectorAll(
       '.bookmark-item--dragging, .bookmark-item--drop-before, .bookmark-item--drop-after, .bookmark-item--drop-into'
     ).forEach((el) => el.classList.remove(
       'bookmark-item--dragging',
@@ -772,9 +784,38 @@
       const moved = mode === 'into'
         ? await api.moveBookmarkIntoFolder(draggedId, targetId)
         : await api.moveBookmark(draggedId, targetId, position);
-      if (moved) await refreshBookmarks();
+      if (moved) {
+        if (dom.bookmarkFolderPopup.style.display === 'block') {
+          closeBookmarkFolderPopup();
+        }
+        await refreshBookmarks();
+      }
     } catch (error) {
       console.error('[Renderer] 书签排序失败:', error);
+    }
+  }
+
+  async function handleBookmarkDropToBar(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const draggedId = state.bookmarkDragId;
+    clearBookmarkDragVisuals();
+    state.bookmarkDragId = null;
+    state.bookmarkDropMode = 'before';
+
+    if (!draggedId) return;
+
+    try {
+      const moved = await api.moveBookmarkIntoFolder(draggedId, 'bookmark_bar');
+      if (moved) {
+        if (dom.bookmarkFolderPopup.style.display === 'block') {
+          closeBookmarkFolderPopup();
+        }
+        await refreshBookmarks();
+      }
+    } catch (error) {
+      console.error('[Renderer] 书签移动到书签栏失败:', error);
     }
   }
 
@@ -855,6 +896,9 @@
       } else {
         el.addEventListener('click', (e) => {
           e.stopPropagation();
+          if (dom.bookmarkFolderPopup.style.display === 'block') {
+            closeBookmarkFolderPopup();
+          }
           api.navigateTo(item.url);
         });
       }
@@ -863,7 +907,14 @@
         e.preventDefault();
         e.stopPropagation();
         if (item.type === 'folder') {
-          showBookmarkFolderContextMenu(e.clientX, e.clientY, item);
+          if (dom.bookmarkFolderPopup.style.display === 'block') {
+            closeBookmarkFolderPopup();
+          }
+          api.showBookmarkFolderContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            folder: item,
+          });
           return;
         }
         api.showBookmarkContextMenu({
@@ -1281,40 +1332,6 @@
   }
 
   // ==================== 书签文件夹弹出菜单 ====================
-  function showBookmarkFolderContextMenu(x, y, folder) {
-    dom.contextMenu.innerHTML = '';
-
-    const items = [
-      { label: '新建书签', action: () => showBookmarkDialog(false, null, folder.id) },
-      { label: '新建文件夹', action: () => showFolderDialog(false, null, folder.id) },
-      { type: 'separator' },
-      { label: '编辑文件夹', action: () => showFolderDialog(true, { id: folder.id, title: folder.title }) },
-      { label: '删除文件夹', action: () => deleteBookmarkFolder(folder.id) },
-    ];
-
-    items.forEach((item) => {
-      if (item.type === 'separator') {
-        const sep = document.createElement('div');
-        sep.className = 'context-menu__separator';
-        dom.contextMenu.appendChild(sep);
-        return;
-      }
-      const el = document.createElement('div');
-      el.className = 'context-menu__item';
-      el.textContent = item.label;
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        dom.contextMenu.style.display = 'none';
-        if (item.action) item.action();
-      });
-      dom.contextMenu.appendChild(el);
-    });
-
-    dom.contextMenu.style.display = 'block';
-    dom.contextMenu.style.left = Math.min(x, window.innerWidth - 220) + 'px';
-    dom.contextMenu.style.top = Math.min(y, window.innerHeight - 200) + 'px';
-  }
-
   function closeBookmarkFolderPopup() {
     api.setModalVisible(false);
     dom.bookmarkFolderPopup.style.display = 'none';
@@ -1336,43 +1353,23 @@
   }
 
   function showBookmarkFolderPopup(data) {
-    const { x, y, items, folderId, folderTitle } = data;
+    const { x, y, items } = data;
     api.setModalVisible(true);
     const popup = dom.bookmarkFolderPopup;
     popup.innerHTML = '';
+    popup.classList.toggle('bookmark-folder-popup--empty', items.length === 0);
 
     const listEl = document.createElement('div');
     listEl.className = 'bfp-list';
-    renderFolderItems(listEl, items);
+    if (items.length === 0) {
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'bfp-empty';
+      emptyEl.textContent = '空';
+      listEl.appendChild(emptyEl);
+    } else {
+      renderFolderItems(listEl, items);
+    }
     popup.appendChild(listEl);
-
-    const sep = document.createElement('div');
-    sep.className = 'bfp-separator';
-    popup.appendChild(sep);
-
-    const actionsEl = document.createElement('div');
-    actionsEl.className = 'bfp-actions';
-
-    const actionItems = [
-      { label: '新建书签', action: () => showBookmarkDialog(false, null, folderId) },
-      { label: '新建文件夹', action: () => showFolderDialog(false, null, folderId) },
-      { label: '编辑文件夹', action: () => showFolderDialog(true, { id: folderId, title: folderTitle }) },
-      { label: '删除文件夹', action: () => deleteBookmarkFolder(folderId) },
-    ];
-
-    actionItems.forEach(item => {
-      const btn = document.createElement('div');
-      btn.className = 'bfp-item';
-      btn.textContent = item.label;
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        closeBookmarkFolderPopup();
-        item.action();
-      });
-      actionsEl.appendChild(btn);
-    });
-
-    popup.appendChild(actionsEl);
 
     popup.style.display = 'block';
 
@@ -1390,6 +1387,8 @@
     items.forEach(item => {
       const el = document.createElement('div');
       el.className = 'bfp-item';
+      el.draggable = true;
+      el.dataset.bookmarkId = item.id || '';
 
       if (item.type === 'folder') {
         el.innerHTML = `<span class="bfp-item__icon bfp-item__icon--folder">
@@ -1406,17 +1405,54 @@
           }, 200);
         });
       } else {
-        const favicon = item.url ? getGoogleFaviconUrl(item.url) : '';
-        el.innerHTML = `<span class="bfp-item__icon">
-          ${favicon ? `<img src="${escapeHtmlAttr(favicon)}" width="16" height="16" alt="" referrerpolicy="no-referrer" />` : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`
-        }</span>
-        <span class="bfp-item__title">${escapeHtmlAttr(item.title)}</span>`;
+        const siteFavicon = item.favicon || getSiteFaviconUrl(item.url);
+        const googleFavicon = getGoogleFaviconUrl(item.url);
+        const favicon = siteFavicon || googleFavicon;
+
+        const icon = document.createElement('span');
+        icon.className = 'bfp-item__icon';
+
+        if (favicon) {
+          const img = document.createElement('img');
+          img.width = 16;
+          img.height = 16;
+          img.alt = '';
+          img.draggable = false;
+          img.referrerPolicy = 'no-referrer';
+          img.src = favicon;
+          img.addEventListener('error', () => {
+            if (!img.dataset.fallback && googleFavicon && img.src !== googleFavicon) {
+              img.dataset.fallback = '1';
+              img.src = googleFavicon;
+              return;
+            }
+
+            const fallback = document.createElement('span');
+            fallback.className = 'bfp-item__icon';
+            fallback.textContent = '★';
+            icon.replaceWith(fallback);
+          });
+          icon.appendChild(img);
+        } else {
+          icon.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+        }
+
+        const title = document.createElement('span');
+        title.className = 'bfp-item__title';
+        title.textContent = item.title || '未命名书签';
+
+        el.appendChild(icon);
+        el.appendChild(title);
+
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           closeBookmarkFolderPopup();
           api.navigateTo(item.url);
         });
       }
+
+      el.addEventListener('dragstart', handleBookmarkDragStart);
+      el.addEventListener('dragend', handleBookmarkDragEnd);
 
       container.appendChild(el);
     });
@@ -1432,6 +1468,7 @@
       id: child.id,
       title: child.title || (child.type === 'folder' ? '未命名文件夹' : '未命名书签'),
       url: child.url || '',
+      favicon: child.favicon || '',
       type: child.type,
       children: child.type === 'folder' ? child.children : [],
     })));
@@ -1716,15 +1753,19 @@
         showBookmarkDialog(true, data.bookmark);
         break;
       case 'addBookmarkToFolder':
+        if (dom.bookmarkFolderPopup.style.display === 'block') closeBookmarkFolderPopup();
         showBookmarkDialog(false, null, data.folderId || 'bookmark_bar');
         break;
       case 'createBookmarkFolder':
+        if (dom.bookmarkFolderPopup.style.display === 'block') closeBookmarkFolderPopup();
         createBookmarkFolder(data.parentId || 'bookmark_bar');
         break;
       case 'editBookmarkFolder':
+        if (dom.bookmarkFolderPopup.style.display === 'block') closeBookmarkFolderPopup();
         editBookmarkFolder(data.folder);
         break;
       case 'deleteBookmarkFolder':
+        if (dom.bookmarkFolderPopup.style.display === 'block') closeBookmarkFolderPopup();
         deleteBookmarkFolder(data.folderId);
         break;
       case 'deleteBookmark':

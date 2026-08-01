@@ -750,6 +750,20 @@ svg {
   max-height: calc(100vh - 40px);
 }
 
+.bookmark-folder-popup--empty {
+  min-height: 72px;
+}
+
+.bfp-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
 .bfp-list {
   padding: 0;
 }

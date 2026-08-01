@@ -84,9 +84,32 @@ class WindowManager {
     this.suspendedTabId = null;
     this.modalSnapshotResolve = null;
     this.modalOperationId = 0;
+    this.sharedSessionHandlersReady = false;
 
     // 绑定方法
     this.handleNewWindow = this.handleNewWindow.bind(this);
+
+    this.setupSharedSessionHandlers();
+  }
+
+  /**
+   * 在共享持久会话上只注册一次下载与权限处理器
+   */
+  setupSharedSessionHandlers() {
+    if (this.sharedSessionHandlersReady) return;
+    this.sharedSessionHandlersReady = true;
+
+    const sharedSession = session.defaultSession;
+
+    sharedSession.setPermissionRequestHandler((webContents, permission, callback) => {
+      const allowedPermissions = ['clipboard-read', 'clipboard-sanitized-write'];
+      callback(allowedPermissions.includes(permission));
+    });
+
+    sharedSession.on('will-download', (event, item, webContents) => {
+      const tab = this.tabs.find(t => t.view && t.view.webContents === webContents);
+      this.handleDownload(event, item, tab ? tab.id : null);
+    });
   }
 
   /**
@@ -198,14 +221,13 @@ class WindowManager {
     // 解析 URL
     const resolvedUrl = this.resolveUrl(url);
 
-    // 创建独立的 BrowserView
+    // 创建 BrowserView，所有标签共享默认持久会话
     const view = new BrowserView({
       webPreferences: {
         preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
-        partition: `persist:tab_${tabId}`, // 独立会话分区
       },
     });
 
@@ -565,17 +587,6 @@ class WindowManager {
     wc.on('did-navigate', () => this.updateNavStateForTab(tabId));
     wc.on('did-navigate-in-page', () => this.updateNavStateForTab(tabId));
     wc.on('did-start-navigation', () => this.updateNavStateForTab(tabId));
-
-    // 权限请求处理
-    wc.session.setPermissionRequestHandler((webContents, permission, callback) => {
-      const allowedPermissions = ['clipboard-read', 'clipboard-sanitized-write'];
-      callback(allowedPermissions.includes(permission));
-    });
-
-    // 下载处理
-    wc.session.on('will-download', (event, item) => {
-      this.handleDownload(event, item, tabId);
-    });
   }
 
   /**
