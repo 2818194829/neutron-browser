@@ -6,6 +6,7 @@ const { BrowserWindow, BrowserView, session, app, screen, nativeImage, clipboard
 const path = require('path');
 const { IPC_CHANNELS, INTERNAL_PAGES, INTERNAL_PAGE_TITLES } = require('../shared/constants');
 const { getStore } = require('./storage');
+const { normalizeHistoryTitle, sanitizeFavicon } = require('../shared/siteMeta');
 
 // 应用图标路径（开发与 ASAR 打包路径均从 src/main 上两级到项目根目录）
 const APP_ICON_PATH = path.join(__dirname, '..', '..', 'icon', 'Rocket Browser.png');
@@ -568,6 +569,59 @@ class WindowManager {
   }
 
   /**
+   * 记录或更新当前标签页的历史条目
+   * @param {Object} tab - 标签页对象
+   * @param {'navigation'|'meta'} mode - navigation 表示一次新访问，meta 表示标题/图标更新
+   */
+  recordHistoryEntry(tab, mode) {
+    if (!tab || !tab.url || !/^https?:/i.test(tab.url)) return;
+
+    const store = getStore('history');
+    const visits = store.get('visits', []);
+    const url = tab.url;
+    const title = normalizeHistoryTitle(tab.title, url);
+    const favicon = sanitizeFavicon(tab.favicon, url);
+    const existing = visits.find((item) => item.url === url);
+
+    if (mode === 'navigation') {
+      if (existing) {
+        existing.title = title;
+        existing.favicon = favicon || sanitizeFavicon(existing.favicon, url);
+        existing.visitCount = (existing.visitCount || 1) + 1;
+        existing.lastVisitTime = Date.now();
+      } else {
+        visits.unshift({
+          id: `hist_${Date.now()}`,
+          url,
+          title,
+          favicon,
+          visitCount: 1,
+          firstVisitTime: Date.now(),
+          lastVisitTime: Date.now(),
+        });
+      }
+    } else if (existing) {
+      existing.title = title;
+      existing.favicon = favicon || sanitizeFavicon(existing.favicon, url);
+    } else {
+      visits.unshift({
+        id: `hist_${Date.now()}`,
+        url,
+        title,
+        favicon,
+        visitCount: 1,
+        firstVisitTime: Date.now(),
+        lastVisitTime: Date.now(),
+      });
+    }
+
+    if (visits.length > 10000) {
+      visits.splice(10000);
+    }
+    store.set('visits', visits);
+  }
+
+  /**
    * 设置视图事件监听
    * @param {BrowserView} view
    * @param {string} tabId
@@ -584,6 +638,8 @@ class WindowManager {
       if (tab) {
         tab.title = title;
         this.syncTabsToRenderer();
+        this.syncNavState(tab);
+        this.recordHistoryEntry(tab, 'meta');
       }
     });
 
@@ -601,6 +657,8 @@ class WindowManager {
       if (tab && favicons.length > 0) {
         tab.favicon = favicons[0];
         this.syncTabsToRenderer();
+        this.syncNavState(tab);
+        this.recordHistoryEntry(tab, 'meta');
       }
     });
 
@@ -613,6 +671,7 @@ class WindowManager {
         tab.loadingProgress = 100;
         this.syncTabsToRenderer();
         this.syncNavState(tab);
+        this.recordHistoryEntry(tab, 'navigation');
       }
     });
 
@@ -622,6 +681,7 @@ class WindowManager {
         tab.url = url;
         this.syncTabsToRenderer();
         this.syncNavState(tab);
+        this.recordHistoryEntry(tab, 'navigation');
       }
     });
 
@@ -642,6 +702,7 @@ class WindowManager {
         tab.isLoading = false;
         tab.loadingProgress = 100;
         this.syncTabsToRenderer();
+        this.syncNavState(tab);
       }
     });
 
@@ -654,6 +715,14 @@ class WindowManager {
       }
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
+        if (isMainFrame) {
+          tab.url = url || tab.url;
+          tab.title = '';
+          tab.favicon = '';
+          tab.isLoading = true;
+          tab.loadingProgress = 10;
+          this.syncNavState(tab);
+        }
         tab.loadingProgress = 10;
         this.sendToRenderer(IPC_CHANNELS.NAV_LOADING_PROGRESS, { tabId, progress: 10 });
       }

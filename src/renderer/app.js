@@ -121,6 +121,7 @@
 
   // ==================== API 快捷方式 ====================
   const api = window.NeutronBrowser;
+  const SiteMeta = window.SiteMeta || {};
   if (!api) {
     console.error('[Renderer] NeutronBrowser API 未加载！请检查 preload.js');
     return;
@@ -654,7 +655,7 @@
     renderBookmarkFolderOptions(
       (bookmark && bookmark.parentId) || defaultFolderId || 'bookmark_bar'
     );
-    dom.bookmarkName.value = (bookmark && bookmark.title) || state.currentTitle || '';
+    dom.bookmarkName.value = (bookmark && bookmark.title) || getDisplayTitleForUrl(state.currentTitle, state.currentUrl) || '';
     dom.bookmarkUrl.value = (bookmark && bookmark.url) || state.currentUrl || '';
     if (bookmark && bookmark.parentId) {
       dom.bookmarkFolder.value = bookmark.parentId;
@@ -670,13 +671,14 @@
   }
 
   async function saveBookmark() {
-    const activeTab = state.tabs.find(tab => tab.id === state.activeTabId);
-    const favicon = state.editingBookmark && state.editingBookmark.favicon
+    const targetUrl = dom.bookmarkUrl.value || state.currentUrl || '';
+    const rawFavicon = state.editingBookmark && state.editingBookmark.favicon
       ? state.editingBookmark.favicon
-      : (activeTab && activeTab.favicon ? activeTab.favicon : '');
+      : (state.currentFavicon || '');
+    const favicon = getTrustedFavicon(rawFavicon, targetUrl);
     const bookmark = {
-      title: dom.bookmarkName.value || '未命名书签',
-      url: dom.bookmarkUrl.value || state.currentUrl,
+      title: dom.bookmarkName.value || getDisplayTitleForUrl(state.currentTitle, targetUrl) || '未命名书签',
+      url: targetUrl,
       parentId: dom.bookmarkFolder.value,
       favicon,
     };
@@ -881,7 +883,7 @@
         icon.className = 'bookmark-item__icon bookmark-item__folder-icon';
         icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
       } else {
-        const siteFavicon = item.favicon || getSiteFaviconUrl(item.url);
+        const siteFavicon = getTrustedFavicon(item.favicon, item.url) || getSiteFaviconUrl(item.url);
         const googleFavicon = getGoogleFaviconUrl(item.url);
 
         if (siteFavicon || googleFavicon) {
@@ -1020,6 +1022,27 @@
       return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(parsed.hostname)}&sz=32`;
     } catch (e) {
       return '';
+    }
+  }
+
+  function getTrustedFavicon(favicon, url) {
+    if (!favicon || !url) return '';
+    if (SiteMeta.isFaviconTrusted) {
+      return SiteMeta.isFaviconTrusted(favicon, url) ? favicon : '';
+    }
+    return favicon;
+  }
+
+  function getDisplayTitleForUrl(title, url) {
+    if (SiteMeta.normalizeHistoryTitle) {
+      return SiteMeta.normalizeHistoryTitle(title, url);
+    }
+    const value = String(title || '').trim();
+    if (value && value !== '新标签页') return value;
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch (e) {
+      return value || url || '未知页面';
     }
   }
 
@@ -1528,7 +1551,8 @@
 
   function getHistoryFaviconCandidates(item) {
     const candidates = [];
-    if (item.favicon) candidates.push(item.favicon);
+    const trustedFavicon = getTrustedFavicon(item.favicon, item.url);
+    if (trustedFavicon) candidates.push(trustedFavicon);
 
     const siteFavicon = getSiteFaviconUrl(item.url);
     if (siteFavicon) candidates.push(siteFavicon);
@@ -1580,7 +1604,7 @@
 
     const title = document.createElement('div');
     title.className = 'history-item__title';
-    title.textContent = item.title || item.url || '未命名页面';
+    title.textContent = getDisplayTitleForUrl(item.title, item.url);
     body.appendChild(title);
 
     const time = document.createElement('span');
@@ -2111,7 +2135,7 @@
           }, 200);
         });
       } else {
-        const siteFavicon = item.favicon || getSiteFaviconUrl(item.url);
+        const siteFavicon = getTrustedFavicon(item.favicon, item.url) || getSiteFaviconUrl(item.url);
         const googleFavicon = getGoogleFaviconUrl(item.url);
         const favicon = siteFavicon || googleFavicon;
 
@@ -2372,14 +2396,6 @@
         // 更新状态栏
         dom.statusUrl.textContent = state.currentUrl || '';
 
-        // 添加历史记录
-        if (data.url && !data.url.startsWith('neutron://') && !data.isLoading) {
-          api.addHistory({
-            url: data.url,
-            title: data.title,
-            favicon: state.currentFavicon,
-          });
-        }
       }
     });
     state.unsubscribers.push(unsub2);

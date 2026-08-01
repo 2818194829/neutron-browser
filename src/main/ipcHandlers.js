@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const { IPC_CHANNELS, INTERNAL_PAGES, DEFAULT_SETTINGS } = require('../shared/constants');
 const { getStore } = require('./storage');
+const { normalizeHistoryTitle, sanitizeFavicon, sanitizeBookmarks, sanitizeHistory } = require('../shared/siteMeta');
 const {
   getInstalledExtensions,
   installExtensionFile,
@@ -77,6 +78,13 @@ function registerIpcHandlers() {
       wm.mainWindow.webContents.send(IPC_CHANNELS.MENU_EVENT, { action, ...data });
     }
   };
+
+  // 清理历史遗留的错位 favicon 和默认标题，保证图标只跟随真实页面 URL
+  const bookmarksData = sanitizeBookmarks(getStore('bookmarks').getAll());
+  Object.keys(bookmarksData).forEach((key) => {
+    getStore('bookmarks').set(key, bookmarksData[key]);
+  });
+  getStore('history').set('visits', sanitizeHistory(getStore('history').get('visits', [])));
 
   // ==================== 应用信息与更新 ====================
   ipcMain.handle(IPC_CHANNELS.APP_GET_INFO, () => {
@@ -722,6 +730,8 @@ function registerIpcHandlers() {
   ipcMain.on(IPC_CHANNELS.HISTORY_ADD, (event, { url, title, favicon }) => {
     const store = getStore('history');
     const visits = store.get('visits', []);
+    const safeTitle = normalizeHistoryTitle(title, url);
+    const safeFavicon = sanitizeFavicon(favicon, url);
 
     // 查找今天是否已有相同 URL 的记录
     const today = new Date().toDateString();
@@ -732,13 +742,14 @@ function registerIpcHandlers() {
     if (existing) {
       existing.visitCount = (existing.visitCount || 1) + 1;
       existing.lastVisitTime = Date.now();
-      if (favicon) existing.favicon = favicon;
+      existing.title = safeTitle;
+      existing.favicon = safeFavicon || sanitizeFavicon(existing.favicon, url);
     } else {
       visits.unshift({
         id: `hist_${Date.now()}`,
         url,
-        title: title || url,
-        favicon: favicon || '',
+        title: safeTitle,
+        favicon: safeFavicon,
         visitCount: 1,
         firstVisitTime: Date.now(),
         lastVisitTime: Date.now(),
