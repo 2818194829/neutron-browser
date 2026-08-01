@@ -1316,6 +1316,7 @@
   }
 
   function closeBookmarkFolderPopup() {
+    api.setModalVisible(false);
     dom.bookmarkFolderPopup.style.display = 'none';
     state.folderPopupData = null;
     clearTimeout(state.subFolderPopupTimeout);
@@ -1336,6 +1337,7 @@
 
   function showBookmarkFolderPopup(data) {
     const { x, y, items, folderId, folderTitle } = data;
+    api.setModalVisible(true);
     const popup = dom.bookmarkFolderPopup;
     popup.innerHTML = '';
 
