@@ -82,6 +82,8 @@ class WindowManager {
 
     /** @type {string|null} HTML 模态框打开时挂起的标签页 */
     this.suspendedTabId = null;
+    this.modalSnapshotResolve = null;
+    this.modalOperationId = 0;
 
     // 绑定方法
     this.handleNewWindow = this.handleNewWindow.bind(this);
@@ -389,28 +391,70 @@ class WindowManager {
    * BrowserView 始终盖在主窗口 webContents 之上，因此显示模态框时需要暂时移除当前标签页视图
    * @param {boolean} visible
    */
-  setModalVisible(visible) {
+  async setModalVisible(visible) {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const operationId = ++this.modalOperationId;
 
     if (visible) {
       if (this.activeTabId && !this.suspendedTabId) {
         const tab = this.tabs.find(t => t.id === this.activeTabId);
         if (tab && tab.view) {
           this.suspendedTabId = this.activeTabId;
+          let snapshotReady = Promise.resolve();
+          try {
+            const image = await tab.view.webContents.capturePage();
+            const dataUrl = image && !image.isEmpty() ? image.toDataURL() : '';
+            this.sendToRenderer(IPC_CHANNELS.UI_MODAL_SNAPSHOT, { dataUrl });
+            snapshotReady = new Promise((resolve) => {
+              this.modalSnapshotResolve = resolve;
+              setTimeout(() => {
+                if (this.modalSnapshotResolve === resolve) {
+                  this.modalSnapshotResolve = null;
+                  resolve();
+                }
+              }, 2000);
+            });
+          } catch (e) {
+            this.sendToRenderer(IPC_CHANNELS.UI_MODAL_SNAPSHOT, { dataUrl: '' });
+            snapshotReady = new Promise((resolve) => {
+              this.modalSnapshotResolve = resolve;
+              setTimeout(() => {
+                if (this.modalSnapshotResolve === resolve) {
+                  this.modalSnapshotResolve = null;
+                  resolve();
+                }
+              }, 2000);
+            });
+          }
+          await snapshotReady;
+          if (operationId !== this.modalOperationId || this.suspendedTabId !== this.activeTabId) {
+            return;
+          }
           this.mainWindow.removeBrowserView(tab.view);
         }
       }
       return;
     }
 
-    if (!this.suspendedTabId) return;
+    if (!this.suspendedTabId) {
+      this.sendToRenderer(IPC_CHANNELS.UI_MODAL_SNAPSHOT, { dataUrl: '' });
+      return;
+    }
 
     const target = this.tabs.find(t => t.id === this.suspendedTabId);
     if (target && target.view) {
       this.mainWindow.addBrowserView(target.view);
       this.layoutViews();
     }
+    this.sendToRenderer(IPC_CHANNELS.UI_MODAL_SNAPSHOT, { dataUrl: '' });
     this.suspendedTabId = null;
+  }
+
+  resolveModalSnapshot() {
+    if (!this.modalSnapshotResolve) return;
+    const resolve = this.modalSnapshotResolve;
+    this.modalSnapshotResolve = null;
+    resolve();
   }
 
   /**

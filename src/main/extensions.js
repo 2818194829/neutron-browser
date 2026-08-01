@@ -63,6 +63,31 @@ function readManifest(extRoot) {
   return JSON.parse(fs.readFileSync(path.join(extRoot, 'manifest.json'), 'utf8'));
 }
 
+function resolveSource(manifest) {
+  if (manifest && manifest.update_url) {
+    const updateUrl = String(manifest.update_url);
+    if (updateUrl.includes('edge.microsoft.com') || updateUrl.includes('microsoftedge')) {
+      return 'edge_store';
+    }
+  }
+  return 'local';
+}
+
+function resolveBackgroundInfo(manifest) {
+  if (manifest.background) {
+    if (manifest.background.service_worker) {
+      return { backgroundType: 'service_worker', viewInfo: 'service_worker' };
+    }
+    if (manifest.background.page) {
+      return { backgroundType: 'background_page', viewInfo: manifest.background.page };
+    }
+    if (Array.isArray(manifest.background.scripts) && manifest.background.scripts.length > 0) {
+      return { backgroundType: 'background_page', viewInfo: manifest.background.scripts[0] };
+    }
+  }
+  return { backgroundType: '', viewInfo: '' };
+}
+
 function resolveIcon(manifest, extRoot) {
   const iconEntries = Object.entries(manifest.icons || {})
     .sort((a, b) => Number(b[0]) - Number(a[0]));
@@ -96,7 +121,7 @@ function removeInstalledDirectory(target) {
   }
 }
 
-async function registerExtension(extRoot) {
+async function registerExtension(extRoot, installSource) {
   const manifest = readManifest(extRoot);
   if (!manifest.name || !manifest.version) {
     throw new Error('manifest.json 缺少 name 或 version');
@@ -109,6 +134,14 @@ async function registerExtension(extRoot) {
     throw new Error(`扩展加载失败: ${e.message}`);
   }
 
+  let source = installSource;
+  if (!source) {
+    source = resolveSource(manifest);
+  }
+
+  const background = resolveBackgroundInfo(manifest);
+  const permissions = Array.isArray(manifest.permissions) ? manifest.permissions : [];
+
   const extension = {
     id: loaded.id,
     name: loaded.name || manifest.name,
@@ -118,6 +151,11 @@ async function registerExtension(extRoot) {
     icon: resolveIcon(manifest, extRoot),
     enabled: true,
     installedAt: Date.now(),
+    source: source,
+    installSource: source,
+    backgroundType: background.backgroundType,
+    viewInfo: background.viewInfo,
+    permissions: permissions,
   };
 
   const installed = getInstalledExtensions();
@@ -138,7 +176,7 @@ async function registerExtension(extRoot) {
   return extension;
 }
 
-async function installFromArchiveBuffer(buffer) {
+async function installFromArchiveBuffer(buffer, source) {
   const tempDir = fs.mkdtempSync(path.join(app.getPath('temp'), 'neutron-ext-'));
 
   try {
@@ -150,7 +188,7 @@ async function installFromArchiveBuffer(buffer) {
     copyDirectory(sourceRoot, destDir);
 
     try {
-      return await registerExtension(destDir);
+      return await registerExtension(destDir, source || 'local');
     } catch (e) {
       removeDirectory(destDir);
       throw e;
@@ -160,9 +198,9 @@ async function installFromArchiveBuffer(buffer) {
   }
 }
 
-async function installExtensionFile(filePath) {
+async function installExtensionFile(filePath, source) {
   fs.mkdirSync(extensionsRoot(), { recursive: true });
-  return installFromArchiveBuffer(readArchiveBuffer(filePath));
+  return installFromArchiveBuffer(readArchiveBuffer(filePath), source || 'local');
 }
 
 async function installUnpackedExtension(dirPath) {
@@ -173,7 +211,7 @@ async function installUnpackedExtension(dirPath) {
   copyDirectory(sourceRoot, destDir);
 
   try {
-    return await registerExtension(destDir);
+    return await registerExtension(destDir, 'local');
   } catch (e) {
     removeDirectory(destDir);
     throw e;
@@ -225,7 +263,7 @@ async function installFromEdgeStore(input) {
   fs.writeFileSync(tempFile, buffer);
 
   try {
-    return await installExtensionFile(tempFile);
+    return await installExtensionFile(tempFile, 'edge_store');
   } finally {
     fs.rmSync(tempFile, { force: true });
   }

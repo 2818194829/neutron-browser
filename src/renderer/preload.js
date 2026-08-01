@@ -24,6 +24,12 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   closeWindow: () => ipcRenderer.send(IPC_CHANNELS.WINDOW_CLOSE),
   isMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
   setModalVisible: (visible) => ipcRenderer.send(IPC_CHANNELS.UI_MODAL_CHANGED, visible),
+  onModalSnapshot: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.UI_MODAL_SNAPSHOT, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UI_MODAL_SNAPSHOT, handler);
+  },
+  notifyModalSnapshotReady: () => ipcRenderer.send(IPC_CHANNELS.UI_MODAL_SNAPSHOT_READY),
 
   // ==================== 标签页管理 ====================
   createTab: (url, active = true) =>
@@ -66,6 +72,11 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   isBookmarked: (url) => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_IS_BOOKMARKED, url),
   showBookmarkContextMenu: (payload) => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_CONTEXT_MENU, payload),
   showBookmarkFolderMenu: (payload) => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_FOLDER_MENU, payload),
+  onBookmarkFolderMenuOpen: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.BOOKMARKS_FOLDER_MENU_OPEN, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.BOOKMARKS_FOLDER_MENU_OPEN, handler);
+  },
   showBookmarkBarContextMenu: (payload) => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_BAR_CONTEXT_MENU, payload),
   importBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_IMPORT),
   exportBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_EXPORT),

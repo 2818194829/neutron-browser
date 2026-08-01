@@ -34,15 +34,23 @@
     btnDownloads: $('#btnDownloads'),
     btnHistory: $('#btnHistory'),
     btnExtensions: $('#btnExtensions'),
+    extensionPopup: $('#extensionPopup'),
+    extensionSiteLabel: $('#extensionSiteLabel'),
+    extensionSiteToggle: $('#extensionSiteToggle'),
+    extensionList: $('#extensionList'),
+    btnManageExtensions: $('#btnManageExtensions'),
+    btnGetExtensions: $('#btnGetExtensions'),
     btnSettings: $('#btnSettings'),
     bookmarkBar: $('#bookmarkBar'),
     bookmarkBarItems: $('#bookmarkBarItems'),
     contentArea: $('#contentArea'),
+    contentSnapshot: $('#contentSnapshot'),
     contentPlaceholder: $('#contentPlaceholder'),
     statusBar: $('#statusBar'),
     statusUrl: $('#statusUrl'),
     statusZoom: $('#statusZoom'),
     contextMenu: $('#contextMenu'),
+    bookmarkFolderPopup: $('#bookmarkFolderPopup'),
     bookmarkDialog: $('#bookmarkDialog'),
     bookmarkDialogTitle: $('#bookmarkDialogTitle'),
     bookmarkName: $('#bookmarkName'),
@@ -52,6 +60,12 @@
     bookmarkDialogCancel: $('#bookmarkDialogCancel'),
     bookmarkDialogSave: $('#bookmarkDialogSave'),
     bookmarkDialogRemove: $('#bookmarkDialogRemove'),
+    folderDialog: $('#folderDialog'),
+    folderDialogTitle: $('#folderDialogTitle'),
+    folderName: $('#folderName'),
+    folderDialogClose: $('#folderDialogClose'),
+    folderDialogCancel: $('#folderDialogCancel'),
+    folderDialogSave: $('#folderDialogSave'),
   };
 
   // ==================== 状态 ====================
@@ -67,10 +81,20 @@
     isBookmarked: false,
     bookmarks: {},
     editingBookmark: null,
+    editingFolder: null,
+    folderParentId: 'bookmark_bar',
     bookmarkDragId: null,
     bookmarkDropPosition: 'before',
     bookmarkDropMode: 'before',
+    extensionPopupOpen: false,
+    extensionPopupExtensions: [],
+    extensionSitePermissions: null,
+    extensionPopupToken: 0,
+    modalSnapshotResolver: null,
     theme: 'system',
+    folderPopupData: null,
+    subFolderPopupTimeout: null,
+    subFolderPopupDiv: null,
     unsubscribers: [],
   };
 
@@ -101,7 +125,9 @@
     bindBookmarkEvents();
     bindContextMenu();
     bindBookmarkDialog();
+    bindFolderDialog();
     bindToolButtons();
+    bindExtensionPopup();
     bindKeyboardShortcuts();
     bindIPCListeners();
     bindDragAndDrop();
@@ -494,6 +520,54 @@
     });
   }
 
+  function bindFolderDialog() {
+    dom.folderDialogClose.addEventListener('click', closeFolderDialog);
+    dom.folderDialogCancel.addEventListener('click', closeFolderDialog);
+    dom.folderDialogSave.addEventListener('click', saveFolderDialog);
+    dom.folderDialog.addEventListener('click', (e) => {
+      if (e.target === dom.folderDialog) closeFolderDialog();
+    });
+    dom.folderName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveFolderDialog();
+      }
+    });
+  }
+
+  function showFolderDialog(isEditing, folder = null, parentId = 'bookmark_bar') {
+    state.editingFolder = folder || null;
+    state.folderParentId = parentId;
+    api.setModalVisible(true);
+    dom.folderDialog.style.display = 'flex';
+    dom.folderDialogTitle.textContent = isEditing ? '编辑文件夹' : '新建文件夹';
+    dom.folderName.value = folder ? (folder.title || '') : '';
+    dom.folderName.focus();
+    dom.folderName.select();
+  }
+
+  function closeFolderDialog() {
+    dom.folderDialog.style.display = 'none';
+    state.editingFolder = null;
+    api.setModalVisible(false);
+  }
+
+  async function saveFolderDialog() {
+    const name = dom.folderName.value.trim();
+    if (!name) {
+      dom.folderName.focus();
+      return;
+    }
+
+    if (state.editingFolder) {
+      await api.updateBookmark(state.editingFolder.id, { title: name });
+    } else {
+      await api.addFolder({ title: name, parentId: state.folderParentId });
+    }
+    await refreshBookmarks();
+    closeFolderDialog();
+  }
+
   function renderBookmarkFolderOptions(selectedId = 'bookmark_bar') {
     const folders = [];
     const collectFolders = (folder, depth) => {
@@ -601,21 +675,13 @@
     closeBookmarkDialog();
   }
 
-  async function createBookmarkFolder(parentId) {
-    const name = prompt('请输入文件夹名称：');
-    if (!name || !name.trim()) return;
-
-    await api.addFolder({ title: name.trim(), parentId });
-    await refreshBookmarks();
+  function createBookmarkFolder(parentId) {
+    showFolderDialog(false, null, parentId || 'bookmark_bar');
   }
 
-  async function editBookmarkFolder(folder) {
+  function editBookmarkFolder(folder) {
     if (!folder || !folder.id) return;
-    const name = prompt('请输入新的文件夹名称：', folder.title || '');
-    if (!name || !name.trim()) return;
-
-    await api.updateBookmark(folder.id, { title: name.trim() });
-    await refreshBookmarks();
+    showFolderDialog(true, folder);
   }
 
   async function deleteBookmarkFolder(folderId) {
@@ -736,7 +802,7 @@
       if (item.type === 'folder') {
         icon = document.createElement('span');
         icon.className = 'bookmark-item__icon bookmark-item__folder-icon';
-        icon.textContent = '📁';
+        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
       } else {
         const siteFavicon = item.favicon || getSiteFaviconUrl(item.url);
         const googleFavicon = getGoogleFaviconUrl(item.url);
@@ -776,7 +842,9 @@
       el.appendChild(title);
 
       if (item.type === 'folder') {
-        el.addEventListener('click', () => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          e.preventDefault();
           const rect = el.getBoundingClientRect();
           api.showBookmarkFolderMenu({
             folder: item,
@@ -785,7 +853,8 @@
           });
         });
       } else {
-        el.addEventListener('click', () => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
           api.navigateTo(item.url);
         });
       }
@@ -794,7 +863,7 @@
         e.preventDefault();
         e.stopPropagation();
         if (item.type === 'folder') {
-          api.showBookmarkFolderMenu({ folder: item, x: e.clientX, y: e.clientY });
+          showBookmarkFolderContextMenu(e.clientX, e.clientY, item);
           return;
         }
         api.showBookmarkContextMenu({
@@ -872,17 +941,300 @@
       api.createTab('neutron://history');
     });
     dom.btnExtensions.addEventListener('click', () => {
-      api.createTab('neutron://extensions');
+      if (state.extensionPopupOpen) {
+        closeExtensionPopup();
+      } else {
+        openExtensionPopup();
+      }
     });
     dom.btnSettings.addEventListener('click', () => {
       api.createTab('neutron://settings');
     });
   }
 
+  function bindExtensionPopup() {
+    dom.extensionSiteToggle.addEventListener('change', async () => {
+      const perms = await getExtensionSitePermissions();
+      perms.enabled = dom.extensionSiteToggle.checked;
+      await saveExtensionSitePermissions(perms);
+      renderExtensionList(state.extensionPopupExtensions, perms);
+    });
+
+    dom.btnManageExtensions.addEventListener('click', () => {
+      closeExtensionPopup();
+      api.createTab('neutron://extensions');
+    });
+
+    dom.btnGetExtensions.addEventListener('click', () => {
+      closeExtensionPopup();
+      api.createTab('https://microsoftedge.microsoft.com/addons/Microsoft-Edge-Extensions-Home');
+    });
+
+    document.addEventListener('mousedown', (e) => {
+      if (!state.extensionPopupOpen || dom.extensionPopup.hidden) return;
+      if (dom.extensionPopup.contains(e.target) || dom.btnExtensions.contains(e.target)) return;
+      closeExtensionPopup();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeExtensionPopup();
+    });
+
+    window.addEventListener('resize', () => {
+      if (state.extensionPopupOpen) positionExtensionPopup();
+    });
+  }
+
+  async function openExtensionPopup() {
+    const token = ++state.extensionPopupToken;
+    state.extensionPopupOpen = true;
+
+    const snapshotReady = new Promise((resolve) => {
+      state.modalSnapshotResolver = resolve;
+      setTimeout(() => {
+        if (state.modalSnapshotResolver === resolve) {
+          state.modalSnapshotResolver = null;
+          resolve(null);
+        }
+      }, 1000);
+    });
+
+    api.setModalVisible(true);
+    await snapshotReady;
+
+    if (token !== state.extensionPopupToken || !state.extensionPopupOpen) return;
+
+    dom.extensionPopup.hidden = false;
+    dom.extensionPopup.style.visibility = 'hidden';
+    positionExtensionPopup();
+
+    try {
+      await loadExtensionPopup();
+    } catch (error) {
+      console.error('[Renderer] 扩展弹窗加载失败:', error);
+      state.extensionPopupExtensions = [];
+      renderExtensionList([], { enabled: true, blocked: {} });
+    }
+
+    positionExtensionPopup();
+    dom.extensionPopup.style.visibility = 'visible';
+    requestAnimationFrame(positionExtensionPopup);
+  }
+
+  function closeExtensionPopup() {
+    if (!state.extensionPopupOpen) return;
+    state.extensionPopupToken++;
+    state.extensionPopupOpen = false;
+    dom.extensionPopup.hidden = true;
+    document.querySelectorAll('.extension-more-menu').forEach((menu) => {
+      menu.hidden = true;
+    });
+    api.setModalVisible(false);
+  }
+
+  function positionExtensionPopup() {
+    const rect = dom.btnExtensions.getBoundingClientRect();
+    const width = dom.extensionPopup.offsetWidth || 380;
+    const height = dom.extensionPopup.offsetHeight || 420;
+    let left = rect.right;
+    let top = rect.bottom + 8;
+
+    if (left + width > window.innerWidth - 8) {
+      left = Math.max(8, window.innerWidth - width - 8);
+    }
+    if (left < 8) left = 8;
+    if (top + height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - height - 8);
+    }
+
+    dom.extensionPopup.style.left = `${left}px`;
+    dom.extensionPopup.style.top = `${top}px`;
+  }
+
+  function getSiteKey(url) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return parsed.origin;
+    } catch (e) {
+      // 忽略无效 URL
+    }
+    return url || '__default__';
+  }
+
+  function getSiteLabel(url) {
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname || parsed.href;
+    } catch (e) {
+      return url || '当前站点';
+    }
+  }
+
+  async function getExtensionSitePermissions() {
+    const key = getSiteKey(state.currentUrl);
+    const all = (await api.getSetting('siteExtensionPermissions')) || {};
+    const current = all[key] || { enabled: true, blocked: {} };
+    if (!current.blocked) current.blocked = {};
+    current.origin = key;
+    state.extensionSitePermissions = current;
+    return current;
+  }
+
+  async function saveExtensionSitePermissions(perms) {
+    const all = (await api.getSetting('siteExtensionPermissions')) || {};
+    all[perms.origin] = { enabled: perms.enabled, blocked: perms.blocked || {} };
+    api.setSetting('siteExtensionPermissions', all);
+    state.extensionSitePermissions = all[perms.origin];
+  }
+
+  async function loadExtensionPopup() {
+    dom.extensionSiteLabel.textContent = `允许在${getSiteLabel(state.currentUrl)}使用扩展`;
+
+    const perms = await getExtensionSitePermissions();
+    dom.extensionSiteToggle.checked = perms.enabled !== false;
+
+    const extensions = await api.getExtensions();
+    state.extensionPopupExtensions = Array.isArray(extensions) ? extensions : [];
+    renderExtensionList(state.extensionPopupExtensions, perms);
+  }
+
+  function createExtensionMenuAction(label, action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', action);
+    return button;
+  }
+
+  function renderExtensionList(extensions, perms) {
+    const list = dom.extensionList;
+    list.innerHTML = '';
+
+    if (!extensions.length) {
+      const empty = document.createElement('div');
+      empty.className = 'extension-empty';
+      empty.textContent = '暂无已安装的扩展程序';
+      list.appendChild(empty);
+      return;
+    }
+
+    extensions.forEach((ext) => {
+      const row = document.createElement('div');
+      const siteDisabled = perms.enabled === false || Boolean(perms.blocked[ext.id]);
+      row.className = ext.enabled === false || siteDisabled
+        ? 'extension-item extension-item--disabled'
+        : 'extension-item';
+
+      const icon = document.createElement('div');
+      icon.className = 'extension-item__icon';
+      if (ext.icon) {
+        const img = document.createElement('img');
+        img.src = 'file:///' + ext.icon.replace(/\\/g, '/');
+        img.alt = '';
+        img.addEventListener('error', () => {
+          icon.textContent = '🧩';
+        });
+        icon.appendChild(img);
+      } else {
+        icon.textContent = '🧩';
+      }
+
+      const body = document.createElement('div');
+      body.className = 'extension-item__body';
+
+      const name = document.createElement('div');
+      name.className = 'extension-item__name';
+      name.textContent = ext.name || '未命名扩展';
+
+      const desc = document.createElement('div');
+      desc.className = 'extension-item__desc';
+      if (perms.blocked[ext.id]) {
+        desc.textContent = '已在此网站禁用';
+      } else if (perms.enabled === false) {
+        desc.textContent = '站点权限已关闭';
+      } else if (ext.enabled === false) {
+        desc.textContent = '已禁用';
+      } else {
+        desc.textContent = ext.description || '允许在所有站点上使用';
+      }
+
+      body.appendChild(name);
+      body.appendChild(desc);
+
+      const actions = document.createElement('div');
+      actions.className = 'extension-item__actions';
+
+      const blockBtn = document.createElement('button');
+      blockBtn.type = 'button';
+      blockBtn.className = 'extension-item__action' + (perms.blocked[ext.id] ? ' extension-item__action--active' : '');
+      blockBtn.title = '禁止在此网站运行扩展';
+      blockBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+      blockBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const currentPerms = await getExtensionSitePermissions();
+        currentPerms.blocked[ext.id] = !currentPerms.blocked[ext.id];
+        await saveExtensionSitePermissions(currentPerms);
+        renderExtensionList(state.extensionPopupExtensions, currentPerms);
+      });
+
+      const moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.className = 'extension-item__action';
+      moreBtn.title = '更多操作';
+      moreBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
+
+      const moreMenu = document.createElement('div');
+      moreMenu.className = 'extension-more-menu';
+      moreMenu.hidden = true;
+      moreMenu.appendChild(createExtensionMenuAction('扩展详情', () => {
+        closeExtensionPopup();
+        api.createTab('neutron://extensions');
+      }));
+      moreMenu.appendChild(createExtensionMenuAction('选项', () => {
+        closeExtensionPopup();
+        api.createTab('neutron://extensions');
+      }));
+      moreMenu.appendChild(createExtensionMenuAction('卸载', async () => {
+        if (!confirm(`确定要卸载扩展“${ext.name || '未命名扩展'}”吗？`)) return;
+        await api.uninstallExtension(ext.id);
+        if (state.extensionPopupOpen) await loadExtensionPopup();
+      }));
+
+      moreBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.extension-more-menu').forEach((menu) => {
+          if (menu !== moreMenu) menu.hidden = true;
+        });
+        moreMenu.hidden = !moreMenu.hidden;
+      });
+
+      actions.appendChild(blockBtn);
+      actions.appendChild(moreBtn);
+
+      row.appendChild(icon);
+      row.appendChild(body);
+      row.appendChild(actions);
+      row.appendChild(moreMenu);
+      list.appendChild(row);
+    });
+  }
+
   // ==================== 右键菜单 ====================
   function bindContextMenu() {
-    document.addEventListener('click', () => {
+    document.addEventListener('click', (e) => {
       dom.contextMenu.style.display = 'none';
+
+      // Don't close folder popup if clicking inside it or on the folder button that opened it
+      if (dom.bookmarkFolderPopup.style.display === 'block') {
+        const popup = dom.bookmarkFolderPopup;
+        const subPopup = state.subFolderPopupDiv;
+        const clickedInsidePopup = popup.contains(e.target);
+        const clickedInsideSub = subPopup && subPopup.contains(e.target);
+        const clickedOnFolder = e.target.closest('.bookmark-item--folder');
+        if (!clickedInsidePopup && !clickedInsideSub && !clickedOnFolder) {
+          closeBookmarkFolderPopup();
+        }
+      }
     });
   }
 
@@ -926,6 +1278,186 @@
   function closeOtherTabs(tabId) {
     const otherTabs = state.tabs.filter(t => t.id !== tabId && !t.isPinned);
     otherTabs.forEach(t => api.closeTab(t.id));
+  }
+
+  // ==================== 书签文件夹弹出菜单 ====================
+  function showBookmarkFolderContextMenu(x, y, folder) {
+    dom.contextMenu.innerHTML = '';
+
+    const items = [
+      { label: '新建书签', action: () => showBookmarkDialog(false, null, folder.id) },
+      { label: '新建文件夹', action: () => showFolderDialog(false, null, folder.id) },
+      { type: 'separator' },
+      { label: '编辑文件夹', action: () => showFolderDialog(true, { id: folder.id, title: folder.title }) },
+      { label: '删除文件夹', action: () => deleteBookmarkFolder(folder.id) },
+    ];
+
+    items.forEach((item) => {
+      if (item.type === 'separator') {
+        const sep = document.createElement('div');
+        sep.className = 'context-menu__separator';
+        dom.contextMenu.appendChild(sep);
+        return;
+      }
+      const el = document.createElement('div');
+      el.className = 'context-menu__item';
+      el.textContent = item.label;
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dom.contextMenu.style.display = 'none';
+        if (item.action) item.action();
+      });
+      dom.contextMenu.appendChild(el);
+    });
+
+    dom.contextMenu.style.display = 'block';
+    dom.contextMenu.style.left = Math.min(x, window.innerWidth - 220) + 'px';
+    dom.contextMenu.style.top = Math.min(y, window.innerHeight - 200) + 'px';
+  }
+
+  function closeBookmarkFolderPopup() {
+    dom.bookmarkFolderPopup.style.display = 'none';
+    state.folderPopupData = null;
+    clearTimeout(state.subFolderPopupTimeout);
+    removeSubFolderPopup();
+  }
+
+  function removeSubFolderPopup() {
+    if (state.subFolderPopupDiv) {
+      state.subFolderPopupDiv.remove();
+      state.subFolderPopupDiv = null;
+    }
+  }
+
+  function handleBookmarkFolderMenuOpen(data) {
+    state.folderPopupData = data;
+    showBookmarkFolderPopup(data);
+  }
+
+  function showBookmarkFolderPopup(data) {
+    const { x, y, items, folderId, folderTitle } = data;
+    const popup = dom.bookmarkFolderPopup;
+    popup.innerHTML = '';
+
+    const listEl = document.createElement('div');
+    listEl.className = 'bfp-list';
+    renderFolderItems(listEl, items);
+    popup.appendChild(listEl);
+
+    const sep = document.createElement('div');
+    sep.className = 'bfp-separator';
+    popup.appendChild(sep);
+
+    const actionsEl = document.createElement('div');
+    actionsEl.className = 'bfp-actions';
+
+    const actionItems = [
+      { label: '新建书签', action: () => showBookmarkDialog(false, null, folderId) },
+      { label: '新建文件夹', action: () => showFolderDialog(false, null, folderId) },
+      { label: '编辑文件夹', action: () => showFolderDialog(true, { id: folderId, title: folderTitle }) },
+      { label: '删除文件夹', action: () => deleteBookmarkFolder(folderId) },
+    ];
+
+    actionItems.forEach(item => {
+      const btn = document.createElement('div');
+      btn.className = 'bfp-item';
+      btn.textContent = item.label;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeBookmarkFolderPopup();
+        item.action();
+      });
+      actionsEl.appendChild(btn);
+    });
+
+    popup.appendChild(actionsEl);
+
+    popup.style.display = 'block';
+
+    // Position: edge-aware
+    const POPUP_WIDTH = 280;
+    let left = x;
+    if (left + POPUP_WIDTH > window.innerWidth - 8) {
+      left = Math.max(8, window.innerWidth - POPUP_WIDTH - 8);
+    }
+    popup.style.left = left + 'px';
+    popup.style.top = y + 'px';
+  }
+
+  function renderFolderItems(container, items) {
+    items.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'bfp-item';
+
+      if (item.type === 'folder') {
+        el.innerHTML = `<span class="bfp-item__icon bfp-item__icon--folder">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </span>
+        <span class="bfp-item__title">${escapeHtmlAttr(item.title)}</span>
+        <span class="bfp-item__arrow">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </span>`;
+        el.addEventListener('mouseenter', (e) => {
+          clearTimeout(state.subFolderPopupTimeout);
+          state.subFolderPopupTimeout = setTimeout(() => {
+            showSubFolderPopup(item, el);
+          }, 200);
+        });
+      } else {
+        const favicon = item.url ? getGoogleFaviconUrl(item.url) : '';
+        el.innerHTML = `<span class="bfp-item__icon">
+          ${favicon ? `<img src="${escapeHtmlAttr(favicon)}" width="16" height="16" alt="" referrerpolicy="no-referrer" />` : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`
+        }</span>
+        <span class="bfp-item__title">${escapeHtmlAttr(item.title)}</span>`;
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          closeBookmarkFolderPopup();
+          api.navigateTo(item.url);
+        });
+      }
+
+      container.appendChild(el);
+    });
+  }
+
+  function showSubFolderPopup(folder, anchorEl) {
+    removeSubFolderPopup();
+
+    const sub = document.createElement('div');
+    sub.className = 'bfp-sub-popup';
+
+    renderFolderItems(sub, (folder.children || []).map(child => ({
+      id: child.id,
+      title: child.title || (child.type === 'folder' ? '未命名文件夹' : '未命名书签'),
+      url: child.url || '',
+      type: child.type,
+      children: child.type === 'folder' ? child.children : [],
+    })));
+
+    document.body.appendChild(sub);
+
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const SUB_WIDTH = 260;
+    let left = anchorRect.right + 4;
+    if (left + SUB_WIDTH > window.innerWidth - 8) {
+      left = anchorRect.left - SUB_WIDTH - 4;
+    }
+    let top = anchorRect.top;
+    // Keep sub-popup within viewport vertically
+    const estimatedHeight = Math.min(sub.children.length * 34 + 16, 400);
+    if (top + estimatedHeight > window.innerHeight - 8) {
+      top = window.innerHeight - estimatedHeight - 8;
+    }
+
+    sub.style.left = left + 'px';
+    sub.style.top = top + 'px';
+    state.subFolderPopupDiv = sub;
+  }
+
+  function escapeHtmlAttr(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
   }
 
   // ==================== 键盘快捷键 ====================
@@ -1106,6 +1638,49 @@
     });
     state.unsubscribers.push(unsub3);
 
+    // 模态浮层打开时显示网页快照，避免 BrowserView 被移除后白屏
+    if (api.onModalSnapshot) {
+      const unsubSnapshot = api.onModalSnapshot((data) => {
+        const hasSnapshot = Boolean(data && data.dataUrl);
+
+        const finishSnapshot = () => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (api.notifyModalSnapshotReady) {
+                api.notifyModalSnapshotReady();
+              }
+              if (state.modalSnapshotResolver) {
+                const resolve = state.modalSnapshotResolver;
+                state.modalSnapshotResolver = null;
+                resolve(data);
+              }
+            });
+          });
+        };
+
+        if (!hasSnapshot) {
+          dom.contentSnapshot.style.backgroundImage = '';
+          dom.contentSnapshot.classList.remove('content-snapshot--visible');
+          finishSnapshot();
+          return;
+        }
+
+        const image = new Image();
+        image.onload = () => {
+          dom.contentSnapshot.style.backgroundImage = `url("${data.dataUrl}")`;
+          dom.contentSnapshot.classList.add('content-snapshot--visible');
+          finishSnapshot();
+        };
+        image.onerror = () => {
+          dom.contentSnapshot.style.backgroundImage = '';
+          dom.contentSnapshot.classList.remove('content-snapshot--visible');
+          finishSnapshot();
+        };
+        image.src = data.dataUrl;
+      });
+      state.unsubscribers.push(unsubSnapshot);
+    }
+
     // 加载进度
     const unsub4 = api.onLoadingProgress((data) => {
       if (data.tabId === state.activeTabId) {
@@ -1120,6 +1695,10 @@
       console.log('[Renderer] 下载更新:', data.filename, data.state);
     });
     state.unsubscribers.push(unsub5);
+
+    // 书签文件夹弹出菜单
+    const unsubFolderMenu = api.onBookmarkFolderMenuOpen(handleBookmarkFolderMenuOpen);
+    state.unsubscribers.push(unsubFolderMenu);
   }
 
   // ==================== 菜单事件处理 ====================

@@ -12,6 +12,8 @@ const IPC_CHANNELS = {
   WINDOW_IS_MAXIMIZED: 'window:isMaximized',
   WINDOW_STATE_CHANGED: 'window:stateChanged',
   UI_MODAL_CHANGED: 'ui:modalChanged',
+  UI_MODAL_SNAPSHOT: 'ui:modalSnapshot',
+  UI_MODAL_SNAPSHOT_READY: 'ui:modalSnapshotReady',
 
   // 标签页管理
   TAB_CREATE: 'tab:create',
@@ -47,6 +49,7 @@ const IPC_CHANNELS = {
   BOOKMARKS_IS_BOOKMARKED: 'bookmarks:isBookmarked',
   BOOKMARKS_CONTEXT_MENU: 'bookmarks:contextMenu',
   BOOKMARKS_FOLDER_MENU: 'bookmarks:folderMenu',
+  BOOKMARKS_FOLDER_MENU_OPEN: 'bookmarks:folderMenuOpen',
   BOOKMARKS_BAR_CONTEXT_MENU: 'bookmarks:barContextMenu',
   BOOKMARKS_IMPORT: 'bookmarks:import',
   BOOKMARKS_EXPORT: 'bookmarks:export',
@@ -122,6 +125,7 @@ const DEFAULT_SETTINGS = {
   enablePopups: false,
   doNotTrack: false,
   clearOnExit: false,
+  siteExtensionPermissions: {},
 };
 
 // ==================== 搜索引擎 ====================

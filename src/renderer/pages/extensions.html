@@ -5,171 +5,656 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>扩展程序</title>
   <style>
+    :root {
+      --ext-bg: #ffffff;
+      --ext-sidebar-bg: #f5f5f5;
+      --ext-sidebar-hover: rgba(0,0,0,0.055);
+      --ext-sidebar-selected: rgba(0,0,0,0.08);
+      --ext-sidebar-selected-text: #0067c0;
+      --ext-border: #e3e3e3;
+      --ext-text: #202124;
+      --ext-text-secondary: #666;
+      --ext-text-tertiary: #999;
+      --ext-card-bg: #ffffff;
+      --ext-card-border: #e3e3e3;
+      --ext-input-bg: #ffffff;
+      --ext-input-border: #d1d1d1;
+      --ext-accent: #0067c0;
+      --ext-accent-light: rgba(0,103,192,0.16);
+      --ext-danger: #c42b1c;
+      --ext-danger-hover: rgba(196,43,28,0.08);
+      --ext-toggle-on: #34a853;
+      --ext-toggle-off: #b0b0b0;
+      --ext-toggle-knob: #ffffff;
+      --ext-scrollbar: rgba(0,0,0,0.28);
+      --ext-scrollbar-hover: rgba(0,0,0,0.45);
+      --ext-link: #0067c0;
+      --ext-card-hover-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --ext-group-title-color: #202124;
+      --ext-button-bg: #ffffff;
+      --ext-button-border: #d1d1d1;
+      --ext-button-hover-bg: rgba(0,0,0,0.04);
+      --ext-button-text: #202124;
+      --ext-dev-button-bg: #ffffff;
+      --ext-dev-button-border: #0067c0;
+      --ext-dev-button-text: #0067c0;
+      --ext-dev-button-hover-bg: rgba(0,103,192,0.06);
+    }
+
+    [data-theme="dark"] {
+      --ext-bg: #1e1e26;
+      --ext-sidebar-bg: #26262e;
+      --ext-sidebar-hover: rgba(255,255,255,0.07);
+      --ext-sidebar-selected: rgba(255,255,255,0.11);
+      --ext-sidebar-selected-text: #70b5ff;
+      --ext-border: #3b3b45;
+      --ext-text: #f3f3f3;
+      --ext-text-secondary: #aaa;
+      --ext-text-tertiary: #777;
+      --ext-card-bg: #2a2a34;
+      --ext-card-border: #3b3b45;
+      --ext-input-bg: #2b2b34;
+      --ext-input-border: #444;
+      --ext-accent: #70b5ff;
+      --ext-accent-light: rgba(112,181,255,0.18);
+      --ext-danger: #ff8a80;
+      --ext-danger-hover: rgba(255,138,128,0.1);
+      --ext-toggle-on: #34a853;
+      --ext-toggle-off: #5a5a5a;
+      --ext-toggle-knob: #ffffff;
+      --ext-scrollbar: rgba(255,255,255,0.28);
+      --ext-scrollbar-hover: rgba(255,255,255,0.45);
+      --ext-link: #70b5ff;
+      --ext-card-hover-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      --ext-group-title-color: #f3f3f3;
+      --ext-button-bg: #2a2a34;
+      --ext-button-border: #444;
+      --ext-button-hover-bg: rgba(255,255,255,0.06);
+      --ext-button-text: #e8eaed;
+      --ext-dev-button-bg: #2a2a34;
+      --ext-dev-button-border: #70b5ff;
+      --ext-dev-button-text: #70b5ff;
+      --ext-dev-button-hover-bg: rgba(112,181,255,0.08);
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
       font-size: 14px;
-      background: #202124;
-      color: #e8eaed;
+      background: var(--ext-bg);
+      color: var(--ext-text);
+      display: flex;
+    }
+
+    /* ==================== Scrollbar ==================== */
+    .custom-scroll {
+      scrollbar-width: thin;
+      scrollbar-color: var(--ext-scrollbar) transparent;
+    }
+    .custom-scroll::-webkit-scrollbar { width: 10px; }
+    .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: var(--ext-scrollbar);
+      border: 2px solid transparent;
+      border-radius: 6px;
+      background-clip: padding-box;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: var(--ext-scrollbar-hover);
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+
+    /* ==================== Sidebar ==================== */
+    .sidebar {
+      width: 240px;
+      min-width: 240px;
       height: 100vh;
+      background: var(--ext-sidebar-bg);
+      border-right: 1px solid var(--ext-border);
+      display: flex;
+      flex-direction: column;
       overflow-y: auto;
     }
-    .page { max-width: 860px; margin: 0 auto; padding: 40px 24px; }
-    .page__header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 28px;
-      flex-wrap: wrap;
+    .sidebar__title {
+      padding: 24px 16px 16px;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--ext-text);
+      line-height: 28px;
     }
-    .edge-install {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
+    .sidebar__search {
+      margin: 0 12px 16px;
+      position: relative;
     }
-    .edge-install input {
-      flex: 1;
-      min-width: 260px;
-      padding: 8px 12px;
-      border: 1px solid #5f6368;
+    .sidebar__search input {
+      width: 100%;
+      height: 32px;
+      padding: 0 12px 0 34px;
+      border: 1px solid var(--ext-input-border);
       border-radius: 6px;
-      background: #303134;
-      color: #e8eaed;
+      background: var(--ext-input-bg);
+      color: var(--ext-text);
       font-size: 13px;
+      line-height: 20px;
       outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
-    .edge-install input:focus {
-      border-color: #8ab4f8;
+    .sidebar__search input:hover { border-color: var(--ext-text-secondary); }
+    .sidebar__search input:focus {
+      border-color: var(--ext-accent);
+      box-shadow: 0 0 0 2px var(--ext-accent-light);
     }
-    h1 { font-size: 24px; font-weight: 400; color: #ffffff; }
-    .subtitle { color: #80868b; font-size: 13px; margin-top: 6px; }
-    .page__actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .btn {
-      padding: 8px 14px;
-      border: 1px solid #5f6368;
+    .sidebar__search input::placeholder { color: var(--ext-text-tertiary); }
+    .sidebar__search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      color: var(--ext-text-secondary);
+      pointer-events: none;
+    }
+    .sidebar__nav { flex: 1; }
+    .sidebar__nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 9px 16px;
+      border: none;
       border-radius: 6px;
       background: transparent;
-      color: #8ab4f8;
+      color: var(--ext-text);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 20px;
+      text-align: left;
+      transition: background 0.15s, color 0.15s;
+    }
+    .sidebar__nav-item:hover { background: var(--ext-sidebar-hover); }
+    .sidebar__nav-item.active {
+      background: var(--ext-sidebar-selected);
+      color: var(--ext-sidebar-selected-text);
+    }
+    .sidebar__nav-item svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+    .sidebar__store-link {
+      display: block;
+      padding: 12px 16px;
+      color: var(--ext-link);
+      font-size: 13px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .sidebar__store-link:hover {
+      background: var(--ext-sidebar-hover);
+    }
+    .sidebar__dev-mode {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      border-top: 1px solid var(--ext-border);
+    }
+    .sidebar__dev-mode-label {
+      font-size: 13px;
+      color: var(--ext-text);
+      line-height: 20px;
+    }
+
+    /* Toggle switch */
+    .toggle-switch {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .toggle-switch input { display: none; }
+    .toggle-switch__slider {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--ext-toggle-off);
+      border-radius: 22px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-switch__slider::before {
+      content: '';
+      position: absolute;
+      left: 3px;
+      top: 3px;
+      width: 16px;
+      height: 16px;
+      background: var(--ext-toggle-knob);
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-switch__slider { background: var(--ext-toggle-on); }
+    .toggle-switch input:checked + .toggle-switch__slider::before { transform: translateX(18px); }
+
+    /* ==================== Main content ==================== */
+    .main {
+      flex: 1;
+      min-width: 0;
+      height: 100vh;
+      overflow-y: auto;
+      padding: 32px 40px;
+    }
+    .main__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .main__title {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--ext-text);
+      line-height: 30px;
+    }
+    .main__dev-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn-dev {
+      display: inline-flex;
+      align-items: center;
+      height: 32px;
+      padding: 0 14px;
+      border: 1px solid var(--ext-dev-button-border);
+      border-radius: 6px;
+      background: var(--ext-dev-button-bg);
+      color: var(--ext-dev-button-text);
       cursor: pointer;
       font-size: 13px;
+      line-height: 20px;
       transition: background 0.15s, border-color 0.15s;
+      white-space: nowrap;
     }
-    .btn:hover { background: rgba(138,180,248,0.1); border-color: #8ab4f8; }
-    .btn:disabled { opacity: 0.5; cursor: default; }
-    .status {
+    .btn-dev:hover { background: var(--ext-dev-button-hover-bg); }
+    .btn-dev:disabled { opacity: 0.5; cursor: default; }
+
+    /* ==================== Status ==================== */
+    .status-bar {
       padding: 10px 14px;
       border-radius: 6px;
       margin-bottom: 16px;
+      font-size: 13px;
+      line-height: 20px;
       background: rgba(52,168,83,0.12);
       border: 1px solid #34a853;
+      color: #1e7e34;
+    }
+    [data-theme="dark"] .status-bar {
+      background: rgba(52,168,83,0.12);
+      border-color: #34a853;
       color: #81c995;
     }
-    .status--error {
-      background: rgba(242,139,130,0.12);
-      border-color: #f28b82;
-      color: #f28b82;
+    .status-bar--error {
+      background: rgba(234,67,53,0.1) !important;
+      border-color: #ea4335 !important;
+      color: #c42b1c !important;
     }
-    .empty { text-align: center; padding: 64px 20px; color: #5f6368; }
-    .empty__icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+    [data-theme="dark"] .status-bar--error {
+      background: rgba(242,139,130,0.12) !important;
+      border-color: #f28b82 !important;
+      color: #f28b82 !important;
+    }
+    .status-bar[hidden] { display: none; }
+
+    /* ==================== Group ==================== */
+    .ext-group { margin-bottom: 32px; }
+    .ext-group__title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--ext-group-title-color);
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--ext-border);
+      margin-bottom: 16px;
+    }
+
+    /* ==================== Extension card ==================== */
     .ext-card {
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      background: var(--ext-card-bg);
+      border: 1px solid var(--ext-card-border);
+      border-radius: 8px;
+      margin-bottom: 12px;
+      transition: box-shadow 0.15s;
+    }
+    .ext-card:hover { box-shadow: var(--ext-card-hover-shadow); }
+    .ext-card.hidden { display: none; }
+    .ext-card__top {
       display: flex;
       align-items: flex-start;
       gap: 14px;
-      padding: 16px;
-      background: #292a2d;
-      border: 1px solid #3c4043;
-      border-radius: 8px;
-      margin-bottom: 12px;
     }
     .ext-card__icon {
-      width: 40px;
-      height: 40px;
+      width: 44px;
+      height: 44px;
       border-radius: 8px;
-      background: #3c4043;
+      background: var(--ext-sidebar-bg);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 22px;
+      font-size: 20px;
       flex-shrink: 0;
       overflow: hidden;
+      border: 1px solid var(--ext-border);
     }
-    .ext-card__icon img { width: 40px; height: 40px; object-fit: contain; }
+    .ext-card__icon img { width: 44px; height: 44px; object-fit: contain; }
     .ext-card__body { flex: 1; min-width: 0; }
-    .ext-card__name { font-size: 15px; font-weight: 500; color: #e8eaed; }
-    .ext-card__version { color: #9aa0a6; font-size: 12px; font-weight: 400; margin-left: 8px; }
-    .ext-card__desc { color: #9aa0a6; font-size: 12px; line-height: 1.5; margin-top: 4px; }
-    .ext-card__path {
-      color: #5f6368;
-      font-size: 11px;
-      margin-top: 6px;
+    .ext-card__name-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 2px;
+    }
+    .ext-card__name {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--ext-text);
+      line-height: 22px;
+    }
+    .ext-card__version { color: var(--ext-text-tertiary); font-size: 12px; font-weight: 400; }
+    .ext-card__desc {
+      color: var(--ext-text-secondary);
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
       overflow: hidden;
-      text-overflow: ellipsis;
+    }
+    .ext-card__meta {
+      color: var(--ext-text-tertiary);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+    .ext-card__meta span { display: inline; }
+    .ext-card__meta-tag {
+      display: inline-block;
+      padding: 0 6px;
+      margin-right: 4px;
+      border: 1px solid var(--ext-border);
+      border-radius: 4px;
+      background: var(--ext-sidebar-bg);
+      font-size: 10px;
+      color: var(--ext-text-secondary);
+      vertical-align: middle;
+    }
+    .ext-card__actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .ext-card__bottom {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--ext-border);
+    }
+    .btn-card {
+      display: inline-flex;
+      align-items: center;
+      height: 30px;
+      padding: 0 12px;
+      border: 1px solid var(--ext-button-border);
+      border-radius: 6px;
+      background: var(--ext-button-bg);
+      color: var(--ext-button-text);
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 18px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn-card:hover { background: var(--ext-button-hover-bg); }
+    .btn-card--danger {
+      color: var(--ext-danger);
+      border-color: var(--ext-danger);
+    }
+    .btn-card--danger:hover { background: var(--ext-danger-hover); }
+
+    /* ==================== Empty / placeholder ==================== */
+    .empty-state {
+      text-align: center;
+      padding: 64px 20px;
+      color: var(--ext-text-tertiary);
+    }
+    .empty-state__title {
+      font-size: 15px;
+      color: var(--ext-text-secondary);
+      margin-top: 8px;
+    }
+    .empty-state__desc {
+      font-size: 13px;
+      color: var(--ext-text-tertiary);
+      margin-top: 4px;
+    }
+
+    /* ==================== Keyboard shortcuts placeholder ==================== */
+    .shortcuts-placeholder {
+      padding: 40px;
+      text-align: center;
+      color: var(--ext-text-secondary);
+      font-size: 14px;
+    }
+
+    /* ==================== Edge store top row (sidebar bottom) ==================== */
+    .sidebar__bottom {
+      padding: 12px 16px;
+      border-top: 1px solid var(--ext-border);
+    }
+    .sidebar__bottom input {
+      width: 100%;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--ext-input-border);
+      border-radius: 6px;
+      background: var(--ext-input-bg);
+      color: var(--ext-text);
+      font-size: 12px;
+      line-height: 18px;
+      outline: none;
+      margin-bottom: 6px;
+      transition: border-color 0.15s;
+    }
+    .sidebar__bottom input:hover { border-color: var(--ext-text-secondary); }
+    .sidebar__bottom input:focus { border-color: var(--ext-accent); box-shadow: 0 0 0 2px var(--ext-accent-light); }
+    .sidebar__bottom input::placeholder { color: var(--ext-text-tertiary); }
+    .sidebar__store-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-store {
+      flex: 1;
+      height: 28px;
+      padding: 0 8px;
+      border: 1px solid var(--ext-input-border);
+      border-radius: 6px;
+      background: var(--ext-input-bg);
+      color: var(--ext-text);
+      cursor: pointer;
+      font-size: 11px;
       white-space: nowrap;
+      transition: background 0.15s;
     }
-    .ext-card__actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-    .toggle-switch { position: relative; width: 40px; height: 22px; display: inline-block; }
-    .toggle-switch input { display: none; }
-    .toggle-switch__slider {
-      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-      background: #5f6368; border-radius: 22px; cursor: pointer; transition: 0.2s;
-    }
-    .toggle-switch__slider::before {
-      content: ''; position: absolute; left: 2px; bottom: 2px;
-      width: 18px; height: 18px; background: #ffffff; border-radius: 50%; transition: 0.2s;
-    }
-    .toggle-switch input:checked + .toggle-switch__slider { background: #8ab4f8; }
-    .toggle-switch input:checked + .toggle-switch__slider::before { transform: translateX(18px); }
-    .btn--danger { color: #f28b82; border-color: #f28b82; }
-    .btn--danger:hover { background: rgba(242,139,130,0.1); }
-    @media (max-width: 640px) {
-      .page { padding: 24px 16px; }
-      .page__header { flex-direction: column; }
-      .ext-card { flex-direction: column; }
+    .btn-store:hover { background: var(--ext-sidebar-hover); }
+
+    /* ==================== Responsive ==================== */
+    @media (max-width: 768px) {
+      .sidebar { width: 200px; min-width: 200px; }
+      .main { padding: 24px 20px; }
+      .main__header { flex-direction: column; align-items: flex-start; }
+      .ext-card__top { flex-direction: column; }
       .ext-card__actions { width: 100%; justify-content: flex-end; }
     }
   </style>
 </head>
 <body>
-  <div class="page">
-    <div class="page__header">
-      <div>
-        <h1>扩展程序</h1>
-        <p class="subtitle">安装和管理浏览器扩展</p>
+  <!-- ==================== Left Sidebar ==================== -->
+  <aside class="sidebar custom-scroll">
+    <div class="sidebar__title">扩展</div>
+
+    <div class="sidebar__search">
+      <svg class="sidebar__search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"></circle>
+        <path d="m21 21-4.35-4.35"></path>
+      </svg>
+      <input type="text" id="searchInput" placeholder="搜索已安装的扩展" />
+    </div>
+
+    <nav class="sidebar__nav">
+      <button class="sidebar__nav-item active" data-view="my-extensions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="9" height="9" rx="2"></rect>
+          <rect x="13" y="3" width="9" height="9" rx="2"></rect>
+          <rect x="2" y="14" width="9" height="9" rx="2"></rect>
+          <rect x="13" y="14" width="9" height="9" rx="2"></rect>
+        </svg>
+        <span>我的扩展</span>
+      </button>
+      <button class="sidebar__nav-item" data-view="shortcuts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="6" cy="12" r="4"></circle>
+          <path d="M9.75 9.75 21 3"></path>
+          <circle cx="18" cy="12" r="4"></circle>
+          <path d="M14.56 16.68 3 21"></path>
+        </svg>
+        <span>键盘快捷方式</span>
+      </button>
+    </nav>
+
+    <a class="sidebar__store-link" id="btnOpenEdgeStore" tabindex="0">
+      获取 Microsoft Edge 扩展
+    </a>
+
+    <div class="sidebar__dev-mode">
+      <span class="sidebar__dev-mode-label">开发人员模式</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="devModeToggle" />
+        <span class="toggle-switch__slider"></span>
+      </label>
+    </div>
+
+    <div class="sidebar__bottom">
+      <input type="text" id="edgeStoreInput" placeholder="粘贴 Edge 扩展 ID 或链接" />
+      <div class="sidebar__store-actions">
+        <button class="btn-store" id="btnInstallFromEdge">从商店安装</button>
       </div>
-      <div class="page__actions">
-        <button class="btn" id="btnInstallFile" type="button">安装扩展 (.crx/.zip)</button>
-        <button class="btn" id="btnInstallUnpacked" type="button">加载已解压扩展</button>
+    </div>
+  </aside>
+
+  <!-- ==================== Right Main Content ==================== -->
+  <main class="main custom-scroll" id="mainContent">
+    <!-- My Extensions View -->
+    <div id="view-my-extensions">
+      <div class="main__header">
+        <h2 class="main__title">已安装的扩展</h2>
+        <div class="main__dev-actions" id="devActions">
+          <button class="btn-dev" id="btnInstallUnpacked">加载解压缩的扩展</button>
+          <button class="btn-dev" id="btnInstallFile">打包扩展</button>
+          <button class="btn-dev" id="btnUpdate">更新</button>
+        </div>
+      </div>
+
+      <div id="status" class="status-bar" hidden></div>
+
+      <div id="extensionsList">
+        <div class="empty-state">
+          <div class="empty-state__title">暂无已安装的扩展程序</div>
+          <div class="empty-state__desc">从 Microsoft Edge 扩展应用商店或本地加载扩展以开始使用</div>
+        </div>
       </div>
     </div>
 
-    <div class="edge-install">
-      <input id="edgeStoreInput" type="text" placeholder="粘贴微软 Edge 扩展链接或 32 位扩展 ID" />
-      <button class="btn" id="btnOpenEdgeStore" type="button">打开微软扩展商店</button>
-      <button class="btn" id="btnInstallFromEdge" type="button">从商店安装</button>
-    </div>
-
-    <div id="status" class="status" hidden></div>
-    <div id="extensionsList">
-      <div class="empty">
-        <div class="empty__icon">🧩</div>
-        <div>暂无已安装的扩展程序</div>
+    <!-- Keyboard Shortcuts View -->
+    <div id="view-shortcuts" style="display:none;">
+      <div class="main__header">
+        <h2 class="main__title">键盘快捷方式</h2>
       </div>
+      <div class="shortcuts-placeholder">暂无已配置的键盘快捷方式</div>
     </div>
-  </div>
+  </main>
 
   <script>
     const api = window.NeutronBrowser || {};
-    const listEl = document.getElementById('extensionsList');
+
+    // DOM refs
+    const searchInput = document.getElementById('searchInput');
+    const devModeToggle = document.getElementById('devModeToggle');
+    const devActions = document.getElementById('devActions');
+    const extensionsList = document.getElementById('extensionsList');
     const statusEl = document.getElementById('status');
+    const viewMyExtensions = document.getElementById('view-my-extensions');
+    const viewShortcuts = document.getElementById('view-shortcuts');
+
     const btnInstallFile = document.getElementById('btnInstallFile');
     const btnInstallUnpacked = document.getElementById('btnInstallUnpacked');
+    const btnUpdate = document.getElementById('btnUpdate');
     const btnOpenEdgeStore = document.getElementById('btnOpenEdgeStore');
     const btnInstallFromEdge = document.getElementById('btnInstallFromEdge');
     const edgeStoreInput = document.getElementById('edgeStoreInput');
 
+    // ==================== Theme ====================
+    async function applyTheme() {
+      const theme = await api.getTheme();
+      const resolved = theme === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : (theme || 'light');
+      document.documentElement.setAttribute('data-theme', resolved);
+    }
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', async () => {
+      const theme = await api.getTheme();
+      if (theme === 'system') {
+        const resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', resolved);
+      }
+    });
+
+    // ==================== Navigation ====================
+    document.querySelectorAll('.sidebar__nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.sidebar__nav-item').forEach(el => el.classList.remove('active'));
+        item.classList.add('active');
+        const view = item.dataset.view;
+        viewMyExtensions.style.display = view === 'my-extensions' ? '' : 'none';
+        viewShortcuts.style.display = view === 'shortcuts' ? '' : 'none';
+      });
+    });
+
+    // ==================== Dev mode toggle ====================
+    devModeToggle.addEventListener('change', () => {
+      devActions.style.display = devModeToggle.checked ? '' : 'none';
+      loadExtensions();
+    });
+
+    // ==================== Search filter ====================
+    searchInput.addEventListener('input', () => {
+      const query = searchInput.value.toLowerCase().trim();
+      document.querySelectorAll('.ext-card').forEach(card => {
+        const name = (card.dataset.extName || '').toLowerCase();
+        const desc = (card.dataset.extDesc || '').toLowerCase();
+        card.classList.toggle('hidden', query !== '' && !name.includes(query) && !desc.includes(query));
+      });
+    });
+
+    // ==================== Helpers ====================
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text || '';
@@ -179,109 +664,146 @@
     function showStatus(message, isError) {
       statusEl.hidden = false;
       statusEl.textContent = message;
-      statusEl.className = 'status' + (isError ? ' status--error' : '');
+      statusEl.className = 'status-bar' + (isError ? ' status-bar--error' : '');
       clearTimeout(showStatus.timer);
-      showStatus.timer = setTimeout(() => {
-        statusEl.hidden = true;
-      }, 5000);
+      showStatus.timer = setTimeout(() => { statusEl.hidden = true; }, 5000);
     }
 
     function setBusy(busy) {
       btnInstallFile.disabled = busy;
       btnInstallUnpacked.disabled = busy;
-      btnOpenEdgeStore.disabled = busy;
+      btnUpdate.disabled = busy;
       btnInstallFromEdge.disabled = busy;
       edgeStoreInput.disabled = busy;
     }
 
+    // ==================== Render extensions ====================
     function renderExtensions(extensions) {
       if (!extensions || extensions.length === 0) {
-        listEl.innerHTML = '<div class="empty"><div class="empty__icon">🧩</div><div>暂无已安装的扩展程序</div></div>';
+        extensionsList.innerHTML = `<div class="empty-state">
+          <div class="empty-state__title">暂无已安装的扩展程序</div>
+          <div class="empty-state__desc">从 Microsoft Edge 扩展应用商店或本地加载扩展以开始使用</div>
+        </div>`;
         return;
       }
 
-      listEl.innerHTML = '';
-      extensions.forEach((ext) => {
-        const card = document.createElement('div');
-        card.className = 'ext-card';
+      const hasDevMode = devModeToggle.checked;
 
-        const icon = document.createElement('div');
-        icon.className = 'ext-card__icon';
-        if (ext.icon) {
-          const img = document.createElement('img');
-          img.src = 'file:///' + ext.icon.replace(/\\/g, '/');
-          img.alt = '';
-          icon.appendChild(img);
-        } else {
-          icon.textContent = '🧩';
-        }
+      // Group by source
+      const storeExts = extensions.filter(e => e.source && e.source !== 'local');
+      const localExts = extensions.filter(e => !e.source || e.source === 'local');
 
-        const body = document.createElement('div');
-        body.className = 'ext-card__body';
+      let html = '';
 
-        const name = document.createElement('div');
-        name.className = 'ext-card__name';
-        name.innerHTML = `${escapeHtml(ext.name)}<span class="ext-card__version">v${escapeHtml(ext.version)}</span>`;
+      if (storeExts.length > 0) {
+        html += `<div class="ext-group">
+          <div class="ext-group__title">来自 Microsoft Edge 扩展应用商店</div>`;
+        storeExts.forEach(ext => { html += buildCard(ext, hasDevMode); });
+        html += `</div>`;
+      }
 
-        const desc = document.createElement('div');
-        desc.className = 'ext-card__desc';
-        desc.textContent = ext.description || '暂无描述';
+      if (localExts.length > 0) {
+        html += `<div class="ext-group">
+          <div class="ext-group__title">来自其他来源</div>`;
+        localExts.forEach(ext => { html += buildCard(ext, hasDevMode); });
+        html += `</div>`;
+      }
 
-        const extPath = document.createElement('div');
-        extPath.className = 'ext-card__path';
-        extPath.textContent = ext.path || '';
+      extensionsList.innerHTML = html;
 
-        body.appendChild(name);
-        body.appendChild(desc);
-        body.appendChild(extPath);
-
-        const actions = document.createElement('div');
-        actions.className = 'ext-card__actions';
-
-        const toggleLabel = document.createElement('label');
-        toggleLabel.className = 'toggle-switch';
-        const toggle = document.createElement('input');
-        toggle.type = 'checkbox';
-        toggle.checked = !!ext.enabled;
-        const slider = document.createElement('span');
-        slider.className = 'toggle-switch__slider';
-        toggleLabel.appendChild(toggle);
-        toggleLabel.appendChild(slider);
-
+      // Attach toggle listeners
+      extensionsList.querySelectorAll('.ext-toggle').forEach(toggle => {
         toggle.addEventListener('change', async () => {
-          const result = await api.toggleExtension(ext.id);
+          const extId = toggle.dataset.extId;
+          const result = await api.toggleExtension(extId);
           if (!result.success) {
-            toggle.checked = !!ext.enabled;
+            toggle.checked = !toggle.checked;
             showStatus(result.message || '切换失败', true);
           }
           loadExtensions();
         });
+      });
 
-        const uninstallBtn = document.createElement('button');
-        uninstallBtn.className = 'btn btn--danger';
-        uninstallBtn.type = 'button';
-        uninstallBtn.textContent = '卸载';
-        uninstallBtn.addEventListener('click', async () => {
-          if (!confirm(`确定卸载 ${ext.name} 吗？`)) return;
-          const result = await api.uninstallExtension(ext.id);
-          showStatus(result.success ? '已卸载' : result.message || '卸载失败', !result.success);
+      // Attach delete button listeners
+      extensionsList.querySelectorAll('.btn-delete').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const extId = btn.dataset.extId;
+          const extName = btn.dataset.extName;
+          if (!confirm(`确定要删除「${extName}」吗？`)) return;
+          const result = await api.uninstallExtension(extId);
+          showStatus(result.success ? '已删除' : result.message || '删除失败', !result.success);
           loadExtensions();
         });
+      });
 
-        actions.appendChild(toggleLabel);
-        actions.appendChild(uninstallBtn);
-        card.appendChild(icon);
-        card.appendChild(body);
-        card.appendChild(actions);
-        listEl.appendChild(card);
+      // Attach details button listeners
+      extensionsList.querySelectorAll('.btn-details').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const extId = btn.dataset.extId;
+          const extName = btn.dataset.extName;
+          const card = btn.closest('.ext-card');
+          const infoParts = [];
+          if (card) {
+            const metaEl = card.querySelector('.ext-card__meta');
+            if (metaEl) infoParts.push(metaEl.textContent);
+          }
+          showStatus(extName + ' — ' + extId + (infoParts.length ? '\n' + infoParts.join('\n') : ''), false);
+        });
       });
     }
 
+    function buildCard(ext, hasDevMode) {
+      const iconHtml = ext.icon
+        ? `<img src="file:///${(ext.icon || '').replace(/\\/g, '/')}" alt="" />`
+        : '';
+      const viewInfo = ext.viewInfo || '';
+      const viewInfoLabel = ext.backgroundType === 'service_worker' ? 'Service worker' : '';
+
+      let metaLines = [];
+      if (hasDevMode && ext.id) {
+        metaLines.push(`<span>ID: ${escapeHtml(ext.id)}</span>`);
+      }
+      if (hasDevMode && viewInfo) {
+        const label = viewInfoLabel ? `<span class="ext-card__meta-tag">${escapeHtml(viewInfoLabel)}</span>` : '';
+        metaLines.push(`<span>检查视图: ${label} ${escapeHtml(viewInfo)}</span>`);
+      }
+
+      const metaHtml = metaLines.length > 0
+        ? `<div class="ext-card__meta">${metaLines.join('<br>')}</div>`
+        : '';
+
+      return `<div class="ext-card" data-ext-name="${escapeHtml(ext.name)}" data-ext-desc="${escapeHtml(ext.description || '')}">
+        <div class="ext-card__top">
+          <div class="ext-card__icon">${iconHtml}</div>
+          <div class="ext-card__body">
+            <div class="ext-card__name-row">
+              <span class="ext-card__name">${escapeHtml(ext.name)}</span>
+              <span class="ext-card__version">v${escapeHtml(ext.version || '')}</span>
+            </div>
+            <div class="ext-card__desc">${escapeHtml(ext.description || '暂无描述')}</div>
+            ${metaHtml}
+          </div>
+          <div class="ext-card__actions">
+            <label class="toggle-switch">
+              <input type="checkbox" class="ext-toggle" data-ext-id="${escapeHtml(ext.id)}" ${ext.enabled ? 'checked' : ''} />
+              <span class="toggle-switch__slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="ext-card__bottom">
+          <button class="btn-card btn-details" data-ext-id="${escapeHtml(ext.id)}" data-ext-name="${escapeHtml(ext.name)}">详细信息</button>
+          <button class="btn-card btn-card--danger btn-delete" data-ext-id="${escapeHtml(ext.id)}" data-ext-name="${escapeHtml(ext.name)}">删除</button>
+        </div>
+      </div>`;
+    }
+
+    // ==================== Load extensions ====================
     async function loadExtensions() {
       const extensions = await api.getExtensions();
       renderExtensions(extensions || []);
     }
 
+    // ==================== Event bindings ====================
     btnInstallFile.addEventListener('click', async () => {
       setBusy(true);
       const result = await api.installExtension();
@@ -298,17 +820,22 @@
       loadExtensions();
     });
 
-    btnOpenEdgeStore.addEventListener('click', () => {
+    btnUpdate.addEventListener('click', () => {
+      loadExtensions();
+      showStatus('已刷新扩展列表', false);
+    });
+
+    btnOpenEdgeStore.addEventListener('click', (e) => {
+      e.preventDefault();
       api.createTab('https://microsoftedge.microsoft.com/addons');
     });
 
     btnInstallFromEdge.addEventListener('click', async () => {
       const input = edgeStoreInput.value.trim();
       if (!input) {
-        showStatus('请粘贴微软 Edge 扩展链接或 32 位扩展 ID', true);
+        showStatus('请粘贴 Edge 扩展链接或 32 位扩展 ID', true);
         return;
       }
-
       setBusy(true);
       const result = await api.installFromEdgeStore(input);
       setBusy(false);
@@ -317,6 +844,9 @@
       loadExtensions();
     });
 
+    // ==================== Init ====================
+    applyTheme();
+    devActions.style.display = devModeToggle.checked ? '' : 'none';
     loadExtensions();
   </script>
 </body>

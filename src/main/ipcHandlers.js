@@ -56,6 +56,11 @@ function registerIpcHandlers() {
     if (wm) wm.setModalVisible(visible === true);
   });
 
+  ipcMain.on(IPC_CHANNELS.UI_MODAL_SNAPSHOT_READY, () => {
+    const wm = getWM();
+    if (wm) wm.resolveModalSnapshot();
+  });
+
   // ==================== 标签页管理 ====================
   ipcMain.handle(IPC_CHANNELS.TAB_CREATE, (event, { url, active }) => {
     const wm = getWM();
@@ -219,6 +224,12 @@ function registerIpcHandlers() {
       { label: '在新标签页中后台打开', click: () => wm.createTab(bookmark.url, false) },
       { type: 'separator' },
       {
+        label: '新建文件夹',
+        click: () => sendMenuEvent('createBookmarkFolder', {
+          parentId: bookmark.parentId || 'bookmark_bar',
+        }),
+      },
+      {
         label: '编辑',
         click: () => wm.mainWindow.webContents.send(IPC_CHANNELS.MENU_EVENT, {
           action: 'editBookmark',
@@ -249,51 +260,23 @@ function registerIpcHandlers() {
     if (!wm || !wm.mainWindow || !payload || !payload.folder) return;
 
     const folder = payload.folder;
-    const buildFolderItems = (parent) => {
-      const items = [];
-      for (const child of (parent.children || [])) {
-        if (child.type === 'folder') {
-          items.push({
-            label: child.title || '未命名文件夹',
-            submenu: buildFolderItems(child),
-          });
-        } else if (child.type === 'bookmark') {
-          items.push({
-            label: child.title || child.url || '未命名书签',
-            click: () => wm.createTab(child.url),
-          });
-        }
-      }
-      if (items.length === 0) {
-        items.push({ label: '空文件夹', enabled: false });
-      }
-      return items;
+    const buildItems = (parent) => {
+      return (parent.children || []).map(child => ({
+        id: child.id,
+        title: child.title || (child.type === 'folder' ? '未命名文件夹' : '未命名书签'),
+        url: child.url || '',
+        type: child.type,
+        children: child.type === 'folder' ? buildItems(child) : [],
+      }));
     };
 
-    const template = [
-      ...buildFolderItems(folder),
-      { type: 'separator' },
-      {
-        label: '新建书签',
-        click: () => sendMenuEvent('addBookmarkToFolder', { folderId: folder.id }),
-      },
-      {
-        label: '新建文件夹',
-        click: () => sendMenuEvent('createBookmarkFolder', { parentId: folder.id }),
-      },
-      { type: 'separator' },
-      {
-        label: '编辑文件夹',
-        click: () => sendMenuEvent('editBookmarkFolder', { folder }),
-      },
-      {
-        label: '删除文件夹',
-        click: () => sendMenuEvent('deleteBookmarkFolder', { folderId: folder.id }),
-      },
-    ];
-
-    const menu = Menu.buildFromTemplate(template);
-    menu.popup({ window: wm.mainWindow });
+    wm.mainWindow.webContents.send(IPC_CHANNELS.BOOKMARKS_FOLDER_MENU_OPEN, {
+      folderId: folder.id,
+      folderTitle: folder.title || '未命名文件夹',
+      x: payload.x,
+      y: payload.y,
+      items: buildItems(folder),
+    });
   });
 
   ipcMain.on(IPC_CHANNELS.BOOKMARKS_BAR_CONTEXT_MENU, (event, payload) => {
