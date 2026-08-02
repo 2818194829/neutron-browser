@@ -112,6 +112,8 @@ const IPC_CHANNELS = {
 // ==================== 默认设置 ====================
 const DEFAULT_SETTINGS = {
   theme: 'system',           // 'light' | 'dark' | 'system'
+  accentColor: 'blue',       // 强调色: 'blue' | 'red' | 'green' | 'purple' | 'orange' | 'pink' | 'teal'
+  themeSkin: 'default',      // 主题皮肤: 'default' | 'ocean' | 'forest' | 'sunset' | 'midnight' | 'rose'
   searchEngine: 'google',
   searchEngines: [
     { id: 'google', name: 'Google', url: 'https://www.google.com/search?q=%s' },

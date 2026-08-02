@@ -73,6 +73,12 @@
   /* 窗口控件 */
   --window-control-hover: rgba(0, 0, 0, 0.08);
   --window-control-close-hover: #ea4335;
+
+  /* 强调色聚焦光环（默认蓝色） */
+  --accent-ring: rgba(26, 115, 232, 0.15);
+
+  /* 书签栏文件夹文字颜色（皮肤下变为白色） */
+  --bookmark-folder-color: var(--accent-primary);
 }
 
 /* ==================== CSS 变量 - 暗色主题 ==================== */
@@ -121,6 +127,521 @@
   --modal-backdrop: rgba(0, 0, 0, 0.6);
 
   --window-control-hover: rgba(255, 255, 255, 0.1);
+
+  --accent-ring: rgba(138, 180, 248, 0.25);
+}
+
+/* ============================================================
+   强调色系统 (data-accent)
+   通过 <html data-accent="..."> 切换，与明暗主题正交组合
+   ============================================================ */
+/* blue 为默认强调色，值已在 :root / [data-theme="dark"] 定义 */
+
+[data-accent="red"] {
+  --accent-primary: #d93025;
+  --accent-primary-hover: #b3261e;
+  --accent-primary-light: #fce8e6;
+  --accent-ring: rgba(217, 48, 37, 0.15);
+}
+[data-theme="dark"][data-accent="red"] {
+  --accent-primary: #f28b82;
+  --accent-primary-hover: #f6aea9;
+  --accent-primary-light: #5f1613;
+  --accent-ring: rgba(242, 139, 130, 0.25);
+}
+
+[data-accent="green"] {
+  --accent-primary: #188038;
+  --accent-primary-hover: #0d652d;
+  --accent-primary-light: #e6f4ea;
+  --accent-ring: rgba(24, 128, 56, 0.15);
+}
+[data-theme="dark"][data-accent="green"] {
+  --accent-primary: #81c995;
+  --accent-primary-hover: #a8dab5;
+  --accent-primary-light: #173d1e;
+  --accent-ring: rgba(129, 201, 149, 0.25);
+}
+
+[data-accent="purple"] {
+  --accent-primary: #7c3aed;
+  --accent-primary-hover: #6d28d9;
+  --accent-primary-light: #f3e8ff;
+  --accent-ring: rgba(124, 58, 237, 0.15);
+}
+[data-theme="dark"][data-accent="purple"] {
+  --accent-primary: #b39ddb;
+  --accent-primary-hover: #ce93d8;
+  --accent-primary-light: #3d2b63;
+  --accent-ring: rgba(179, 157, 219, 0.25);
+}
+
+[data-accent="orange"] {
+  --accent-primary: #ea8600;
+  --accent-primary-hover: #c2410c;
+  --accent-primary-light: #fff3e0;
+  --accent-ring: rgba(234, 134, 0, 0.15);
+}
+[data-theme="dark"][data-accent="orange"] {
+  --accent-primary: #ffb74d;
+  --accent-primary-hover: #ffcc80;
+  --accent-primary-light: #5f3a08;
+  --accent-ring: rgba(255, 183, 77, 0.25);
+}
+
+[data-accent="pink"] {
+  --accent-primary: #d81b60;
+  --accent-primary-hover: #ad1457;
+  --accent-primary-light: #fce4ec;
+  --accent-ring: rgba(216, 27, 96, 0.15);
+}
+[data-theme="dark"][data-accent="pink"] {
+  --accent-primary: #f48fb1;
+  --accent-primary-hover: #f8bbd0;
+  --accent-primary-light: #5f2040;
+  --accent-ring: rgba(244, 143, 177, 0.25);
+}
+
+[data-accent="teal"] {
+  --accent-primary: #00897b;
+  --accent-primary-hover: #00695c;
+  --accent-primary-light: #e0f2f1;
+  --accent-ring: rgba(0, 137, 123, 0.15);
+}
+[data-theme="dark"][data-accent="teal"] {
+  --accent-primary: #80cbc4;
+  --accent-primary-hover: #a0dcd5;
+  --accent-primary-light: #14413d;
+  --accent-ring: rgba(128, 203, 196, 0.25);
+}
+
+/* ============================================================
+   主题皮肤系统 (data-skin)
+   通过 <html data-skin="..."> 切换工具栏/标签栏色带（Edge 风格）
+   皮肤 = 渐变 chrome 色带 + 浮起的激活标签页
+   ============================================================ */
+
+/* ---- Ocean（海洋蓝渐变） ---- */
+[data-skin="ocean"] {
+  --titlebar-bg: linear-gradient(135deg, #0d47a1, #1565c0);
+  --toolbar-bg: linear-gradient(135deg, #1565c0, #1e88e5);
+  --bookmark-bar-bg: #1e88e5;
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+  --tab-bg: rgba(255, 255, 255, 0.14);
+  --tab-hover-bg: rgba(255, 255, 255, 0.24);
+  --tab-active-bg: #ffffff;
+  --text-primary: #1c2b3a;
+  --text-secondary: rgba(255, 255, 255, 0.92);
+  --text-tertiary: rgba(255, 255, 255, 0.75);
+  --address-bar-bg: rgba(255, 255, 255, 0.92);
+  --address-bar-focus-bg: #ffffff;
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.16);
+  --bg-hover: rgba(255, 255, 255, 0.16);
+  --bg-active: rgba(255, 255, 255, 0.26);
+  --border-color: rgba(255, 255, 255, 0.22);
+}
+[data-theme="dark"][data-skin="ocean"] {
+  --titlebar-bg: linear-gradient(135deg, #0a2e68, #0d47a1);
+  --toolbar-bg: linear-gradient(135deg, #0d47a1, #1565c0);
+  --bookmark-bar-bg: #1565c0;
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+  --tab-bg: rgba(255, 255, 255, 0.08);
+  --tab-hover-bg: rgba(255, 255, 255, 0.14);
+  --tab-active-bg: rgba(255, 255, 255, 0.18);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.9);
+  --text-tertiary: rgba(255, 255, 255, 0.72);
+  --address-bar-bg: rgba(0, 0, 0, 0.32);
+  --address-bar-focus-bg: rgba(0, 0, 0, 0.5);
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.14);
+  --bg-hover: rgba(255, 255, 255, 0.14);
+  --bg-active: rgba(255, 255, 255, 0.24);
+  --border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* ---- Forest（森林绿渐变） ---- */
+[data-skin="forest"] {
+  --titlebar-bg: linear-gradient(135deg, #1b5e20, #2e7d32);
+  --toolbar-bg: linear-gradient(135deg, #2e7d32, #43a047);
+  --bookmark-bar-bg: #43a047;
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+  --tab-bg: rgba(255, 255, 255, 0.14);
+  --tab-hover-bg: rgba(255, 255, 255, 0.24);
+  --tab-active-bg: #ffffff;
+  --text-primary: #1c2b1a;
+  --text-secondary: rgba(255, 255, 255, 0.92);
+  --text-tertiary: rgba(255, 255, 255, 0.75);
+  --address-bar-bg: rgba(255, 255, 255, 0.92);
+  --address-bar-focus-bg: #ffffff;
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.16);
+  --bg-hover: rgba(255, 255, 255, 0.16);
+  --bg-active: rgba(255, 255, 255, 0.26);
+  --border-color: rgba(255, 255, 255, 0.22);
+}
+[data-theme="dark"][data-skin="forest"] {
+  --titlebar-bg: linear-gradient(135deg, #123f15, #1b5e20);
+  --toolbar-bg: linear-gradient(135deg, #1b5e20, #2e7d32);
+  --bookmark-bar-bg: #2e7d32;
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+  --tab-bg: rgba(255, 255, 255, 0.08);
+  --tab-hover-bg: rgba(255, 255, 255, 0.14);
+  --tab-active-bg: rgba(255, 255, 255, 0.18);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.9);
+  --text-tertiary: rgba(255, 255, 255, 0.72);
+  --address-bar-bg: rgba(0, 0, 0, 0.32);
+  --address-bar-focus-bg: rgba(0, 0, 0, 0.5);
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.14);
+  --bg-hover: rgba(255, 255, 255, 0.14);
+  --bg-active: rgba(255, 255, 255, 0.24);
+  --border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* ---- Sunset（日落橙红渐变） ---- */
+[data-skin="sunset"] {
+  --titlebar-bg: linear-gradient(135deg, #bf360c, #e64a19);
+  --toolbar-bg: linear-gradient(135deg, #e64a19, #f4511e);
+  --bookmark-bar-bg: #f4511e;
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+  --tab-bg: rgba(255, 255, 255, 0.14);
+  --tab-hover-bg: rgba(255, 255, 255, 0.24);
+  --tab-active-bg: #ffffff;
+  --text-primary: #3a2418;
+  --text-secondary: rgba(255, 255, 255, 0.92);
+  --text-tertiary: rgba(255, 255, 255, 0.75);
+  --address-bar-bg: rgba(255, 255, 255, 0.92);
+  --address-bar-focus-bg: #ffffff;
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.16);
+  --bg-hover: rgba(255, 255, 255, 0.16);
+  --bg-active: rgba(255, 255, 255, 0.26);
+  --border-color: rgba(255, 255, 255, 0.22);
+}
+[data-theme="dark"][data-skin="sunset"] {
+  --titlebar-bg: linear-gradient(135deg, #7f2a0e, #a53614);
+  --toolbar-bg: linear-gradient(135deg, #a53614, #bf360c);
+  --bookmark-bar-bg: #bf360c;
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+  --tab-bg: rgba(255, 255, 255, 0.08);
+  --tab-hover-bg: rgba(255, 255, 255, 0.14);
+  --tab-active-bg: rgba(255, 255, 255, 0.18);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.9);
+  --text-tertiary: rgba(255, 255, 255, 0.72);
+  --address-bar-bg: rgba(0, 0, 0, 0.32);
+  --address-bar-focus-bg: rgba(0, 0, 0, 0.5);
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.14);
+  --bg-hover: rgba(255, 255, 255, 0.14);
+  --bg-active: rgba(255, 255, 255, 0.24);
+  --border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* ---- Midnight（午夜深紫渐变） ---- */
+[data-skin="midnight"] {
+  --titlebar-bg: linear-gradient(135deg, #311b92, #4527a0);
+  --toolbar-bg: linear-gradient(135deg, #4527a0, #5e35b1);
+  --bookmark-bar-bg: #5e35b1;
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+  --tab-bg: rgba(255, 255, 255, 0.14);
+  --tab-hover-bg: rgba(255, 255, 255, 0.24);
+  --tab-active-bg: #ffffff;
+  --text-primary: #1c1b2e;
+  --text-secondary: rgba(255, 255, 255, 0.92);
+  --text-tertiary: rgba(255, 255, 255, 0.75);
+  --address-bar-bg: rgba(255, 255, 255, 0.92);
+  --address-bar-focus-bg: #ffffff;
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.16);
+  --bg-hover: rgba(255, 255, 255, 0.16);
+  --bg-active: rgba(255, 255, 255, 0.26);
+  --border-color: rgba(255, 255, 255, 0.22);
+}
+[data-theme="dark"][data-skin="midnight"] {
+  --titlebar-bg: linear-gradient(135deg, #1a0f4a, #2c1a6e);
+  --toolbar-bg: linear-gradient(135deg, #2c1a6e, #311b92);
+  --bookmark-bar-bg: #311b92;
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+  --tab-bg: rgba(255, 255, 255, 0.08);
+  --tab-hover-bg: rgba(255, 255, 255, 0.14);
+  --tab-active-bg: rgba(255, 255, 255, 0.18);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.9);
+  --text-tertiary: rgba(255, 255, 255, 0.72);
+  --address-bar-bg: rgba(0, 0, 0, 0.32);
+  --address-bar-focus-bg: rgba(0, 0, 0, 0.5);
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.14);
+  --bg-hover: rgba(255, 255, 255, 0.14);
+  --bg-active: rgba(255, 255, 255, 0.24);
+  --border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* ---- Rose（玫瑰粉紫渐变） ---- */
+[data-skin="rose"] {
+  --titlebar-bg: linear-gradient(135deg, #ad1457, #c2185b);
+  --toolbar-bg: linear-gradient(135deg, #c2185b, #d81b60);
+  --bookmark-bar-bg: #d81b60;
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+  --tab-bg: rgba(255, 255, 255, 0.14);
+  --tab-hover-bg: rgba(255, 255, 255, 0.24);
+  --tab-active-bg: #ffffff;
+  --text-primary: #2e1a24;
+  --text-secondary: rgba(255, 255, 255, 0.92);
+  --text-tertiary: rgba(255, 255, 255, 0.75);
+  --address-bar-bg: rgba(255, 255, 255, 0.92);
+  --address-bar-focus-bg: #ffffff;
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.16);
+  --bg-hover: rgba(255, 255, 255, 0.16);
+  --bg-active: rgba(255, 255, 255, 0.26);
+  --border-color: rgba(255, 255, 255, 0.22);
+}
+[data-theme="dark"][data-skin="rose"] {
+  --titlebar-bg: linear-gradient(135deg, #5c0a2c, #7a0f3b);
+  --toolbar-bg: linear-gradient(135deg, #7a0f3b, #8e1450);
+  --bookmark-bar-bg: #8e1450;
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+  --tab-bg: rgba(255, 255, 255, 0.08);
+  --tab-hover-bg: rgba(255, 255, 255, 0.14);
+  --tab-active-bg: rgba(255, 255, 255, 0.18);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.9);
+  --text-tertiary: rgba(255, 255, 255, 0.72);
+  --address-bar-bg: rgba(0, 0, 0, 0.32);
+  --address-bar-focus-bg: rgba(0, 0, 0, 0.5);
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.14);
+  --bg-hover: rgba(255, 255, 255, 0.14);
+  --bg-active: rgba(255, 255, 255, 0.24);
+  --border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* ============================================================
+   花纹 & 动漫氛围皮肤（data-skin 扩展）
+   用 CSS 图案层叠加渐变模拟纹理/日系动漫配色
+   通用规则共享文字、地址栏、hover 等变量，每套只配颜色带
+   ============================================================ */
+
+/* ---- 花纹/动漫皮肤通用规则（浅色） ---- */
+[data-skin="wave"],
+[data-skin="checker"],
+[data-skin="starfield"],
+[data-skin="sakura"],
+[data-skin="mint"],
+[data-skin="dusk"] {
+  --tab-bg: rgba(255, 255, 255, 0.14);
+  --tab-hover-bg: rgba(255, 255, 255, 0.24);
+  --tab-active-bg: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.92);
+  --text-tertiary: rgba(255, 255, 255, 0.75);
+  --address-bar-bg: rgba(255, 255, 255, 0.92);
+  --address-bar-focus-bg: #ffffff;
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.16);
+  --bg-hover: rgba(255, 255, 255, 0.16);
+  --bg-active: rgba(255, 255, 255, 0.26);
+  --border-color: rgba(255, 255, 255, 0.22);
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+}
+
+/* ---- 花纹/动漫皮肤通用规则（深色） ---- */
+[data-theme="dark"][data-skin="wave"],
+[data-theme="dark"][data-skin="checker"],
+[data-theme="dark"][data-skin="starfield"],
+[data-theme="dark"][data-skin="sakura"],
+[data-theme="dark"][data-skin="mint"],
+[data-theme="dark"][data-skin="dusk"] {
+  --tab-bg: rgba(255, 255, 255, 0.08);
+  --tab-hover-bg: rgba(255, 255, 255, 0.14);
+  --tab-active-bg: rgba(255, 255, 255, 0.18);
+  --text-secondary: rgba(255, 255, 255, 0.9);
+  --text-tertiary: rgba(255, 255, 255, 0.72);
+  --address-bar-bg: rgba(0, 0, 0, 0.32);
+  --address-bar-focus-bg: rgba(0, 0, 0, 0.5);
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.14);
+  --bg-hover: rgba(255, 255, 255, 0.14);
+  --bg-active: rgba(255, 255, 255, 0.24);
+  --border-color: rgba(255, 255, 255, 0.14);
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+}
+
+/* ---- Wave 波纹（水蓝色） ---- */
+[data-skin="wave"] {
+  --titlebar-bg:
+    repeating-radial-gradient(circle at 50% 120%, rgba(255, 255, 255, 0.16) 0 7px, transparent 7px 20px),
+    linear-gradient(160deg, #4fc3f7, #0277bd);
+  --toolbar-bg:
+    repeating-radial-gradient(circle at 50% 120%, rgba(255, 255, 255, 0.14) 0 7px, transparent 7px 20px),
+    linear-gradient(160deg, #29b6f6, #0277bd);
+  --bookmark-bar-bg: #0277bd;
+  --text-primary: #042f4a;
+}
+[data-theme="dark"][data-skin="wave"] {
+  --titlebar-bg:
+    repeating-radial-gradient(circle at 50% 120%, rgba(255, 255, 255, 0.12) 0 7px, transparent 7px 20px),
+    linear-gradient(160deg, #01579b, #002f6c);
+  --toolbar-bg:
+    repeating-radial-gradient(circle at 50% 120%, rgba(255, 255, 255, 0.10) 0 7px, transparent 7px 20px),
+    linear-gradient(160deg, #014a8c, #002f6c);
+  --bookmark-bar-bg: #002f6c;
+  --text-primary: #ffffff;
+}
+
+/* ---- Checker 棋盘（灰黑格子） ---- */
+[data-skin="checker"] {
+  --titlebar-bg:
+    repeating-conic-gradient(rgba(255, 255, 255, 0.12) 0% 25%, rgba(255, 255, 255, 0.03) 0% 50%) 0 0 / 26px 26px,
+    linear-gradient(160deg, #78909c, #37474f);
+  --toolbar-bg:
+    repeating-conic-gradient(rgba(255, 255, 255, 0.10) 0% 25%, rgba(255, 255, 255, 0.02) 0% 50%) 0 0 / 26px 26px,
+    linear-gradient(160deg, #607d8b, #37474f);
+  --bookmark-bar-bg: #37474f;
+  --text-primary: #102027;
+}
+[data-theme="dark"][data-skin="checker"] {
+  --titlebar-bg:
+    repeating-conic-gradient(rgba(255, 255, 255, 0.10) 0% 25%, rgba(255, 255, 255, 0.02) 0% 50%) 0 0 / 26px 26px,
+    linear-gradient(160deg, #37474f, #101820);
+  --toolbar-bg:
+    repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, rgba(255, 255, 255, 0.02) 0% 50%) 0 0 / 26px 26px,
+    linear-gradient(160deg, #2f3e46, #101820);
+  --bookmark-bar-bg: #101820;
+  --text-primary: #ffffff;
+}
+
+/* ---- Starfield 星空（深蓝星点） ---- */
+[data-skin="starfield"] {
+  --titlebar-bg:
+    radial-gradient(1.5px 1.5px at 15% 30%, rgba(255, 255, 255, 0.9) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 30% 70%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 55% 25%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 72% 60%, rgba(255, 255, 255, 0.6) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 88% 35%, rgba(255, 255, 255, 0.85) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 42% 85%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    linear-gradient(160deg, #1e3a8a, #0b1026);
+  --toolbar-bg:
+    radial-gradient(1.5px 1.5px at 18% 40%, rgba(255, 255, 255, 0.85) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 40% 70%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 62% 25%, rgba(255, 255, 255, 0.75) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 85% 60%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
+    linear-gradient(160deg, #16266b, #0b1026);
+  --bookmark-bar-bg: #0b1026;
+  --text-primary: #0b1026;
+}
+[data-theme="dark"][data-skin="starfield"] {
+  --titlebar-bg:
+    radial-gradient(1.5px 1.5px at 15% 30%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 30% 70%, rgba(255, 255, 255, 0.6) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 55% 25%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 72% 60%, rgba(255, 255, 255, 0.55) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 88% 35%, rgba(255, 255, 255, 0.75) 50%, transparent 51%),
+    linear-gradient(160deg, #101b4d, #050814);
+  --toolbar-bg:
+    radial-gradient(1.5px 1.5px at 18% 40%, rgba(255, 255, 255, 0.75) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 40% 70%, rgba(255, 255, 255, 0.55) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 62% 25%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 85% 60%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    linear-gradient(160deg, #0b1333, #050814);
+  --bookmark-bar-bg: #050814;
+  --text-primary: #ffffff;
+}
+
+/* ---- Sakura 樱花（粉色花瓣氛围） ---- */
+[data-skin="sakura"] {
+  --titlebar-bg:
+    radial-gradient(2px 2px at 12% 25%, rgba(255, 255, 255, 0.85) 50%, transparent 51%),
+    radial-gradient(2px 2px at 28% 60%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    radial-gradient(2px 2px at 45% 30%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
+    radial-gradient(2px 2px at 62% 70%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    radial-gradient(2px 2px at 80% 40%, rgba(255, 255, 255, 0.85) 50%, transparent 51%),
+    radial-gradient(2px 2px at 92% 75%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    linear-gradient(160deg, #ffd6e0, #ff8fab);
+  --toolbar-bg:
+    radial-gradient(2px 2px at 16% 35%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
+    radial-gradient(2px 2px at 38% 65%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    radial-gradient(2px 2px at 58% 28%, rgba(255, 255, 255, 0.75) 50%, transparent 51%),
+    radial-gradient(2px 2px at 82% 60%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
+    linear-gradient(160deg, #ffb7c5, #ff7f9e);
+  --bookmark-bar-bg: #ff7f9e;
+  --text-primary: #5c1f3a;
+}
+[data-theme="dark"][data-skin="sakura"] {
+  --titlebar-bg:
+    radial-gradient(2px 2px at 12% 25%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    radial-gradient(2px 2px at 28% 60%, rgba(255, 255, 255, 0.55) 50%, transparent 51%),
+    radial-gradient(2px 2px at 45% 30%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    radial-gradient(2px 2px at 62% 70%, rgba(255, 255, 255, 0.5) 50%, transparent 51%),
+    radial-gradient(2px 2px at 80% 40%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    linear-gradient(160deg, #8f4a63, #5c1f3a);
+  --toolbar-bg:
+    radial-gradient(2px 2px at 16% 35%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    radial-gradient(2px 2px at 38% 65%, rgba(255, 255, 255, 0.5) 50%, transparent 51%),
+    radial-gradient(2px 2px at 58% 28%, rgba(255, 255, 255, 0.6) 50%, transparent 51%),
+    linear-gradient(160deg, #7a3a54, #4a142e);
+  --bookmark-bar-bg: #4a142e;
+  --text-primary: #ffffff;
+}
+
+/* ---- Mint 薄荷（青绿动漫风） ---- */
+[data-skin="mint"] {
+  --titlebar-bg:
+    radial-gradient(1.5px 1.5px at 18% 35%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 40% 65%, rgba(255, 255, 255, 0.6) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 65% 28%, rgba(255, 255, 255, 0.75) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 85% 70%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    linear-gradient(160deg, #1de9b6, #00b0ff);
+  --toolbar-bg:
+    radial-gradient(1.5px 1.5px at 20% 40%, rgba(255, 255, 255, 0.75) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 45% 65%, rgba(255, 255, 255, 0.55) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 70% 30%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    linear-gradient(160deg, #00cfa0, #0091ea);
+  --bookmark-bar-bg: #0091ea;
+  --text-primary: #00352a;
+}
+[data-theme="dark"][data-skin="mint"] {
+  --titlebar-bg:
+    radial-gradient(1.5px 1.5px at 18% 35%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 40% 65%, rgba(255, 255, 255, 0.5) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 65% 28%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    linear-gradient(160deg, #00897b, #01579b);
+  --toolbar-bg:
+    radial-gradient(1.5px 1.5px at 20% 40%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 45% 65%, rgba(255, 255, 255, 0.45) 50%, transparent 51%),
+    linear-gradient(160deg, #007a6e, #014a8c);
+  --bookmark-bar-bg: #014a8c;
+  --text-primary: #ffffff;
+}
+
+/* ---- Dusk 动漫黄昏（橙粉紫 + 云纹） ---- */
+[data-skin="dusk"] {
+  --titlebar-bg:
+    radial-gradient(ellipse 55% 45% at 25% 100%, rgba(255, 255, 255, 0.16) 0%, transparent 70%),
+    radial-gradient(ellipse 45% 40% at 70% 100%, rgba(255, 255, 255, 0.13) 0%, transparent 70%),
+    linear-gradient(160deg, #ff9a9e, #ffd1a1 45%, #a18cd1);
+  --toolbar-bg:
+    radial-gradient(ellipse 55% 45% at 25% 100%, rgba(255, 255, 255, 0.14) 0%, transparent 70%),
+    radial-gradient(ellipse 45% 40% at 70% 100%, rgba(255, 255, 255, 0.11) 0%, transparent 70%),
+    linear-gradient(160deg, #ff8a94, #ffb88c 45%, #8f6fd1);
+  --bookmark-bar-bg: #8f6fd1;
+  --text-primary: #3d2a63;
+}
+[data-theme="dark"][data-skin="dusk"] {
+  --titlebar-bg:
+    radial-gradient(ellipse 55% 45% at 25% 100%, rgba(255, 255, 255, 0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 45% 40% at 70% 100%, rgba(255, 255, 255, 0.10) 0%, transparent 70%),
+    linear-gradient(160deg, #a3464e, #8c5b3a 45%, #4a3a78);
+  --toolbar-bg:
+    radial-gradient(ellipse 55% 45% at 25% 100%, rgba(255, 255, 255, 0.10) 0%, transparent 70%),
+    radial-gradient(ellipse 45% 40% at 70% 100%, rgba(255, 255, 255, 0.08) 0%, transparent 70%),
+    linear-gradient(160deg, #8c3a44, #7a4a2e 45%, #3a2c60);
+  --bookmark-bar-bg: #3a2c60;
+  --text-primary: #ffffff;
 }
 
 /* ==================== 全局重置 ==================== */
@@ -257,7 +778,7 @@ svg {
 
 .tab--active {
   background: var(--tab-active-bg);
-  box-shadow: 0 -1px 0 var(--border-color);
+  box-shadow: 0 -1px 0 var(--border-color), 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .tab--pinned {
@@ -423,11 +944,7 @@ svg {
 .toolbar__address-bar:focus-within {
   background: var(--address-bar-focus-bg);
   border-color: var(--address-bar-focus-border);
-  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15);
-}
-
-[data-theme="dark"] .toolbar__address-bar:focus-within {
-  box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.25);
+  box-shadow: 0 0 0 2px var(--accent-ring);
 }
 
 .address-bar__security {
@@ -584,7 +1101,7 @@ svg {
 }
 
 .bookmark-item--folder {
-  color: var(--accent-primary);
+  color: var(--bookmark-folder-color);
 }
 
 .bookmark-item--folder .bookmark-item__icon {

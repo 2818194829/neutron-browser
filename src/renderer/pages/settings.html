@@ -104,6 +104,79 @@
                     <option value="dark">深色</option>
                   </select>
                 </div>
+
+                <div class="appearance-row appearance-row--vertical">
+                  <div class="appearance-row__text">
+                    <div class="appearance-row__name">强调色</div>
+                    <div class="appearance-row__desc">为激活标签页、按钮和链接选择强调颜色</div>
+                  </div>
+                  <div class="accent-swatches" id="accentSwatches" role="radiogroup" aria-label="强调色">
+                    <button type="button" class="accent-swatch active" data-accent="blue" title="蓝色" aria-label="蓝色" aria-pressed="true"><span class="accent-swatch__dot" style="background:#1a73e8"></span></button>
+                    <button type="button" class="accent-swatch" data-accent="red" title="红色" aria-label="红色" aria-pressed="false"><span class="accent-swatch__dot" style="background:#d93025"></span></button>
+                    <button type="button" class="accent-swatch" data-accent="green" title="绿色" aria-label="绿色" aria-pressed="false"><span class="accent-swatch__dot" style="background:#188038"></span></button>
+                    <button type="button" class="accent-swatch" data-accent="purple" title="紫色" aria-label="紫色" aria-pressed="false"><span class="accent-swatch__dot" style="background:#7c3aed"></span></button>
+                    <button type="button" class="accent-swatch" data-accent="orange" title="橙色" aria-label="橙色" aria-pressed="false"><span class="accent-swatch__dot" style="background:#ea8600"></span></button>
+                    <button type="button" class="accent-swatch" data-accent="pink" title="粉色" aria-label="粉色" aria-pressed="false"><span class="accent-swatch__dot" style="background:#d81b60"></span></button>
+                    <button type="button" class="accent-swatch" data-accent="teal" title="青色" aria-label="青色" aria-pressed="false"><span class="accent-swatch__dot" style="background:#00897b"></span></button>
+                  </div>
+                </div>
+
+                <div class="appearance-row appearance-row--vertical">
+                  <div class="appearance-row__text">
+                    <div class="appearance-row__name">主题皮肤</div>
+                    <div class="appearance-row__desc">为工具栏和标签栏选择配色方案</div>
+                  </div>
+                  <div class="skin-grid" id="skinGrid" role="radiogroup" aria-label="主题皮肤">
+                    <button type="button" class="skin-card active" data-skin="default" title="默认" aria-label="默认" aria-pressed="true">
+                      <span class="skin-card__preview skin-card__preview--default"></span>
+                      <span class="skin-card__name">默认</span>
+                    </button>
+                    <button type="button" class="skin-card" data-skin="ocean" title="海洋" aria-label="海洋" aria-pressed="false">
+                      <span class="skin-card__preview skin-card__preview--ocean"></span>
+                      <span class="skin-card__name">海洋</span>
+                    </button>
+                    <button type="button" class="skin-card" data-skin="forest" title="森林" aria-label="森林" aria-pressed="false">
+                      <span class="skin-card__preview skin-card__preview--forest"></span>
+                      <span class="skin-card__name">森林</span>
+                    </button>
+                    <button type="button" class="skin-card" data-skin="sunset" title="日落" aria-label="日落" aria-pressed="false">
+                      <span class="skin-card__preview skin-card__preview--sunset"></span>
+                      <span class="skin-card__name">日落</span>
+                    </button>
+                    <button type="button" class="skin-card" data-skin="midnight" title="午夜" aria-label="午夜" aria-pressed="false">
+                      <span class="skin-card__preview skin-card__preview--midnight"></span>
+                      <span class="skin-card__name">午夜</span>
+                    </button>
+                    <button type="button" class="skin-card" data-skin="rose" title="玫瑰" aria-label="玫瑰" aria-pressed="false">
+                      <span class="skin-card__preview skin-card__preview--rose"></span>
+                      <span class="skin-card__name">玫瑰</span>
+                    </button>
+                    <button type="button" class="skin-card" data-skin="wave" title="波纹" aria-label="波纹" aria-pressed="false">
+                      <span class="skin-card__preview skin-card__preview--wave"></span>
+                      <span class="skin-card__name">波纹</span>
+                    </button>
+                    <button type="button" class="skin-card" data-skin="checker" title="棋盘" aria-label="棋盘" aria-pressed="false">
+                      <span class="skin-card__preview skin-card__preview--checker"></span>
+                      <span class="skin-card__name">棋盘</span>
+                    </button>
+                    <button type="button" class="skin-card" data-skin="starfield" title="星空" aria-label="星空" aria-pressed="false">
+                      <span class="skin-card__preview skin-card__preview--starfield"></span>
+                      <span class="skin-card__name">星空</span>
+                    </button>
+                    <button type="button" class="skin-card" data-skin="sakura" title="樱花" aria-label="樱花" aria-pressed="false">
+                      <span class="skin-card__preview skin-card__preview--sakura"></span>
+                      <span class="skin-card__name">樱花</span>
+                    </button>
+                    <button type="button" class="skin-card" data-skin="mint" title="薄荷" aria-label="薄荷" aria-pressed="false">
+                      <span class="skin-card__preview skin-card__preview--mint"></span>
+                      <span class="skin-card__name">薄荷</span>
+                    </button>
+                    <button type="button" class="skin-card" data-skin="dusk" title="黄昏" aria-label="黄昏" aria-pressed="false">
+                      <span class="skin-card__preview skin-card__preview--dusk"></span>
+                      <span class="skin-card__name">黄昏</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -356,9 +429,45 @@
       document.documentElement.classList.toggle('dark', resolved === 'dark');
     }
 
+    function applyAccentAndSkin() {
+      const accentBtn = document.querySelector('.accent-swatch.active');
+      const skinBtn = document.querySelector('.skin-card.active');
+      document.documentElement.setAttribute('data-accent', accentBtn ? accentBtn.dataset.accent : 'blue');
+      document.documentElement.setAttribute('data-skin', skinBtn ? skinBtn.dataset.skin : 'default');
+    }
+
+    function selectAccent(accent, save) {
+      document.querySelectorAll('.accent-swatch').forEach((btn) => {
+        const active = btn.dataset.accent === accent;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', String(active));
+      });
+      if (save) {
+        saveSetting('accentColor', accent);
+        api.setSetting('accentColor', accent);
+        applyAccentAndSkin();
+      }
+    }
+
+    function selectSkin(skin, save) {
+      document.querySelectorAll('.skin-card').forEach((btn) => {
+        const active = btn.dataset.skin === skin;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', String(active));
+      });
+      if (save) {
+        saveSetting('themeSkin', skin);
+        api.setSetting('themeSkin', skin);
+        applyAccentAndSkin();
+      }
+    }
+
     async function loadSettings() {
       const settings = await api.getAllSettings();
       applyTheme(settings.theme || 'system');
+      selectAccent(settings.accentColor || 'blue', false);
+      selectSkin(settings.themeSkin || 'default', false);
+      applyAccentAndSkin();
 
       document.getElementById('theme').value = settings.theme || 'system';
       document.getElementById('showBookmarkBar').value = String(settings.showBookmarkBar ?? true);
@@ -529,6 +638,18 @@
       saveSetting('theme', this.value);
       if (api.setTheme) api.setTheme(this.value);
       applyTheme(this.value);
+    });
+
+    document.querySelectorAll('.accent-swatch').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        selectAccent(btn.dataset.accent, true);
+      });
+    });
+
+    document.querySelectorAll('.skin-card').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        selectSkin(btn.dataset.skin, true);
+      });
     });
 
     document.getElementById('showBookmarkBar').addEventListener('change', function() {

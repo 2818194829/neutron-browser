@@ -251,6 +251,180 @@ body {
   flex-shrink: 0;
 }
 
+/* 纵向外观行（强调色 / 皮肤） */
+.appearance-row--vertical {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* 强调色选择器 */
+.accent-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.accent-swatch {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.accent-swatch:hover {
+  transform: scale(1.12);
+}
+
+.accent-swatch.active {
+  border-color: var(--settings-text);
+}
+
+.accent-swatch__dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+
+/* 主题皮肤选择器 */
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.skin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  background: var(--settings-input-bg);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.skin-card:hover {
+  border-color: var(--settings-muted);
+  transform: translateY(-1px);
+}
+
+.skin-card.active {
+  border-color: var(--settings-accent);
+  box-shadow: 0 0 0 2px var(--settings-accent-soft);
+}
+
+.skin-card__preview {
+  display: block;
+  width: 100%;
+  height: 56px;
+  border-radius: 6px;
+  background: var(--settings-bg);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 迷你预览：上方色带 + 浮起的白色激活标签 */
+.skin-card__preview::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  right: 8px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 5px 5px 0 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.skin-card__preview--default {
+  background: linear-gradient(180deg, #e8eaed 0%, #e8eaed 100%);
+}
+
+.skin-card__preview--ocean {
+  background: linear-gradient(135deg, #0d47a1, #1e88e5);
+}
+
+.skin-card__preview--forest {
+  background: linear-gradient(135deg, #1b5e20, #43a047);
+}
+
+.skin-card__preview--sunset {
+  background: linear-gradient(135deg, #bf360c, #f4511e);
+}
+
+.skin-card__preview--midnight {
+  background: linear-gradient(135deg, #311b92, #5e35b1);
+}
+
+.skin-card__preview--rose {
+  background: linear-gradient(135deg, #ad1457, #d81b60);
+}
+
+/* 花纹 / 动漫氛围皮肤预览 */
+.skin-card__preview--wave {
+  background-image:
+    repeating-radial-gradient(circle at 50% 120%, rgba(255, 255, 255, 0.35) 0 4px, transparent 4px 11px),
+    linear-gradient(160deg, #4fc3f7, #0277bd);
+}
+
+.skin-card__preview--checker {
+  background-color: #455a64;
+  background-image: repeating-conic-gradient(rgba(255, 255, 255, 0.28) 0% 25%, rgba(255, 255, 255, 0.06) 0% 50%);
+  background-size: 14px 14px;
+}
+
+.skin-card__preview--starfield {
+  background-image:
+    radial-gradient(1.5px 1.5px at 20% 30%, rgba(255, 255, 255, 0.95) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 45% 65%, rgba(255, 255, 255, 0.75) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 70% 35%, rgba(255, 255, 255, 0.85) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 85% 70%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    linear-gradient(160deg, #1e3a8a, #0b1026);
+}
+
+.skin-card__preview--sakura {
+  background-image:
+    radial-gradient(2px 2px at 18% 30%, rgba(255, 255, 255, 0.9) 50%, transparent 51%),
+    radial-gradient(2px 2px at 42% 65%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    radial-gradient(2px 2px at 65% 35%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
+    radial-gradient(2px 2px at 85% 70%, rgba(255, 255, 255, 0.75) 50%, transparent 51%),
+    linear-gradient(160deg, #ffd6e0, #ff8fab);
+}
+
+.skin-card__preview--mint {
+  background-image:
+    radial-gradient(1.5px 1.5px at 22% 40%, rgba(255, 255, 255, 0.85) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 48% 65%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 72% 32%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
+    linear-gradient(160deg, #1de9b6, #00b0ff);
+}
+
+.skin-card__preview--dusk {
+  background-image:
+    radial-gradient(ellipse 55% 45% at 25% 100%, rgba(255, 255, 255, 0.35) 0%, transparent 70%),
+    radial-gradient(ellipse 45% 40% at 70% 100%, rgba(255, 255, 255, 0.28) 0%, transparent 70%),
+    linear-gradient(160deg, #ff9a9e, #ffd1a1 45%, #a18cd1);
+}
+
+.skin-card__name {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--settings-text);
+  text-align: center;
+}
+
 @media (max-width: 640px) {
   .appearance-row {
     flex-direction: column;

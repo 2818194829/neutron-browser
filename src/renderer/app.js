@@ -113,6 +113,8 @@
     extensionPopupToken: 0,
     modalSnapshotResolver: null,
     theme: 'system',
+    accentColor: 'blue',
+    themeSkin: 'default',
     folderPopupData: null,
     subFolderPopupTimeout: null,
     subFolderPopupDiv: null,
@@ -131,9 +133,15 @@
   async function init() {
     console.log('[Renderer] 初始化中...');
 
-    // 加载主题
+    // 加载外观（主题 + 强调色 + 皮肤）
     state.theme = await api.getTheme();
-    applyTheme(state.theme);
+    const [accentColor, themeSkin] = await Promise.all([
+      api.getSetting('accentColor'),
+      api.getSetting('themeSkin'),
+    ]);
+    state.accentColor = accentColor || 'blue';
+    state.themeSkin = themeSkin || 'default';
+    applyAppearance();
 
     // 加载书签
     state.bookmarks = await api.getBookmarks();
@@ -157,6 +165,15 @@
     bindIPCListeners();
     bindDragAndDrop();
 
+    // 监听设置页主题/强调色/皮肤变更
+    if (api.onThemeChanged) {
+      const unsubTheme = api.onThemeChanged((theme) => {
+        state.theme = theme;
+        applyAppearance();
+      });
+      state.unsubscribers.push(unsubTheme);
+    }
+
     // 监听来自系统菜单的事件
     const unsubMenu = api.onMenuEvent(handleMenuEvent);
     state.unsubscribers.push(unsubMenu);
@@ -164,14 +181,17 @@
     console.log('[Renderer] 初始化完成');
   }
 
-  // ==================== 主题 ====================
-  function applyTheme(theme) {
-    if (theme === 'system') {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
-    } else {
-      document.documentElement.setAttribute('data-theme', theme);
+  // ==================== 外观 ====================
+  function resolveTheme(theme) {
+    return theme === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : theme;
     }
+
+  function applyAppearance() {
+    document.documentElement.setAttribute('data-theme', resolveTheme(state.theme));
+    document.documentElement.setAttribute('data-accent', state.accentColor || 'blue');
+    document.documentElement.setAttribute('data-skin', state.themeSkin || 'default');
   }
 
   // 监听系统主题变化
@@ -207,6 +227,15 @@
       const unsubSettings = api.onSettingsChanged(({ key, value }) => {
         if (key === 'showHomeButton') {
           dom.btnHome.style.display = value === false ? 'none' : '';
+        } else if (key === 'accentColor') {
+          state.accentColor = value || 'blue';
+          applyAppearance();
+        } else if (key === 'themeSkin') {
+          state.themeSkin = value || 'default';
+          applyAppearance();
+        } else if (key === 'theme') {
+          state.theme = value || 'system';
+          applyAppearance();
         }
       });
       state.unsubscribers.push(unsubSettings);
