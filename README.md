@@ -2,11 +2,11 @@
 
 Neutron Browser 是一款基于 Electron 的现代 PC 级浏览器，支持多标签页、书签管理、历史记录、下载管理、扩展安装，以及接近 Edge 的网页右键菜单体验。
 
-当前版本：**1.8.1**
+当前版本：**1.8.2**
 
 GitHub：[https://github.com/2818194829/neutron-browser](https://github.com/2818194829/neutron-browser)
 
-Release：[v1.8.1](https://github.com/2818194829/neutron-browser/releases/tag/v1.8.1)
+Release：[v1.8.2](https://github.com/2818194829/neutron-browser/releases/tag/v1.8.2)
 
 ## 功能特性
 
@@ -102,7 +102,7 @@ npm run build:installer
 生成位置：
 
 ```text
-build\Neutron Browser Setup 1.8.1.exe
+build\Neutron Browser Setup 1.8.2.exe
 ```
 
 安装包支持：
@@ -229,6 +229,13 @@ npm run build:win
 - 暂不支持完整 Manifest V3 后台 Service Worker 生态
 
 ## 版本记录
+
+### 1.8.2
+
+- **下载完成状态修复**：下载到 100% 后不再残留满格进度条，完成后立即切换为绿色「已完成」状态
+- **完成态快捷操作**：已完成下载项新增「打开文件」与「在文件夹中显示」按钮，无需悬停即可操作
+- **打开失败明确反馈**：打开文件失败（文件被占用 / 被锁定等）时自动定位到所在文件夹并给出提示，不再「没反应」
+- **文件缺失提示**：文件不存在或已被移动时，打开文件 / 在文件夹中显示会给出明确提示
 
 ### 1.8.1
 

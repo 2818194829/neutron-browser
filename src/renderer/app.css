@@ -1564,6 +1564,22 @@ svg {
   color: var(--text-tertiary);
 }
 
+/* 完成态状态文字（绿色） */
+.download-item__state-text--done {
+  color: #188038;
+  margin-right: 8px;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .download-item__state-text--done {
+  color: #81c995;
+}
+
+/* 状态行内多个操作按钮间距 */
+.download-item__status-row .download-item__open + .download-item__open {
+  margin-left: 12px;
+}
+
 /* 完成态：蓝色「打开文件」文字链接 */
 .download-item__open {
   padding: 0;

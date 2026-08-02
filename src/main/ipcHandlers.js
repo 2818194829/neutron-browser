@@ -856,20 +856,28 @@ function registerIpcHandlers() {
     const items = getStore('downloads').get('items', []);
     const item = items.find(d => d.id === id);
     const savePath = resolveDownloadPath(item);
-    if (savePath) {
-      shell.showItemInFolder(savePath);
+    if (!savePath) {
+      return { ok: false, error: '文件不存在' };
     }
-    return true;
+    shell.showItemInFolder(savePath);
+    return { ok: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_OPEN_FILE, (event, { id }) => {
+  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_OPEN_FILE, async (event, { id }) => {
     const items = getStore('downloads').get('items', []);
     const item = items.find(d => d.id === id);
     const savePath = resolveDownloadPath(item);
-    if (savePath) {
-      shell.openPath(savePath);
+    if (!savePath) {
+      return { ok: false, error: '文件不存在' };
     }
-    return true;
+    const err = await shell.openPath(savePath);
+    if (err) {
+      // 打开失败（常见于 .exe 被占用/杀软锁定等）：自动定位到所在文件夹，
+      // 避免用户点击后「没反应」
+      shell.showItemInFolder(savePath);
+      return { ok: false, error: err, fallback: true };
+    }
+    return { ok: true };
   });
 
   ipcMain.handle(IPC_CHANNELS.DOWNLOADS_OPEN_DIRECTORY, () => {

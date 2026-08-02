@@ -1283,10 +1283,17 @@
 
   // 构建单个下载项行（对标 Chromium 下载气泡：左图标 + 文件名/状态行，纵向紧凑布局）
   function buildDownloadRow(item) {
+    // 兜底：数据已 100% 接收（receivedBytes >= totalBytes）但状态仍为 in_progress 时，
+    // 一律按「已完成」展示，避免下载完成后残留满格进度条
+    const state = (item.state === 'in_progress' && item.totalBytes > 0 &&
+                   item.receivedBytes >= item.totalBytes)
+      ? 'completed'
+      : item.state;
+
     const row = document.createElement('div');
     row.className = 'download-item';
     row.dataset.id = item.id;
-    if (item.state === 'deleted' || item.state === 'cancelled') row.classList.add('download-item--inactive');
+    if (state === 'deleted' || state === 'cancelled') row.classList.add('download-item--inactive');
 
     // 文件图标：优先显示真实系统图标（资源管理器风格，异步获取），加载期间/文件不存在时用类型 SVG 兜底
     const icon = document.createElement('div');
@@ -1320,7 +1327,7 @@
     const statusRow = document.createElement('div');
     statusRow.className = 'download-item__status-row';
 
-    if (item.state === 'in_progress' || item.state === 'paused') {
+    if (state === 'in_progress' || state === 'paused') {
       // 轻量进度：品牌色细进度条 + 百分比/大小/速度
       const progressRow = document.createElement('div');
       progressRow.className = 'download-item__progress-row';
@@ -1328,7 +1335,7 @@
       barWrap.className = 'download-item__progress';
       const bar = document.createElement('div');
       bar.className = 'download-item__progress-bar';
-      if (item.state === 'paused') bar.classList.add('download-item__progress-bar--paused');
+      if (state === 'paused') bar.classList.add('download-item__progress-bar--paused');
       const percent = item.totalBytes > 0
         ? Math.min(100, Math.round((item.receivedBytes / item.totalBytes) * 100))
         : 0;
@@ -1340,17 +1347,38 @@
       progressRow.appendChild(barWrap);
       progressRow.appendChild(info);
       statusRow.appendChild(progressRow);
-    } else if (item.state === 'completed') {
-      // 蓝色「打开文件」文字链接
+    } else if (state === 'completed') {
+      // 已完成：绿色状态提示 + 「打开文件」/「在文件夹中显示」
+      const doneText = document.createElement('span');
+      doneText.className = 'download-item__state-text download-item__state-text--done';
+      doneText.textContent = '已完成';
+      statusRow.appendChild(doneText);
+
       const open = document.createElement('button');
       open.type = 'button';
       open.className = 'download-item__open';
       open.textContent = '打开文件';
       open.addEventListener('click', async (e) => {
         e.stopPropagation();
-        await api.openDownloadFile(item.id);
+        const res = await api.openDownloadFile(item.id);
+        if (res && res.ok === false) {
+          showToast(res.fallback ? '打开失败，已定位到所在文件夹' : '文件不存在或已被移动', 'error');
+        }
       });
       statusRow.appendChild(open);
+
+      const showFolder = document.createElement('button');
+      showFolder.type = 'button';
+      showFolder.className = 'download-item__open';
+      showFolder.textContent = '在文件夹中显示';
+      showFolder.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const res = await api.openDownloadFolder(item.id);
+        if (res && res.ok === false) {
+          showToast('文件不存在或已被移动', 'error');
+        }
+      });
+      statusRow.appendChild(showFolder);
     } else {
       const text = getDownloadStateText(item);
       if (text) {
@@ -1366,31 +1394,32 @@
     const actions = document.createElement('div');
     actions.className = 'download-item__actions';
 
-    if (item.state === 'in_progress') {
+    if (state === 'in_progress') {
       actions.appendChild(makeDownloadAction('暂停', 'pause', async (e) => {
         e.stopPropagation();
         await api.pauseDownload(item.id);
       }));
-    } else if (item.state === 'paused') {
+    } else if (state === 'paused') {
       actions.appendChild(makeDownloadAction('继续', 'play', async (e) => {
         e.stopPropagation();
         await api.resumeDownload(item.id);
       }));
     }
-    if (item.state === 'in_progress' || item.state === 'paused') {
+    if (state === 'in_progress' || state === 'paused') {
       actions.appendChild(makeDownloadAction('取消', 'cancel', async (e) => {
         e.stopPropagation();
         await api.cancelDownload(item.id);
       }));
     }
     // 已取消/失败：可重新开始下载
-    if (item.state === 'cancelled' || item.state === 'failed') {
+    if (state === 'cancelled' || state === 'failed') {
       actions.appendChild(makeDownloadAction('重新开始', 'restart', async (e) => {
         e.stopPropagation();
         await api.retryDownload(item.id);
       }));
     }
-    if (item.state !== 'deleted') {
+    // 已完成行的「在文件夹中显示」已在状态行常显，hover 操作不再重复
+    if (state !== 'deleted' && state !== 'completed') {
       actions.appendChild(makeDownloadAction('在文件夹中显示', 'folder', async (e) => {
         e.stopPropagation();
         await api.openDownloadFolder(item.id);
@@ -1437,6 +1466,12 @@
 
     // 下载中：增量更新进度条 + 信息（避免全量重建导致进度条从 0 重新动画）
     if (item.state === 'in_progress') {
+      // 兜底：数据已 100% 接收但状态未切换为 completed，直接重建（buildDownloadRow 会按已完成展示）
+      if (item.totalBytes > 0 && item.receivedBytes >= item.totalBytes) {
+        const newRow = buildDownloadRow(item);
+        if (newRow) row.replaceWith(newRow);
+        return true;
+      }
       // 若行内仍是「继续」按钮（刚从暂停恢复），先重建切换为「暂停」
       if (row.querySelector('.download-item__action--play')) {
         const newRow = buildDownloadRow(item);
@@ -1998,13 +2033,19 @@
     // 打开文件
     if (item.state === 'completed') {
       addItem('打开文件', async () => {
-        await api.openDownloadFile(item.id);
+        const res = await api.openDownloadFile(item.id);
+        if (res && res.ok === false) {
+          showToast(res.fallback ? '打开失败，已定位到所在文件夹' : '文件不存在或已被移动', 'error');
+        }
       });
     }
     // 在文件夹中显示
     if (item.state !== 'deleted') {
       addItem('在文件夹中显示', async () => {
-        await api.openDownloadFolder(item.id);
+        const res = await api.openDownloadFolder(item.id);
+        if (res && res.ok === false) {
+          showToast('文件不存在或已被移动', 'error');
+        }
       });
     }
     // 从列表移除

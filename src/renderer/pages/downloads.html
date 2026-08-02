@@ -215,9 +215,31 @@
     }
     .ctx-menu__item:hover { background: var(--hover); }
     .ctx-menu__item--danger { color: var(--danger); }
+
+    /* 轻量 Toast 提示 */
+    .dl-toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      padding: 10px 20px;
+      border-radius: 8px;
+      background: #323232;
+      color: #fff;
+      font-size: 13px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      max-width: 70vw;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dl-toast--error { background: #c42b1c; }
+    .dl-toast[hidden] { display: none; }
   </style>
 </head>
 <body>
+  <div id="dlToast" class="dl-toast" hidden></div>
   <div class="page">
     <div class="page-header">
       <h1>下载内容</h1>
@@ -242,6 +264,17 @@
 
   <script>
     const api = window.NeutronBrowser || {};
+
+    // 轻量 Toast 提示
+    function showToast(message, type) {
+      const toast = document.getElementById('dlToast');
+      if (!toast) return;
+      toast.textContent = message;
+      toast.className = 'dl-toast' + (type ? ' dl-toast--' + type : '');
+      toast.hidden = false;
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => { toast.hidden = true; }, 3500);
+    }
 
     // 主题跟随系统
     function applySystemTheme() {
@@ -409,6 +442,11 @@
       }
 
       // 下载中：增量更新进度条 + 副标题 + 状态（实时进度）
+      // 兜底：数据已 100% 接收但状态未切换为 completed，直接全量重建（render 会按已完成展示）
+      if (item.totalBytes > 0 && item.receivedBytes >= item.totalBytes) {
+        render();
+        return true;
+      }
       // 若行内仍是「继续」按钮（刚从暂停恢复），先重建切换为「暂停」
       if (row.querySelector('.action-btn[title="继续"]')) {
         render();
@@ -527,14 +565,20 @@
           actions.appendChild(actionBtn('取消', 'action-btn--danger', 'cancel', async () => { await api.cancelDownload(item.id); }));
         }
         if (item.state === 'completed') {
-          actions.appendChild(actionBtn('打开文件', '', 'open', async () => { await api.openDownloadFile(item.id); }));
+          actions.appendChild(actionBtn('打开文件', '', 'open', async () => {
+            const res = await api.openDownloadFile(item.id);
+            if (res && res.ok === false) showToast(res.fallback ? '打开失败，已定位到所在文件夹' : '文件不存在或已被移动', 'error');
+          }));
         }
         // 已取消/失败：可重新开始下载
         if (item.state === 'cancelled' || item.state === 'failed') {
           actions.appendChild(actionBtn('重新开始', '', 'restart', async () => { await api.retryDownload(item.id); }));
         }
         if (item.state !== 'deleted') {
-          actions.appendChild(actionBtn('打开文件夹', '', 'folder', async () => { await api.openDownloadFolder(item.id); }));
+          actions.appendChild(actionBtn('打开文件夹', '', 'folder', async () => {
+            const res = await api.openDownloadFolder(item.id);
+            if (res && res.ok === false) showToast('文件不存在或已被移动', 'error');
+          }));
         }
         if (item.url) {
           actions.appendChild(actionBtn('复制链接', '', 'link', async () => { await api.copyText(item.url); }));
@@ -586,10 +630,16 @@
         addItem('复制下载链接', async () => { await api.copyText(item.url); });
       }
       if (item.state === 'completed') {
-        addItem('打开文件', async () => { await api.openDownloadFile(item.id); });
+        addItem('打开文件', async () => {
+          const res = await api.openDownloadFile(item.id);
+          if (res && res.ok === false) showToast(res.fallback ? '打开失败，已定位到所在文件夹' : '文件不存在或已被移动', 'error');
+        });
       }
       if (item.state !== 'deleted') {
-        addItem('打开文件夹', async () => { await api.openDownloadFolder(item.id); });
+        addItem('打开文件夹', async () => {
+          const res = await api.openDownloadFolder(item.id);
+          if (res && res.ok === false) showToast('文件不存在或已被移动', 'error');
+        });
       }
       addItem('从列表移除', async () => { await api.deleteDownload(item.id); await loadDownloads(); }, true);
       if (!ctxMenu.children.length) return;

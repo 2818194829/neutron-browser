@@ -1115,7 +1115,16 @@ class WindowManager {
       if (state === 'progressing') {
         // 防御：done 之后若 Electron 仍触发 updated('progressing')，
         // 不要回退已经 'completed'/'cancelled'/'paused' 的状态
-        if (!item.isDone() && !item.isPaused()) downloadItem.state = 'in_progress';
+        if (!item.isDone() && !item.isPaused()) {
+          // 兜底：数据已 100% 接收（receivedBytes >= totalBytes）时提前标记完成，
+          // 避免渲染端停留在满格进度条；done 事件会最终确认状态
+          if (downloadItem.totalBytes > 0 && downloadItem.receivedBytes >= downloadItem.totalBytes) {
+            downloadItem.state = 'completed';
+            downloadItem.endTime = Date.now();
+          } else {
+            downloadItem.state = 'in_progress';
+          }
+        }
       } else if (state === 'completed') {
         downloadItem.state = 'completed';
         downloadItem.endTime = Date.now();
