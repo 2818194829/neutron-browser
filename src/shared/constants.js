@@ -80,6 +80,7 @@ const IPC_CHANNELS = {
   DOWNLOADS_CLEAR_ALL: 'downloads:clearAll',
   DOWNLOADS_RETRY: 'downloads:retry',
   DOWNLOADS_SET_PATH: 'downloads:setPath',
+  DOWNLOADS_GET_FILE_ICON: 'downloads:getFileIcon',
   DOWNLOADS_UPDATED: 'downloads:updated',
 
   // 剪贴板
@@ -114,6 +115,8 @@ const IPC_CHANNELS = {
   EXTENSIONS_INSTALL: 'extensions:install',
   EXTENSIONS_INSTALL_UNPACKED: 'extensions:installUnpacked',
   EXTENSIONS_INSTALL_FROM_EDGE: 'extensions:installFromEdge',
+  EXTENSIONS_INSTALL_FILE: 'extensions:installFile',
+  EXTENSIONS_DROP_FILE: 'extensions:dropFile',
   EXTENSIONS_TOGGLE: 'extensions:toggle',
   EXTENSIONS_UNINSTALL: 'extensions:uninstall',
 };

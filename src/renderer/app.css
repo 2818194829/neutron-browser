@@ -79,6 +79,14 @@
 
   /* 书签栏文件夹文字颜色（皮肤下变为白色） */
   --bookmark-folder-color: var(--accent-primary);
+
+  /* 弹出层专用变量（不随皮肤色带变化，皮肤会把 --text-* 覆盖成白色系） */
+  --panel-text-primary: #202124;
+  --panel-text-secondary: #5f6368;
+  --panel-text-tertiary: #80868b;
+  --panel-border: #dadce0;
+  --panel-hover: rgba(0, 0, 0, 0.06);
+  --panel-active: rgba(0, 0, 0, 0.1);
 }
 
 /* ==================== CSS 变量 - 暗色主题 ==================== */
@@ -129,6 +137,14 @@
   --window-control-hover: rgba(255, 255, 255, 0.1);
 
   --accent-ring: rgba(138, 180, 248, 0.25);
+
+  /* 弹出层专用变量（暗色） */
+  --panel-text-primary: #e8eaed;
+  --panel-text-secondary: #9aa0a6;
+  --panel-text-tertiary: #80868b;
+  --panel-border: #3c4043;
+  --panel-hover: rgba(255, 255, 255, 0.08);
+  --panel-active: rgba(255, 255, 255, 0.12);
 }
 
 /* ============================================================
@@ -1244,7 +1260,96 @@ svg {
   margin-left: 16px;
 }
 
+/* ==================== 拖放安装扩展覆盖层 ==================== */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+.drop-overlay[hidden] {
+  display: none;
+}
+.drop-overlay__box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 36px 56px;
+  border: 2px dashed var(--accent-primary);
+  border-radius: 16px;
+  background: var(--modal-bg);
+  color: var(--accent-primary);
+  box-shadow: var(--shadow-lg);
+}
+.drop-overlay__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--panel-text-primary);
+}
+.drop-overlay__sub {
+  font-size: 13px;
+  color: var(--panel-text-secondary);
+}
+
+/* ==================== 全局 Toast ==================== */
+.toast {
+  position: fixed;
+  bottom: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3000;
+  padding: 10px 20px;
+  border-radius: 8px;
+  background: #323232;
+  color: #ffffff;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  max-width: 70vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toast--success {
+  background: #1e7e34;
+}
+.toast--error {
+  background: #c42b1c;
+}
+.toast[hidden] {
+  display: none;
+}
+
+/* ============================================================
+   弹出层专用变量重置（重要）
+   皮肤系统会覆盖 --text-primary/secondary/tertiary、--border-color、
+   --bg-hover 为白色系（为深色工具栏色带设计）。而弹出层（面板/菜单）
+   背景是固定的 --modal-bg（白/深），若继承被污染的变量会出现
+   「白字白底」看不见、hover 才显形的问题。
+   因此所有弹出层在自身作用域内重置为标准主题变量。
+   ============================================================ */
+.download-panel,
+.download-more-menu,
+.history-panel,
+.history-more-menu,
+.context-menu,
+.bookmark-folder-popup,
+.bfp-sub-popup,
+.modal {
+  --text-primary: var(--panel-text-primary);
+  --text-secondary: var(--panel-text-secondary);
+  --text-tertiary: var(--panel-text-tertiary);
+  --border-color: var(--panel-border);
+  --bg-hover: var(--panel-hover);
+  --bg-active: var(--panel-active);
+}
+
 /* ==================== 下载悬浮面板 ==================== */
+/* ==================== 下载悬浮面板（Chromium 风格） ==================== */
 .download-panel {
   position: fixed;
   z-index: 1001;
@@ -1264,11 +1369,12 @@ svg {
   display: none;
 }
 
+/* 顶部栏：标题 + 3 功能图标（文件夹/搜索/更多） */
 .download-panel__header {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -1278,14 +1384,15 @@ svg {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
+  padding-left: 4px;
 }
 
 .download-panel__tool {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -1301,13 +1408,13 @@ svg {
 }
 
 .download-panel__search {
-  padding: 8px 12px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .download-panel__search input {
   width: 100%;
-  height: 30px;
+  height: 28px;
   padding: 0 10px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -1321,38 +1428,112 @@ svg {
   border-color: var(--accent-primary);
 }
 
+/* 列表：独立滚动条，适配长列表 */
 .download-panel__list {
   overflow-y: auto;
   max-height: min(420px, calc(100vh - 190px));
-  padding: 4px 0;
+  padding: 2px 0 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-tertiary) transparent;
 }
 
+.download-panel__list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.download-panel__list::-webkit-scrollbar-thumb {
+  background: var(--text-tertiary);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* 列表项：左图标 + 右两行（文件名 / 状态行），紧凑纵向布局 */
 .download-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
   transition: background 0.15s;
+}
+
+.download-item:last-child {
+  border-bottom: 0;
 }
 
 .download-item:hover {
   background: var(--bg-hover);
 }
 
-.download-item--deleted {
-  opacity: 0.55;
+/* 已取消 / 已删除：文件名置灰弱化 */
+.download-item--inactive .download-item__name {
+  color: var(--text-tertiary);
 }
 
 .download-item__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
-  border-radius: 6px;
-  background: var(--bg-hover);
-  font-size: 16px;
+  margin-top: 1px;
+}
+
+/* ==================== 文件类型图标配色（浅色/深色两套） ==================== */
+:root {
+  --dl-icon-exe: #5f6368;
+  --dl-icon-archive: #e8a33d;
+  --dl-icon-text: #4285f4;
+  --dl-icon-word: #1a73e8;
+  --dl-icon-excel: #34a853;
+  --dl-icon-ppt: #e8710a;
+  --dl-icon-pdf: #d93025;
+  --dl-icon-image: #9334e6;
+  --dl-icon-video: #00897b;
+  --dl-icon-audio: #d01884;
+  --dl-icon-code: #1a73e8;
+  --dl-icon-disk: #5f6368;
+  --dl-icon-file: #5f6368;
+}
+
+[data-theme="dark"] {
+  --dl-icon-exe: #9aa0a6;
+  --dl-icon-archive: #f0b54f;
+  --dl-icon-text: #8ab4f8;
+  --dl-icon-word: #8ab4f8;
+  --dl-icon-excel: #81c995;
+  --dl-icon-ppt: #f7b87a;
+  --dl-icon-pdf: #f28b82;
+  --dl-icon-image: #c58af9;
+  --dl-icon-video: #80cbc4;
+  --dl-icon-audio: #f48fb1;
+  --dl-icon-code: #8ab4f8;
+  --dl-icon-disk: #9aa0a6;
+  --dl-icon-file: #9aa0a6;
+}
+
+.dl-icon {
+  color: var(--dl-icon-file);
+}
+
+.dl-icon--exe { color: var(--dl-icon-exe); }
+.dl-icon--archive { color: var(--dl-icon-archive); }
+.dl-icon--text { color: var(--dl-icon-text); }
+.dl-icon--word { color: var(--dl-icon-word); }
+.dl-icon--excel { color: var(--dl-icon-excel); }
+.dl-icon--ppt { color: var(--dl-icon-ppt); }
+.dl-icon--pdf { color: var(--dl-icon-pdf); }
+.dl-icon--image { color: var(--dl-icon-image); }
+.dl-icon--video { color: var(--dl-icon-video); }
+.dl-icon--audio { color: var(--dl-icon-audio); }
+.dl-icon--code { color: var(--dl-icon-code); }
+.dl-icon--disk { color: var(--dl-icon-disk); }
+
+/* 弱化状态（已取消/已删除）：图标透明度降至 40% */
+.download-item--inactive .dl-icon {
+  opacity: 0.4;
 }
 
 .download-item__body {
@@ -1365,18 +1546,52 @@ svg {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
+  line-height: 18px;
   color: var(--text-primary);
 }
 
-.download-item__meta {
-  margin-top: 2px;
+/* 状态/操作行（辅助信息，小字） */
+.download-item__status-row {
+  display: flex;
+  align-items: center;
+  min-height: 16px;
+  margin-top: 1px;
+}
+
+.download-item__state-text {
   font-size: 11px;
-  color: var(--text-secondary);
+  line-height: 16px;
+  color: var(--text-tertiary);
+}
+
+/* 完成态：蓝色「打开文件」文字链接 */
+.download-item__open {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.download-item__open:hover {
+  text-decoration: underline;
+}
+
+/* 轻量进度：品牌色细条 + 信息文字 */
+.download-item__progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .download-item__progress {
   flex: 1;
-  height: 3px;
+  height: 2px;
+  min-width: 40px;
   overflow: hidden;
   border-radius: 2px;
   background: var(--border-color);
@@ -1389,19 +1604,39 @@ svg {
   transition: width 0.3s;
 }
 
+.download-item__progress-bar--paused {
+  background: var(--text-tertiary);
+}
+
+.download-item__progress-info {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* 操作按钮（始终显示，中性色） */
 .download-item__actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   flex-shrink: 0;
+}
+
+/* 真实系统文件图标 */
+.download-item__real-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
 }
 
 .download-item__action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -1416,31 +1651,33 @@ svg {
   color: var(--text-primary);
 }
 
-.download-item__action--danger:hover {
-  color: var(--accent-danger);
-}
-
-.download-item__open-file {
-  padding: 0;
-  border: 0;
-  background: transparent;
+.download-item__action--pause:hover,
+.download-item__action--play:hover {
   color: var(--accent-primary);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
 }
 
-.download-item__open-file:hover {
-  text-decoration: underline;
+.download-item__action--cancel:hover {
+  color: var(--text-primary);
+}
+
+.download-item__action--trash:hover {
+  color: var(--accent-danger);
 }
 
 .download-empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: 120px;
   color: var(--text-tertiary);
   font-size: 13px;
+}
+
+.download-empty__icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  opacity: 0.5;
 }
 
 .download-panel__more-wrap {
@@ -1514,96 +1751,6 @@ svg {
   text-align: center;
   font-weight: 600;
   box-shadow: 0 0 0 2px var(--modal-bg);
-}
-
-/* 全部显示按钮 */
-.download-panel__show-all {
-  padding: 0 8px;
-  height: 26px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--accent-primary);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s;
-}
-
-.download-panel__show-all:hover {
-  background: var(--bg-hover);
-  text-decoration: underline;
-}
-
-/* 文件名行 + 状态标签 */
-.download-item__name-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.download-item__status {
-  flex-shrink: 0;
-  padding: 1px 7px;
-  border-radius: 8px;
-  font-size: 10px;
-  background: var(--bg-hover);
-  color: var(--text-secondary);
-}
-
-.download-item__status--done {
-  background: rgba(52, 168, 83, 0.16);
-  color: #34a853;
-}
-
-.download-item__status--failed {
-  background: rgba(234, 67, 53, 0.13);
-  color: var(--accent-danger);
-}
-
-/* 进度行 + 百分比 */
-.download-item__progress-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.download-item__percent {
-  flex-shrink: 0;
-  min-width: 30px;
-  text-align: right;
-  font-size: 10px;
-  color: var(--text-secondary);
-}
-
-.download-item__progress-bar--paused {
-  background: var(--text-tertiary);
-}
-
-/* 操作按钮变体 */
-.download-item__action--pause {
-  color: var(--accent-primary);
-}
-
-.download-item__action--play {
-  color: var(--accent-primary);
-}
-
-.download-item__action--cancel {
-  color: var(--accent-danger);
-}
-
-.download-item__action--trash:hover {
-  color: var(--accent-danger);
-}
-
-/* 空状态图标 */
-.download-empty__icon {
-  font-size: 32px;
-  margin-bottom: 8px;
-  opacity: 0.5;
 }
 
 /* ==================== 历史悬浮面板 ==================== */

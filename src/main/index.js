@@ -10,6 +10,7 @@ const { registerIpcHandlers } = require('./ipcHandlers');
 const { initStorage } = require('./storage');
 const { initExtensions } = require('./extensions');
 const { initUpdater } = require('./updater');
+const { setupExtensionPolyfills } = require('./extensionPolyfills');
 const { IPC_CHANNELS, INTERNAL_PAGES } = require('../shared/constants');
 
 // 保持对窗口管理器的全局引用，防止被垃圾回收
@@ -52,6 +53,10 @@ app.whenReady().then(async () => {
   // 初始化存储系统
   await initStorage(app.getPath('userData'));
   console.log('[Main] 存储系统初始化完成');
+
+  // 为扩展页面注入 API polyfill（必须在扩展加载前设置，
+  // 否则依赖 webNavigation 等 API 的扩展（如 Adblock Plus）后台崩溃、选项页空白）
+  setupExtensionPolyfills();
 
   // 重新加载已安装且启用的扩展
   await initExtensions();

@@ -89,6 +89,9 @@ class WindowManager {
     this.sharedSessionHandlersReady = false;
     this.htmlFullScreenTabId = null;
 
+    /** @type {Map<string, DownloadItem>} 活动下载项（用于暂停/继续/取消） */
+    this.downloadItems = new Map();
+
     // 绑定方法
     this.handleNewWindow = this.handleNewWindow.bind(this);
 
@@ -652,6 +655,17 @@ class WindowManager {
     // 网页右键菜单，参考 Edge 的常用操作
     this.setupWebContentsContextMenu(wc);
 
+    // 拖放 .crx/.zip 扩展包到网页区域：Electron 默认会把文件导航到 file://，
+    // 在此拦截并转交渲染层安装扩展
+    wc.on('will-navigate', (event, url) => {
+      if (!url || !url.startsWith('file://')) return;
+      const filePath = this.fileUrlToPath(url);
+      if (filePath && /\.(crx|zip)$/i.test(filePath)) {
+        event.preventDefault();
+        this.sendToRenderer(IPC_CHANNELS.EXTENSIONS_DROP_FILE, filePath);
+      }
+    });
+
     // 页面标题更新
     wc.on('page-title-updated', (event, title) => {
       const tab = this.tabs.find(t => t.id === tabId);
@@ -967,6 +981,23 @@ class WindowManager {
   }
 
   /**
+   * 将 file:// URL 转为本地文件路径（Windows 兼容）
+   * @param {string} url
+   * @returns {string}
+   */
+  fileUrlToPath(url) {
+    try {
+      const u = new URL(url);
+      let p = decodeURIComponent(u.pathname);
+      // Windows: /C:/Users/... → C:/Users/...
+      if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1);
+      return p.replace(/\//g, path.sep);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /**
    * 解析 URL（自动补全、搜索转换等）
    */
   resolveUrl(input) {
@@ -985,6 +1016,11 @@ class WindowManager {
 
     // 已经是完整 URL（http/https/file/ftp）
     if (/^https?:\/\//i.test(input) || /^file:\/\//i.test(input) || /^ftp:\/\//i.test(input)) {
+      return input;
+    }
+
+    // 自定义协议（chrome-extension:// 扩展选项页、moz-extension:// 等）原样放行
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(input)) {
       return input;
     }
 
@@ -1020,6 +1056,19 @@ class WindowManager {
    */
   handleDownload(event, item, tabId) {
     const downloadsStore = getStore('downloads');
+    const settings = getStore('settings');
+
+    // 根据「下载前询问保存位置」设置决定保存方式：
+    // - 询问（askDownloadPath=true）：不调用 setSavePath，Electron 默认弹出保存位置对话框
+    // - 不询问（askDownloadPath=false）：直接保存到下载目录，不弹窗
+    const askPath = settings.get('askDownloadPath', true);
+    let savePath = '';
+    if (!askPath) {
+      const downloadDir = settings.get('downloadPath') || app.getPath('downloads');
+      savePath = path.join(downloadDir, item.getFilename());
+      item.setSavePath(savePath);
+    }
+
     const downloadItem = {
       id: `dl_${Date.now()}`,
       filename: item.getFilename(),
@@ -1031,7 +1080,7 @@ class WindowManager {
       state: 'in_progress', // 'in_progress' | 'paused' | 'completed' | 'failed' | 'cancelled'
       startTime: Date.now(),
       endTime: null,
-      savePath: item.getSavePath(),
+      savePath: savePath,
       tabId: tabId,
       deleted: false,
     };
@@ -1047,15 +1096,26 @@ class WindowManager {
     // 通知渲染进程
     this.sendToRenderer(IPC_CHANNELS.DOWNLOADS_UPDATED, downloadItem);
 
-    // 监听下载进度
+    // 监听下载进度（updated 事件周期性触发；速度用字节差值计算，Electron 无 getCurrentSpeed）
+    let speedLastBytes = 0;
+    let speedLastTime = Date.now();
     item.on('updated', (event, state) => {
-      downloadItem.receivedBytes = item.getReceivedBytes();
+      const now = Date.now();
+      const received = item.getReceivedBytes();
+      const elapsedSec = (now - speedLastTime) / 1000;
+      if (elapsedSec >= 0.5) {
+        downloadItem.speed = Math.max(0, Math.round((received - speedLastBytes) / elapsedSec));
+        speedLastBytes = received;
+        speedLastTime = now;
+      }
+      downloadItem.receivedBytes = received;
       downloadItem.totalBytes = item.getTotalBytes();
-      downloadItem.speed = item.getCurrentSpeed ? item.getCurrentSpeed() : 0;
       downloadItem.savePath = item.getSavePath() || downloadItem.savePath;
 
       if (state === 'progressing') {
-        downloadItem.state = 'in_progress';
+        // 防御：done 之后若 Electron 仍触发 updated('progressing')，
+        // 不要回退已经 'completed'/'cancelled'/'paused' 的状态
+        if (!item.isDone() && !item.isPaused()) downloadItem.state = 'in_progress';
       } else if (state === 'completed') {
         downloadItem.state = 'completed';
         downloadItem.endTime = Date.now();
@@ -1117,7 +1177,8 @@ class WindowManager {
    */
   pauseDownload(id) {
     const item = this.downloadItems.get(id);
-    if (item && !item.isDone() && item.canResume()) item.pause();
+    // 注意：不能用 canResume() 做前置判断（未暂停过的下载 canResume() 为 false，会导致 pause() 不执行）
+    if (item && !item.isDone()) item.pause();
     const store = getStore('downloads');
     const items = store.get('items', []);
     const d = items.find((x) => x.id === id);
@@ -1134,7 +1195,7 @@ class WindowManager {
    */
   resumeDownload(id) {
     const item = this.downloadItems.get(id);
-    if (item && !item.isDone() && item.canResume()) item.resume();
+    if (item && !item.isDone() && item.isPaused()) item.resume();
     const store = getStore('downloads');
     const items = store.get('items', []);
     const d = items.find((x) => x.id === id);
@@ -1152,7 +1213,27 @@ class WindowManager {
    */
   cancelDownload(id) {
     const item = this.downloadItems.get(id);
-    if (item && !item.isDone() && item.canCancel()) item.cancel();
+    // 注意：Electron DownloadItem 没有 canCancel() 方法（会抛 TypeError），直接调用 cancel()
+    if (item && !item.isDone()) item.cancel();
+  }
+
+  /**
+   * 重新开始下载（已取消/失败的下载，重新触发下载）
+   * @param {string} id
+   */
+  retryDownload(id) {
+    const store = getStore('downloads');
+    const items = store.get('items', []);
+    const d = items.find((x) => x.id === id);
+    if (!d || !d.url) return false;
+    // 重新触发下载（will-download 事件会创建新的下载项）
+    const tab = this.tabs.find((t) => t.id === this.activeTabId) || this.tabs[0];
+    if (tab && tab.view && !tab.view.webContents.isDestroyed()) {
+      tab.view.webContents.downloadURL(d.url);
+    } else if (this.sharedSession) {
+      this.sharedSession.downloadURL(d.url);
+    }
+    return true;
   }
 
   /**

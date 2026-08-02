@@ -2,11 +2,11 @@
 
 Neutron Browser 是一款基于 Electron 的现代 PC 级浏览器，支持多标签页、书签管理、历史记录、下载管理、扩展安装，以及接近 Edge 的网页右键菜单体验。
 
-当前版本：**1.8.0**
+当前版本：**1.8.1**
 
 GitHub：[https://github.com/2818194829/neutron-browser](https://github.com/2818194829/neutron-browser)
 
-Release：[v1.8.0](https://github.com/2818194829/neutron-browser/releases/tag/v1.8.0)
+Release：[v1.8.1](https://github.com/2818194829/neutron-browser/releases/tag/v1.8.1)
 
 ## 功能特性
 
@@ -102,7 +102,7 @@ npm run build:installer
 生成位置：
 
 ```text
-build\Neutron Browser Setup 1.8.0.exe
+build\Neutron Browser Setup 1.8.1.exe
 ```
 
 安装包支持：
@@ -229,6 +229,21 @@ npm run build:win
 - 暂不支持完整 Manifest V3 后台 Service Worker 生态
 
 ## 版本记录
+
+### 1.8.1
+
+- **下载功能全面增强**：
+  - 文件图标升级为真实系统图标（exe / PDF / 图片等按文件本身显示），明暗主题双套配色
+  - 修复下载完成后状态不切换、"打开文件"按钮不显示的问题
+  - 修复暂停 / 取消无效（Electron API 误用），暂停 / 继续按钮同位置切换
+  - 新增"重新开始"按钮与右键菜单（重新开始 / 复制下载链接 / 打开文件 / 打开文件夹 / 从列表移除）
+  - 操作按钮始终显示，不再需要悬停；恢复面板"全部显示"入口
+  - 修复"下载前询问保存位置"设置不生效
+- **扩展系统大幅增强**：
+  - 扩展详情二级界面（Edge 风格）：权限、站点访问、来源、扩展 ID、大小、启用开关、移除
+  - 新增"扩展选项"入口，修复无法进入扩展设置页的问题（URL 协议解析 + 扩展 API 全量 Polyfill）
+  - 支持拖拽 .crx / .zip 扩展包直接安装
+- **修复**：皮肤（海洋蓝 / 樱花等）下弹出层按钮白字白底不可见的问题
 
 ### 1.8.0
 

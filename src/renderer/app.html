@@ -129,12 +129,14 @@
     <div id="downloadPanel" class="download-panel" role="dialog" aria-label="下载" hidden>
       <div class="download-panel__header">
         <span class="download-panel__title">下载</span>
-        <button class="download-panel__show-all" id="btnDownloadShowAll">全部显示</button>
         <button class="download-panel__tool" id="btnDownloadOpenDir" title="打开下载目录" aria-label="打开下载目录">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         </button>
         <button class="download-panel__tool" id="btnDownloadSearch" title="搜索下载内容" aria-label="搜索下载内容">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <button class="download-panel__tool" id="btnDownloadShowAll" title="打开下载内容列表" aria-label="打开下载内容列表">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         </button>
         <div class="download-panel__more-wrap">
           <button class="download-panel__tool" id="btnDownloadMore" title="更多选项" aria-label="更多选项">
@@ -210,6 +212,22 @@
       <span class="status-bar__url" id="statusUrl"></span>
       <span class="status-bar__zoom" id="statusZoom">100%</span>
     </div>
+
+    <!-- ==================== 拖放安装扩展覆盖层 ==================== -->
+    <div id="dropOverlay" class="drop-overlay" hidden>
+      <div class="drop-overlay__box">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+          <path d="M3 6h18"/>
+          <path d="M16 10a4 4 0 0 1-8 0"/>
+        </svg>
+        <div class="drop-overlay__title">松开以安装扩展</div>
+        <div class="drop-overlay__sub">支持 .crx / .zip 扩展包</div>
+      </div>
+    </div>
+
+    <!-- ==================== 全局提示 Toast ==================== -->
+    <div id="toast" class="toast" hidden></div>
 
     <!-- ==================== 右键菜单 ==================== -->
     <div id="contextMenu" class="context-menu" style="display: none;">

@@ -447,6 +447,169 @@
       margin-top: 4px;
     }
 
+    /* ==================== 扩展详情视图（二级界面） ==================== */
+    .ext-detail { display: none; }
+    .ext-detail__back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px 6px 6px;
+      margin-bottom: 20px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ext-accent);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .ext-detail__back:hover { background: var(--ext-sidebar-hover); }
+    .ext-detail__head {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 20px;
+      border: 1px solid var(--ext-card-border);
+      border-radius: 12px;
+      background: var(--ext-card-bg);
+      margin-bottom: 16px;
+    }
+    .ext-detail__icon {
+      width: 72px;
+      height: 72px;
+      flex-shrink: 0;
+      border-radius: 12px;
+      background: var(--ext-sidebar-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .ext-detail__icon img { width: 56px; height: 56px; object-fit: contain; }
+    .ext-detail__icon--placeholder {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px; color: var(--ext-text-secondary);
+    }
+    .ext-detail__head-info { flex: 1; min-width: 0; }
+    .ext-detail__name {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--ext-text);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .ext-detail__version { font-size: 13px; color: var(--ext-text-tertiary); font-weight: 400; }
+    .ext-detail__source {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 2px 10px;
+      border-radius: 10px;
+      font-size: 11px;
+      background: var(--ext-accent-light);
+      color: var(--ext-accent);
+    }
+    .ext-detail__desc {
+      margin-top: 8px;
+      font-size: 13px;
+      line-height: 20px;
+      color: var(--ext-text-secondary);
+    }
+    .ext-detail__enable {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+      border: 1px solid var(--ext-card-border);
+      border-radius: 12px;
+      background: var(--ext-card-bg);
+      margin-bottom: 16px;
+    }
+    .ext-detail__enable-label { flex: 1; }
+    .ext-detail__enable-title { font-size: 14px; font-weight: 500; color: var(--ext-text); }
+    .ext-detail__enable-sub { font-size: 12px; color: var(--ext-text-tertiary); margin-top: 2px; }
+    .ext-detail__section {
+      padding: 16px 20px;
+      border: 1px solid var(--ext-card-border);
+      border-radius: 12px;
+      background: var(--ext-card-bg);
+      margin-bottom: 16px;
+    }
+    .ext-detail__section-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--ext-text);
+      margin-bottom: 12px;
+    }
+    .ext-detail__perm {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 0;
+      font-size: 13px;
+      color: var(--ext-text);
+      border-bottom: 1px solid var(--ext-border);
+    }
+    .ext-detail__perm:last-child { border-bottom: 0; }
+    .ext-detail__perm-icon { color: var(--ext-accent); flex-shrink: 0; margin-top: 2px; }
+    .ext-detail__perm-name { flex: 1; }
+    .ext-detail__perm-desc { color: var(--ext-text-tertiary); font-size: 12px; }
+    .ext-detail__row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--ext-border);
+      font-size: 13px;
+    }
+    .ext-detail__row:last-child { border-bottom: 0; }
+    .ext-detail__row-label { color: var(--ext-text-secondary); flex-shrink: 0; }
+    .ext-detail__row-value { color: var(--ext-text); word-break: break-all; text-align: right; display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .ext-detail__id-copy {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border: 1px solid var(--ext-input-border);
+      border-radius: 6px;
+      background: var(--ext-input-bg);
+      color: var(--ext-accent);
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .ext-detail__id-copy:hover { background: var(--ext-sidebar-hover); }
+    .ext-detail__open-site {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 30px;
+      padding: 0 12px;
+      border: 1px solid var(--ext-dev-button-border);
+      border-radius: 6px;
+      background: var(--ext-button-bg);
+      color: var(--ext-accent);
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .ext-detail__open-site:hover { background: var(--ext-sidebar-hover); }
+    .ext-detail__remove {
+      display: inline-flex;
+      align-items: center;
+      height: 34px;
+      padding: 0 16px;
+      border: 1px solid var(--ext-danger);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ext-danger);
+      font-size: 13px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .ext-detail__remove:hover { background: var(--ext-danger-hover); }
+
     /* ==================== Keyboard shortcuts placeholder ==================== */
     .shortcuts-placeholder {
       padding: 40px;
@@ -581,6 +744,15 @@
           <div class="empty-state__desc">从 Microsoft Edge 扩展应用商店或本地加载扩展以开始使用</div>
         </div>
       </div>
+
+      <!-- 扩展详情（二级界面） -->
+      <div id="extDetail" class="ext-detail">
+        <button class="ext-detail__back" id="extDetailBack">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+          返回
+        </button>
+        <div id="extDetailContent"></div>
+      </div>
     </div>
 
     <!-- Keyboard Shortcuts View -->
@@ -603,6 +775,9 @@
     const statusEl = document.getElementById('status');
     const viewMyExtensions = document.getElementById('view-my-extensions');
     const viewShortcuts = document.getElementById('view-shortcuts');
+    const extDetail = document.getElementById('extDetail');
+    const extDetailContent = document.getElementById('extDetailContent');
+    const extDetailBack = document.getElementById('extDetailBack');
 
     const btnInstallFile = document.getElementById('btnInstallFile');
     const btnInstallUnpacked = document.getElementById('btnInstallUnpacked');
@@ -633,6 +808,7 @@
         document.querySelectorAll('.sidebar__nav-item').forEach(el => el.classList.remove('active'));
         item.classList.add('active');
         const view = item.dataset.view;
+        hideExtensionDetail();
         viewMyExtensions.style.display = view === 'my-extensions' ? '' : 'none';
         viewShortcuts.style.display = view === 'shortcuts' ? '' : 'none';
       });
@@ -711,6 +887,16 @@
 
       extensionsList.innerHTML = html;
 
+      // 卡片点击 → 打开详情（点击按钮/开关不触发）
+      extensionsList.querySelectorAll('.ext-card').forEach(card => {
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('button') || e.target.closest('.toggle-switch')) return;
+          const ext = (extensions || []).find(x => x.id === card.dataset.extId);
+          if (ext) showExtensionDetail(ext);
+        });
+      });
+
       // Attach toggle listeners
       extensionsList.querySelectorAll('.ext-toggle').forEach(toggle => {
         toggle.addEventListener('change', async () => {
@@ -738,16 +924,10 @@
 
       // Attach details button listeners
       extensionsList.querySelectorAll('.btn-details').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const extId = btn.dataset.extId;
-          const extName = btn.dataset.extName;
-          const card = btn.closest('.ext-card');
-          const infoParts = [];
-          if (card) {
-            const metaEl = card.querySelector('.ext-card__meta');
-            if (metaEl) infoParts.push(metaEl.textContent);
-          }
-          showStatus(extName + ' — ' + extId + (infoParts.length ? '\n' + infoParts.join('\n') : ''), false);
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const ext = (extensions || []).find(x => x.id === btn.dataset.extId);
+          if (ext) showExtensionDetail(ext);
         });
       });
     }
@@ -772,7 +952,7 @@
         ? `<div class="ext-card__meta">${metaLines.join('<br>')}</div>`
         : '';
 
-      return `<div class="ext-card" data-ext-name="${escapeHtml(ext.name)}" data-ext-desc="${escapeHtml(ext.description || '')}">
+      return `<div class="ext-card" data-ext-id="${escapeHtml(ext.id)}" data-ext-name="${escapeHtml(ext.name)}" data-ext-desc="${escapeHtml(ext.description || '')}">
         <div class="ext-card__top">
           <div class="ext-card__icon">${iconHtml}</div>
           <div class="ext-card__body">
@@ -796,6 +976,205 @@
         </div>
       </div>`;
     }
+
+    // ==================== 扩展详情（二级界面） ====================
+    const PERMISSION_LABELS = {
+      tabs: ['读取浏览记录', '读取您访问过的网站标签页'],
+      activeTab: ['访问当前标签页', '在您当前访问的网站上读取和更改数据'],
+      storage: ['存储数据', '存储和读取扩展的本地数据'],
+      cookies: ['读取和更改 Cookie', '管理您的 Cookie 数据'],
+      history: ['读取浏览历史', '访问您的浏览历史记录'],
+      bookmarks: ['读取和更改书签', '管理您的书签'],
+      downloads: ['管理下载', '读取和管理您的下载'],
+      notifications: ['显示通知', '向您显示通知'],
+      webRequest: ['拦截网络请求', '读取和修改浏览器发出的网络请求'],
+      webNavigation: ['读取导航记录', '跟踪您在网页之间的导航'],
+      clipboardRead: ['读取剪贴板', '读取您剪贴板中的内容'],
+      clipboardWrite: ['写入剪贴板', '向剪贴板写入内容'],
+      geolocation: ['读取位置', '访问您的位置信息'],
+      alarms: ['定时提醒', '使用计时器在后台执行任务'],
+      contextMenus: ['显示右键菜单', '在右键菜单中添加项目'],
+      scripting: ['读取和更改网页内容', '在网页上注入脚本'],
+      management: ['管理扩展', '管理其他已安装的扩展'],
+    };
+    const PERMISSION_DEFAULT = ['扩展权限', '读取和更改您的数据'];
+
+    function formatBytes(bytes) {
+      const value = Number(bytes) || 0;
+      if (value <= 0) return '未知';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.min(sizes.length - 1, Math.floor(Math.log(value) / Math.log(k)));
+      return parseFloat((value / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function sourceLabel(ext) {
+      const src = ext.source || ext.installSource;
+      return src === 'edge_store' ? 'Microsoft Edge 扩展应用商店' : '本地加载';
+    }
+
+    function buildPermissionRows(ext) {
+      const rows = [];
+      const perms = Array.isArray(ext.permissions) ? ext.permissions : [];
+      const hosts = Array.isArray(ext.hostPermissions) ? ext.hostPermissions : [];
+
+      // 站点访问
+      hosts.forEach((h) => {
+        const label = h === '<all_urls>' ? '在所有网站上' : (h.endsWith('/*') ? h.slice(0, -2) : h);
+        rows.push({
+          name: label,
+          desc: h === '<all_urls>' ? '在您访问的所有网站上读取和更改数据' : '在该网站上读取和更改数据',
+        });
+      });
+
+      // 权限
+      perms.forEach((p) => {
+        const info = PERMISSION_LABELS[p] || PERMISSION_DEFAULT;
+        rows.push({ name: info[0], desc: info[1] });
+      });
+
+      return rows;
+    }
+
+    function showExtensionDetail(ext) {
+      if (!ext) return;
+      const rows = buildPermissionRows(ext);
+      const permHtml = rows.length > 0
+        ? rows.map((r) => `
+          <div class="ext-detail__perm">
+            <span class="ext-detail__perm-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </span>
+            <div>
+              <div class="ext-detail__perm-name">${escapeHtml(r.name)}</div>
+              <div class="ext-detail__perm-desc">${escapeHtml(r.desc)}</div>
+            </div>
+          </div>`).join('')
+        : '<div class="ext-detail__perm-desc" style="padding:4px 0">该扩展不需要额外的权限</div>';
+
+      const iconHtml = ext.icon
+        ? `<img src="file:///${(ext.icon || '').replace(/\\/g, '/')}" alt="" />`
+        : '<div class="ext-detail__icon--placeholder">🧩</div>';
+
+      const source = sourceLabel(ext);
+      const homepageUrl = ext.homepageUrl || '';
+      const isDev = devModeToggle.checked;
+
+      extDetailContent.innerHTML = `
+        <div class="ext-detail__head">
+          <div class="ext-detail__icon">${iconHtml}</div>
+          <div class="ext-detail__head-info">
+            <div class="ext-detail__name">
+              ${escapeHtml(ext.name)}
+              <span class="ext-detail__version">v${escapeHtml(ext.version || '')}</span>
+            </div>
+            <span class="ext-detail__source">${escapeHtml(source)}</span>
+            <div class="ext-detail__desc">${escapeHtml(ext.description || '暂无描述')}</div>
+          </div>
+        </div>
+
+        <div class="ext-detail__enable">
+          <div class="ext-detail__enable-label">
+            <div class="ext-detail__enable-title">${ext.enabled ? '已启用' : '已禁用'}</div>
+            <div class="ext-detail__enable-sub">启用后此扩展可读取和更改您的数据</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="extDetailToggle" ${ext.enabled ? 'checked' : ''} />
+            <span class="toggle-switch__slider"></span>
+          </label>
+        </div>
+
+        <div class="ext-detail__section">
+          <div class="ext-detail__section-title">权限</div>
+          ${permHtml}
+        </div>
+
+        <div class="ext-detail__section">
+          <div class="ext-detail__section-title">详细信息</div>
+          <div class="ext-detail__row">
+            <span class="ext-detail__row-label">来源</span>
+            <span class="ext-detail__row-value">${escapeHtml(source)}</span>
+          </div>
+          <div class="ext-detail__row">
+            <span class="ext-detail__row-label">扩展 ID</span>
+            <span class="ext-detail__row-value">
+              <span style="max-width:280px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(ext.id || '')}</span>
+              <button class="ext-detail__id-copy" id="extCopyId">复制</button>
+            </span>
+          </div>
+          ${ext.size ? `<div class="ext-detail__row"><span class="ext-detail__row-label">大小</span><span class="ext-detail__row-value">${escapeHtml(formatBytes(ext.size))}</span></div>` : ''}
+          ${isDev && ext.backgroundType ? `<div class="ext-detail__row"><span class="ext-detail__row-label">后台类型</span><span class="ext-detail__row-value">${escapeHtml(ext.backgroundType === 'service_worker' ? 'Service Worker' : '后台页面')}</span></div>` : ''}
+          ${isDev && ext.path ? `<div class="ext-detail__row"><span class="ext-detail__row-label">路径</span><span class="ext-detail__row-value" style="font-size:12px">${escapeHtml(ext.path)}</span></div>` : ''}
+        </div>
+
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          ${homepageUrl ? `<a class="ext-detail__open-site" id="extOpenSite" href="#">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            打开网站</a>` : ''}
+          ${ext.optionsUrl ? `<button class="ext-detail__open-site" id="extOpenOptions">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            扩展选项</button>` : ''}
+          <button class="ext-detail__remove" id="extRemove">移除</button>
+        </div>
+      `;
+
+      // 切换视图：隐藏列表，显示详情
+      const header = viewMyExtensions.querySelector('.main__header');
+      if (header) header.style.display = 'none';
+      statusEl.hidden = true;
+      extensionsList.style.display = 'none';
+      extDetail.style.display = 'block';
+
+      // 绑定事件
+      document.getElementById('extDetailToggle').addEventListener('change', async (e) => {
+        const result = await api.toggleExtension(ext.id);
+        if (!result.success) {
+          e.target.checked = !e.target.checked;
+          showStatus(result.message || '切换失败', true);
+        }
+        const updated = await api.getExtensions();
+        const found = (updated || []).find(x => x.id === ext.id);
+        if (found) showExtensionDetail(found);
+        else hideExtensionDetail();
+      });
+
+      const copyBtn = document.getElementById('extCopyId');
+      if (copyBtn) copyBtn.addEventListener('click', async () => {
+        await api.copyText(ext.id || '');
+        copyBtn.textContent = '已复制';
+        setTimeout(() => { copyBtn.textContent = '复制'; }, 1500);
+      });
+
+      const openSite = document.getElementById('extOpenSite');
+      if (openSite) openSite.addEventListener('click', (e) => {
+        e.preventDefault();
+        api.createTab(homepageUrl);
+      });
+
+      const openOptions = document.getElementById('extOpenOptions');
+      if (openOptions) openOptions.addEventListener('click', () => {
+        const optionsPath = String(ext.optionsUrl || '').replace(/^\/+/, '');
+        api.createTab(`chrome-extension://${ext.id}/${optionsPath}`);
+      });
+
+      document.getElementById('extRemove').addEventListener('click', async () => {
+        if (!confirm(`确定要移除「${ext.name}」吗？`)) return;
+        const result = await api.uninstallExtension(ext.id);
+        showStatus(result.success ? '已移除' : result.message || '移除失败', !result.success);
+        hideExtensionDetail();
+        loadExtensions();
+      });
+    }
+
+    function hideExtensionDetail() {
+      extDetail.style.display = 'none';
+      const header = viewMyExtensions.querySelector('.main__header');
+      if (header) header.style.display = '';
+      extensionsList.style.display = '';
+    }
+
+    // 返回按钮
+    extDetailBack.addEventListener('click', hideExtensionDetail);
 
     // ==================== Load extensions ====================
     async function loadExtensions() {

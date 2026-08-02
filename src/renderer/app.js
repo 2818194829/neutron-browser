@@ -169,6 +169,7 @@
     bindKeyboardShortcuts();
     bindIPCListeners();
     bindDragAndDrop();
+    setupExtensionDropInstall();
 
     // 监听设置页主题/强调色/皮肤变更
     if (api.onThemeChanged) {
@@ -1151,12 +1152,6 @@
       if (e.key === 'Escape' && state.downloadPanelOpen) closeDownloadPanel();
     });
 
-    document.getElementById('btnDownloadShowAll').addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeDownloadPanel();
-      api.createTab('neutron://downloads');
-    });
-
     document.getElementById('btnDownloadOpenDir').addEventListener('click', async (e) => {
       e.stopPropagation();
       await api.openDownloadDirectory();
@@ -1166,6 +1161,12 @@
       e.stopPropagation();
       dom.downloadSearchWrap.hidden = !dom.downloadSearchWrap.hidden;
       if (!dom.downloadSearchWrap.hidden) dom.downloadSearch.focus();
+    });
+
+    document.getElementById('btnDownloadShowAll').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeDownloadPanel();
+      api.createTab('neutron://downloads');
     });
 
     dom.downloadSearch.addEventListener('input', () => {
@@ -1252,11 +1253,215 @@
       cancel: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
       folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
       link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+      restart: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
       trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
     };
     btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icons[kind] || ''}</svg>`;
     btn.addEventListener('click', handler);
     return btn;
+  }
+
+  // 下载状态文字（辅助信息行，中性色）
+  function getDownloadStateText(item) {
+    switch (item.state) {
+      case 'paused': return '已暂停';
+      case 'failed': return '下载失败';
+      case 'cancelled': return '已取消';
+      case 'deleted': return '已删除';
+      default: return '';
+    }
+  }
+
+  function getDownloadProgressInfo(item, percent) {
+    const parts = [`${percent}%`];
+    if (item.totalBytes > 0) {
+      parts.push(`${formatBytes(item.receivedBytes)} / ${formatBytes(item.totalBytes)}`);
+    }
+    if (item.speed) parts.push(formatSpeed(item.speed));
+    return parts.join(' · ');
+  }
+
+  // 构建单个下载项行（对标 Chromium 下载气泡：左图标 + 文件名/状态行，纵向紧凑布局）
+  function buildDownloadRow(item) {
+    const row = document.createElement('div');
+    row.className = 'download-item';
+    row.dataset.id = item.id;
+    if (item.state === 'deleted' || item.state === 'cancelled') row.classList.add('download-item--inactive');
+
+    // 文件图标：优先显示真实系统图标（资源管理器风格，异步获取），加载期间/文件不存在时用类型 SVG 兜底
+    const icon = document.createElement('div');
+    const iconInfo = getFileIcon(item.filename);
+    icon.className = `download-item__icon dl-icon dl-icon--${iconInfo.type}`;
+    icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${iconInfo.svg}</svg>`;
+    if (api && api.getDownloadFileIcon) {
+      api.getDownloadFileIcon(item.id).then((dataUrl) => {
+        if (dataUrl && icon.isConnected) {
+          icon.innerHTML = '';
+          icon.className = 'download-item__icon';
+          const img = document.createElement('img');
+          img.className = 'download-item__real-icon';
+          img.src = dataUrl;
+          img.draggable = false;
+          icon.appendChild(img);
+        }
+      }).catch(() => {});
+    }
+
+    // 主体：文件名 + 状态/操作行
+    const body = document.createElement('div');
+    body.className = 'download-item__body';
+
+    const name = document.createElement('div');
+    name.className = 'download-item__name';
+    name.textContent = item.filename || '未命名文件';
+    name.title = item.filename || '';
+    body.appendChild(name);
+
+    const statusRow = document.createElement('div');
+    statusRow.className = 'download-item__status-row';
+
+    if (item.state === 'in_progress' || item.state === 'paused') {
+      // 轻量进度：品牌色细进度条 + 百分比/大小/速度
+      const progressRow = document.createElement('div');
+      progressRow.className = 'download-item__progress-row';
+      const barWrap = document.createElement('div');
+      barWrap.className = 'download-item__progress';
+      const bar = document.createElement('div');
+      bar.className = 'download-item__progress-bar';
+      if (item.state === 'paused') bar.classList.add('download-item__progress-bar--paused');
+      const percent = item.totalBytes > 0
+        ? Math.min(100, Math.round((item.receivedBytes / item.totalBytes) * 100))
+        : 0;
+      bar.style.width = `${percent}%`;
+      barWrap.appendChild(bar);
+      const info = document.createElement('span');
+      info.className = 'download-item__progress-info';
+      info.textContent = getDownloadProgressInfo(item, percent);
+      progressRow.appendChild(barWrap);
+      progressRow.appendChild(info);
+      statusRow.appendChild(progressRow);
+    } else if (item.state === 'completed') {
+      // 蓝色「打开文件」文字链接
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'download-item__open';
+      open.textContent = '打开文件';
+      open.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await api.openDownloadFile(item.id);
+      });
+      statusRow.appendChild(open);
+    } else {
+      const text = getDownloadStateText(item);
+      if (text) {
+        const span = document.createElement('span');
+        span.className = 'download-item__state-text';
+        span.textContent = text;
+        statusRow.appendChild(span);
+      }
+    }
+    body.appendChild(statusRow);
+
+    // hover 操作按钮（右）
+    const actions = document.createElement('div');
+    actions.className = 'download-item__actions';
+
+    if (item.state === 'in_progress') {
+      actions.appendChild(makeDownloadAction('暂停', 'pause', async (e) => {
+        e.stopPropagation();
+        await api.pauseDownload(item.id);
+      }));
+    } else if (item.state === 'paused') {
+      actions.appendChild(makeDownloadAction('继续', 'play', async (e) => {
+        e.stopPropagation();
+        await api.resumeDownload(item.id);
+      }));
+    }
+    if (item.state === 'in_progress' || item.state === 'paused') {
+      actions.appendChild(makeDownloadAction('取消', 'cancel', async (e) => {
+        e.stopPropagation();
+        await api.cancelDownload(item.id);
+      }));
+    }
+    // 已取消/失败：可重新开始下载
+    if (item.state === 'cancelled' || item.state === 'failed') {
+      actions.appendChild(makeDownloadAction('重新开始', 'restart', async (e) => {
+        e.stopPropagation();
+        await api.retryDownload(item.id);
+      }));
+    }
+    if (item.state !== 'deleted') {
+      actions.appendChild(makeDownloadAction('在文件夹中显示', 'folder', async (e) => {
+        e.stopPropagation();
+        await api.openDownloadFolder(item.id);
+      }));
+    }
+    if (item.url) {
+      actions.appendChild(makeDownloadAction('复制下载链接', 'link', async (e) => {
+        e.stopPropagation();
+        await api.copyText(item.url);
+      }));
+    }
+    actions.appendChild(makeDownloadAction('从列表移除', 'trash', async (e) => {
+      e.stopPropagation();
+      await api.deleteDownload(item.id);
+      await loadDownloads();
+    }));
+
+    row.appendChild(icon);
+    row.appendChild(body);
+    row.appendChild(actions);
+
+    // 右键菜单：重新开始 / 复制下载链接 / 打开文件 / 在文件夹中显示 / 从列表移除
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showDownloadContextMenu(e.clientX, e.clientY, item);
+    });
+
+    return row;
+  }
+
+  // 增量更新已渲染的下载项（实时进度，避免全量重建导致进度条动画从 0 重置）
+  function updateDownloadRow(item) {
+    if (dom.downloadPanel.hidden) return false;
+    const row = dom.downloadList.querySelector(`.download-item[data-id="${CSS.escape(item.id)}"]`);
+    if (!row) return false;
+
+    // 暂停：低频操作，重建整行（「暂停」按钮切换为「继续」+ 进度条暂停样式）
+    if (item.state === 'paused') {
+      const newRow = buildDownloadRow(item);
+      if (newRow) row.replaceWith(newRow);
+      return true;
+    }
+
+    // 下载中：增量更新进度条 + 信息（避免全量重建导致进度条从 0 重新动画）
+    if (item.state === 'in_progress') {
+      // 若行内仍是「继续」按钮（刚从暂停恢复），先重建切换为「暂停」
+      if (row.querySelector('.download-item__action--play')) {
+        const newRow = buildDownloadRow(item);
+        if (newRow) row.replaceWith(newRow);
+        return true;
+      }
+      const bar = row.querySelector('.download-item__progress-bar');
+      const info = row.querySelector('.download-item__progress-info');
+      const percent = item.totalBytes > 0
+        ? Math.min(100, Math.round((item.receivedBytes / item.totalBytes) * 100))
+        : 0;
+      if (bar) {
+        // 临时禁用过渡，避免从 0 重新动画
+        bar.style.transition = 'none';
+        bar.style.width = `${percent}%`;
+        requestAnimationFrame(() => { bar.style.transition = ''; });
+      }
+      if (info) info.textContent = getDownloadProgressInfo(item, percent);
+      return true;
+    }
+
+    // 状态切换（完成/取消/删除等）：重建该行
+    const newRow = buildDownloadRow(item);
+    if (newRow) row.replaceWith(newRow);
+    return true;
   }
 
   function renderDownloadPanel() {
@@ -1281,148 +1486,9 @@
       return;
     }
 
+    // 全量历史：已完成/进行中/已取消/已删除 均展示
     items.forEach((item) => {
-      const row = document.createElement('div');
-      row.className = 'download-item';
-      if (item.state === 'deleted') row.classList.add('download-item--deleted');
-
-      // 彩色文件类型图标
-      const icon = document.createElement('div');
-      icon.className = 'download-item__icon';
-      const iconInfo = getFileIcon(item.filename);
-      icon.style.color = iconInfo.color;
-      icon.style.background = iconInfo.bg;
-      icon.textContent = iconInfo.text;
-
-      // 主体
-      const body = document.createElement('div');
-      body.className = 'download-item__body';
-
-      // 文件名行（含状态标签）
-      const nameRow = document.createElement('div');
-      nameRow.className = 'download-item__name-row';
-      const name = document.createElement('div');
-      name.className = 'download-item__name';
-      name.textContent = item.filename || '未命名文件';
-      name.title = item.filename || '';
-      nameRow.appendChild(name);
-
-      if (item.state === 'completed') {
-        const st = document.createElement('span');
-        st.className = 'download-item__status download-item__status--done';
-        st.textContent = '已完成';
-        nameRow.appendChild(st);
-      } else if (item.state === 'failed') {
-        const st = document.createElement('span');
-        st.className = 'download-item__status download-item__status--failed';
-        st.textContent = '失败';
-        nameRow.appendChild(st);
-      } else if (item.state === 'cancelled') {
-        const st = document.createElement('span');
-        st.className = 'download-item__status';
-        st.textContent = '已取消';
-        nameRow.appendChild(st);
-      } else if (item.state === 'paused') {
-        const st = document.createElement('span');
-        st.className = 'download-item__status';
-        st.textContent = '已暂停';
-        nameRow.appendChild(st);
-      }
-      body.appendChild(nameRow);
-
-      // 元信息：来源 · 大小/速度/时间
-      const meta = document.createElement('div');
-      meta.className = 'download-item__meta';
-      meta.textContent = getDownloadMeta(item);
-      body.appendChild(meta);
-
-      // 进度条 + 百分比（下载中/暂停）
-      if (item.state === 'in_progress' || item.state === 'paused') {
-        const progressRow = document.createElement('div');
-        progressRow.className = 'download-item__progress-row';
-        const progress = document.createElement('div');
-        progress.className = 'download-item__progress';
-        const bar = document.createElement('div');
-        bar.className = 'download-item__progress-bar';
-        if (item.state === 'paused') bar.classList.add('download-item__progress-bar--paused');
-        const percent = item.totalBytes > 0
-          ? Math.min(100, Math.round((item.receivedBytes / item.totalBytes) * 100))
-          : 0;
-        bar.style.width = `${percent}%`;
-        progress.appendChild(bar);
-        const pct = document.createElement('span');
-        pct.className = 'download-item__percent';
-        pct.textContent = `${percent}%`;
-        progressRow.appendChild(progress);
-        progressRow.appendChild(pct);
-        body.appendChild(progressRow);
-      }
-
-      // 操作按钮
-      const actions = document.createElement('div');
-      actions.className = 'download-item__actions';
-
-      // 暂停 / 继续
-      if (item.state === 'in_progress') {
-        actions.appendChild(makeDownloadAction('暂停', 'pause', async (e) => {
-          e.stopPropagation();
-          await api.pauseDownload(item.id);
-        }));
-      } else if (item.state === 'paused') {
-        actions.appendChild(makeDownloadAction('继续', 'play', async (e) => {
-          e.stopPropagation();
-          await api.resumeDownload(item.id);
-        }));
-      }
-
-      // 取消（下载中/暂停时）
-      if (item.state === 'in_progress' || item.state === 'paused') {
-        actions.appendChild(makeDownloadAction('取消', 'cancel', async (e) => {
-          e.stopPropagation();
-          await api.cancelDownload(item.id);
-        }));
-      }
-
-      // 打开文件（完成时）
-      if (item.state === 'completed') {
-        const openFile = document.createElement('button');
-        openFile.type = 'button';
-        openFile.className = 'download-item__open-file';
-        openFile.textContent = '打开';
-        openFile.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          await api.openDownloadFile(item.id);
-        });
-        actions.appendChild(openFile);
-      }
-
-      // 打开文件夹
-      if (item.state !== 'deleted') {
-        actions.appendChild(makeDownloadAction('打开文件夹', 'folder', async (e) => {
-          e.stopPropagation();
-          await api.openDownloadFolder(item.id);
-        }));
-      }
-
-      // 复制链接
-      if (item.url) {
-        actions.appendChild(makeDownloadAction('复制链接', 'link', async (e) => {
-          e.stopPropagation();
-          await api.copyText(item.url);
-        }));
-      }
-
-      // 删除
-      actions.appendChild(makeDownloadAction('删除', 'trash', async (e) => {
-        e.stopPropagation();
-        await api.deleteDownload(item.id);
-        await loadDownloads();
-      }));
-
-      row.appendChild(icon);
-      row.appendChild(body);
-      row.appendChild(actions);
-      list.appendChild(row);
+      list.appendChild(buildDownloadRow(item));
     });
   }
 
@@ -1476,41 +1542,53 @@
   }
 
   // 彩色文件类型图标：返回 { text, color, bg }
+  // ==================== 文件类型图标（可配置映射） ====================
+  // 后缀 → 类型组（新增后缀只需在这里加一行）
+  const FILE_ICON_EXT_TYPES = {
+    // 可执行 / 安装程序
+    exe: 'exe', msi: 'exe', bat: 'exe', cmd: 'exe',
+    // 压缩包
+    zip: 'archive', rar: 'archive', '7z': 'archive', tar: 'archive', gz: 'archive',
+    // 纯文本
+    txt: 'text', log: 'text', md: 'text',
+    // 办公文档
+    doc: 'word', docx: 'word',
+    xls: 'excel', xlsx: 'excel', csv: 'excel',
+    ppt: 'ppt', pptx: 'ppt',
+    pdf: 'pdf',
+    // 图片
+    png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', bmp: 'image', webp: 'image', svg: 'image',
+    // 音视频
+    mp4: 'video', avi: 'video', mkv: 'video', mov: 'video', wmv: 'video',
+    mp3: 'audio', wav: 'audio', flac: 'audio', aac: 'audio',
+    // 开发 / 代码
+    py: 'code', js: 'code', html: 'code', css: 'code', java: 'code', json: 'code', xml: 'code',
+    // 镜像安装包
+    iso: 'disk', img: 'disk',
+  };
+
+  // 类型 → 线性 SVG 图标（stroke 用 currentColor，颜色由 CSS 主题控制）
+  const FILE_ICON_SVGS = {
+    file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+    exe: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M12 15h5"/>',
+    archive: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="10 2 10 6 14 6 14 10"/><path d="M9 13h6"/><path d="M9 17h4"/>',
+    text: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13h6"/><path d="M9 17h6"/>',
+    word: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 12h6"/><path d="M9 15h6"/><path d="M9 18h3"/>',
+    excel: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 12h2"/><path d="M13 12h2"/><path d="M9 15h2"/><path d="M13 15h2"/><path d="M9 18h2"/><path d="M13 18h2"/>',
+    ppt: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 11v6"/><path d="M9 14h6"/>',
+    pdf: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 16c0-2 2-2 3-2s3 0 3 2-2 2-3 2-3 0-3-2z"/>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
+    video: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4V8Z"/>',
+    audio: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    code: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m10 9-3 3 3 3"/><path d="m14 9 3 3-3 3"/>',
+    disk: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="1.5"/><path d="M12 3v9"/>',
+  };
+
+  // 后缀 → 类型 → SVG（可配置扩展）
   function getFileIcon(filename) {
     const ext = String(filename || '').split('.').pop().toLowerCase();
-    const table = {
-      pdf: { text: 'PDF', color: '#d93025', bg: 'rgba(217, 48, 37, 0.12)' },
-      doc: { text: 'DOC', color: '#1a73e8', bg: 'rgba(26, 115, 232, 0.12)' },
-      docx: { text: 'DOC', color: '#1a73e8', bg: 'rgba(26, 115, 232, 0.12)' },
-      xls: { text: 'XLS', color: '#188038', bg: 'rgba(24, 128, 56, 0.12)' },
-      xlsx: { text: 'XLS', color: '#188038', bg: 'rgba(24, 128, 56, 0.12)' },
-      ppt: { text: 'PPT', color: '#e8710a', bg: 'rgba(232, 113, 10, 0.14)' },
-      pptx: { text: 'PPT', color: '#e8710a', bg: 'rgba(232, 113, 10, 0.14)' },
-      zip: { text: 'ZIP', color: '#e8710a', bg: 'rgba(232, 113, 10, 0.14)' },
-      rar: { text: 'RAR', color: '#e8710a', bg: 'rgba(232, 113, 10, 0.14)' },
-      '7z': { text: '7Z', color: '#e8710a', bg: 'rgba(232, 113, 10, 0.14)' },
-      jpg: { text: 'IMG', color: '#9334e6', bg: 'rgba(147, 52, 230, 0.12)' },
-      jpeg: { text: 'IMG', color: '#9334e6', bg: 'rgba(147, 52, 230, 0.12)' },
-      png: { text: 'IMG', color: '#9334e6', bg: 'rgba(147, 52, 230, 0.12)' },
-      gif: { text: 'IMG', color: '#9334e6', bg: 'rgba(147, 52, 230, 0.12)' },
-      svg: { text: 'SVG', color: '#9334e6', bg: 'rgba(147, 52, 230, 0.12)' },
-      mp3: { text: 'MP3', color: '#d01884', bg: 'rgba(208, 24, 132, 0.12)' },
-      wav: { text: 'WAV', color: '#d01884', bg: 'rgba(208, 24, 132, 0.12)' },
-      flac: { text: 'FLAC', color: '#d01884', bg: 'rgba(208, 24, 132, 0.12)' },
-      mp4: { text: 'MP4', color: '#00897b', bg: 'rgba(0, 137, 123, 0.12)' },
-      avi: { text: 'AVI', color: '#00897b', bg: 'rgba(0, 137, 123, 0.12)' },
-      mkv: { text: 'MKV', color: '#00897b', bg: 'rgba(0, 137, 123, 0.12)' },
-      exe: { text: 'EXE', color: '#5f6368', bg: 'rgba(95, 99, 104, 0.14)' },
-      msi: { text: 'MSI', color: '#5f6368', bg: 'rgba(95, 99, 104, 0.14)' },
-      txt: { text: 'TXT', color: '#4285f4', bg: 'rgba(66, 133, 244, 0.12)' },
-      md: { text: 'MD', color: '#4285f4', bg: 'rgba(66, 133, 244, 0.12)' },
-      html: { text: 'HTML', color: '#f9ab00', bg: 'rgba(249, 171, 0, 0.14)' },
-      css: { text: 'CSS', color: '#1a73e8', bg: 'rgba(26, 115, 232, 0.12)' },
-      js: { text: 'JS', color: '#f9ab00', bg: 'rgba(249, 171, 0, 0.14)' },
-      py: { text: 'PY', color: '#188038', bg: 'rgba(24, 128, 56, 0.12)' },
-      json: { text: 'JSON', color: '#5f6368', bg: 'rgba(95, 99, 104, 0.14)' },
-    };
-    return table[ext] || { text: 'FILE', color: 'var(--text-secondary)', bg: 'var(--bg-hover)' };
+    const type = FILE_ICON_EXT_TYPES[ext] || 'file';
+    return { svg: FILE_ICON_SVGS[type] || FILE_ICON_SVGS.file, type };
   }
 
   async function openDownloadPanel() {
@@ -1892,6 +1970,54 @@
     dom.contextMenu.style.top = Math.min(y, window.innerHeight - 200) + 'px';
   }
 
+  function showDownloadContextMenu(x, y, item) {
+    dom.contextMenu.innerHTML = '';
+    const addItem = (label, action, cls = '') => {
+      const el = document.createElement('div');
+      el.className = 'context-menu__item ' + cls;
+      el.textContent = label;
+      el.addEventListener('click', () => {
+        dom.contextMenu.style.display = 'none';
+        action();
+      });
+      dom.contextMenu.appendChild(el);
+    };
+
+    // 已取消/失败：重新开始
+    if (item.state === 'cancelled' || item.state === 'failed') {
+      addItem('重新开始', async () => {
+        await api.retryDownload(item.id);
+      });
+    }
+    // 复制下载链接
+    if (item.url) {
+      addItem('复制下载链接', async () => {
+        await api.copyText(item.url);
+      });
+    }
+    // 打开文件
+    if (item.state === 'completed') {
+      addItem('打开文件', async () => {
+        await api.openDownloadFile(item.id);
+      });
+    }
+    // 在文件夹中显示
+    if (item.state !== 'deleted') {
+      addItem('在文件夹中显示', async () => {
+        await api.openDownloadFolder(item.id);
+      });
+    }
+    // 从列表移除
+    addItem('从列表移除', async () => {
+      await api.deleteDownload(item.id);
+      await loadDownloads();
+    }, 'context-menu__item--danger');
+
+    dom.contextMenu.style.display = 'block';
+    dom.contextMenu.style.left = Math.min(x, window.innerWidth - 220) + 'px';
+    dom.contextMenu.style.top = Math.min(y, window.innerHeight - 240) + 'px';
+  }
+
   async function openHistoryPanel() {
     if (state.historyPanelOpen) return;
     if (state.downloadPanelOpen) closeDownloadPanel();
@@ -2195,10 +2321,14 @@
         closeExtensionPopup();
         api.createTab('neutron://extensions');
       }));
-      moreMenu.appendChild(createExtensionMenuAction('选项', () => {
-        closeExtensionPopup();
-        api.createTab('neutron://extensions');
-      }));
+      // 扩展自带选项页时，提供「扩展选项」入口（打开 chrome-extension:// 选项页，与 Edge 一致）
+      if (ext.optionsUrl) {
+        moreMenu.appendChild(createExtensionMenuAction('扩展选项', () => {
+          closeExtensionPopup();
+          const optionsPath = String(ext.optionsUrl).replace(/^\/+/, '');
+          api.createTab(`chrome-extension://${ext.id}/${optionsPath}`);
+        }));
+      }
       moreMenu.appendChild(createExtensionMenuAction('卸载', async () => {
         if (!confirm(`确定要卸载扩展“${ext.name || '未命名扩展'}”吗？`)) return;
         await api.uninstallExtension(ext.id);
@@ -2570,6 +2700,91 @@
   }
 
   // ==================== 拖放支持（在地址栏） ====================
+  // ==================== 拖拽安装扩展（.crx / .zip） ====================
+  function setupExtensionDropInstall() {
+    const overlay = document.getElementById('dropOverlay');
+    let dragCounter = 0;
+
+    const isExtFileDrag = (e) => {
+      if (!e || !e.dataTransfer) return false;
+      const types = Array.prototype.slice.call(e.dataTransfer.types || []);
+      if (!types.includes('Files')) return false;
+      const files = e.dataTransfer.files || [];
+      for (let i = 0; i < files.length; i++) {
+        const name = String(files[i].name || '').toLowerCase();
+        if (name.endsWith('.crx') || name.endsWith('.zip')) return true;
+      }
+      return false;
+    };
+
+    document.addEventListener('dragenter', (e) => {
+      if (!isExtFileDrag(e)) return;
+      dragCounter++;
+      overlay.hidden = false;
+    });
+    document.addEventListener('dragleave', (e) => {
+      if (!isExtFileDrag(e)) return;
+      dragCounter--;
+      if (dragCounter <= 0) { dragCounter = 0; overlay.hidden = true; }
+    });
+    document.addEventListener('dragover', (e) => {
+      if (!isExtFileDrag(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    });
+    document.addEventListener('drop', async (e) => {
+      if (!isExtFileDrag(e)) return;
+      e.preventDefault();
+      dragCounter = 0;
+      overlay.hidden = true;
+      const files = e.dataTransfer.files || [];
+      const file = Array.from(files).find((f) => {
+        const n = String(f.name || '').toLowerCase();
+        return n.endsWith('.crx') || n.endsWith('.zip');
+      });
+      if (!file) return;
+      if (!file.path) { showToast('无法获取文件路径，安装失败', 'error'); return; }
+      await installDroppedExtensionFile(file.path, file.name);
+    });
+
+    // 网页内容区（BrowserView）拖放的文件由主进程转发到这里
+    if (api.onExtensionDropFile) {
+      api.onExtensionDropFile(async (filePath) => {
+        if (filePath) {
+          overlay.hidden = true;
+          await installDroppedExtensionFile(filePath, filePath.split(/[\\/]/).pop());
+        }
+      });
+    }
+  }
+
+  async function installDroppedExtensionFile(filePath, fileName) {
+    showToast('正在安装 ' + (fileName || '扩展包') + ' ...');
+    try {
+      const result = await api.installExtensionFromFile(filePath);
+      if (result && result.success) {
+        const extName = (result.extension && result.extension.name) || fileName || '扩展';
+        showToast('已安装 ' + extName, 'success');
+        if (state.extensionPopupOpen) await loadExtensionPopup();
+      } else {
+        showToast((result && result.message) || '安装失败', 'error');
+      }
+    } catch (err) {
+      showToast('安装失败: ' + (err && err.message || ''), 'error');
+    }
+  }
+
+  // ==================== 全局 Toast ====================
+  function showToast(message, type) {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.className = 'toast' + (type ? ' toast--' + type : '');
+    toast.hidden = false;
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(() => { toast.hidden = true; }, 3500);
+  }
+
   function bindDragAndDrop() {
     dom.addressInput.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -2697,7 +2912,10 @@
       } else {
         state.downloads.unshift(data);
       }
-      renderDownloadPanel();
+      // 已渲染的行做增量更新（实时进度，避免全量重建导致进度条从 0 重新动画）
+      if (!updateDownloadRow(data)) {
+        renderDownloadPanel();
+      }
       updateDownloadButton();
 
       if (isNew && data.state === 'in_progress' && !state.downloadPanelOpen) {

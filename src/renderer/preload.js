@@ -100,9 +100,11 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
 
   // ==================== 下载 ====================
   getDownloads: () => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_GET_ALL),
+  getDownloadFileIcon: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_GET_FILE_ICON, { id }),
   pauseDownload: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_PAUSE, { id }),
   resumeDownload: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_RESUME, { id }),
   cancelDownload: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_CANCEL, { id }),
+  retryDownload: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_RETRY, { id }),
   copyText: (text) => ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_COPY, text),
   openDownloadFolder: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_OPEN_FOLDER, { id }),
   openDownloadFile: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_OPEN_FILE, { id }),
@@ -116,6 +118,12 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   getExtensions: () => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_GET_ALL),
   installExtension: () => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_INSTALL),
   installUnpackedExtension: () => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_INSTALL_UNPACKED),
+  installExtensionFromFile: (filePath) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_INSTALL_FILE, { path: filePath }),
+  onExtensionDropFile: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.EXTENSIONS_DROP_FILE, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXTENSIONS_DROP_FILE, handler);
+  },
   installFromEdgeStore: (input) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_INSTALL_FROM_EDGE, input),
   toggleExtension: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_TOGGLE, { id }),
   uninstallExtension: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_UNINSTALL, { id }),

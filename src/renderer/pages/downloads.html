@@ -20,6 +20,20 @@
       --success: #188038;
       --success-soft: rgba(24, 128, 56, 0.14);
       --track: #e8eaed;
+      /* 文件类型图标配色（浅色） */
+      --dl-icon-exe: #5f6368;
+      --dl-icon-archive: #e8a33d;
+      --dl-icon-text: #4285f4;
+      --dl-icon-word: #1a73e8;
+      --dl-icon-excel: #34a853;
+      --dl-icon-ppt: #e8710a;
+      --dl-icon-pdf: #d93025;
+      --dl-icon-image: #9334e6;
+      --dl-icon-video: #00897b;
+      --dl-icon-audio: #d01884;
+      --dl-icon-code: #1a73e8;
+      --dl-icon-disk: #5f6368;
+      --dl-icon-file: #5f6368;
     }
     [data-theme="dark"] {
       --bg: #1e1e26;
@@ -35,6 +49,20 @@
       --success: #81c995;
       --success-soft: rgba(129, 201, 149, 0.16);
       --track: #3b3b45;
+      /* 文件类型图标配色（深色） */
+      --dl-icon-exe: #9aa0a6;
+      --dl-icon-archive: #f0b54f;
+      --dl-icon-text: #8ab4f8;
+      --dl-icon-word: #8ab4f8;
+      --dl-icon-excel: #81c995;
+      --dl-icon-ppt: #f7b87a;
+      --dl-icon-pdf: #f28b82;
+      --dl-icon-image: #c58af9;
+      --dl-icon-video: #80cbc4;
+      --dl-icon-audio: #f48fb1;
+      --dl-icon-code: #8ab4f8;
+      --dl-icon-disk: #9aa0a6;
+      --dl-icon-file: #9aa0a6;
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
@@ -91,10 +119,26 @@
     }
     .list-item:hover { background: var(--hover); }
     .list-item__icon {
-      width: 38px; height: 38px; border-radius: 8px; flex-shrink: 0;
+      width: 20px; height: 20px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700;
     }
+    /* 文件类型图标：类型类控制颜色，随主题明暗适配 */
+    .dl-icon { color: var(--dl-icon-file); }
+    .dl-icon--exe { color: var(--dl-icon-exe); }
+    .dl-icon--archive { color: var(--dl-icon-archive); }
+    .dl-icon--text { color: var(--dl-icon-text); }
+    .dl-icon--word { color: var(--dl-icon-word); }
+    .dl-icon--excel { color: var(--dl-icon-excel); }
+    .dl-icon--ppt { color: var(--dl-icon-ppt); }
+    .dl-icon--pdf { color: var(--dl-icon-pdf); }
+    .dl-icon--image { color: var(--dl-icon-image); }
+    .dl-icon--video { color: var(--dl-icon-video); }
+    .dl-icon--audio { color: var(--dl-icon-audio); }
+    .dl-icon--code { color: var(--dl-icon-code); }
+    .dl-icon--disk { color: var(--dl-icon-disk); }
+    /* 弱化状态（已取消/已删除）：图标透明度降至 40% */
+    .list-item--inactive .dl-icon { opacity: 0.4; }
+    .list-item--inactive .list-item__title { color: var(--muted); }
     .list-item__content { flex: 1; min-width: 0; }
     .list-item__title-row { display: flex; align-items: center; gap: 8px; }
     .list-item__title {
@@ -122,10 +166,8 @@
     .status--muted { background: var(--hover); color: var(--muted); }
     .list-item__actions {
       display: flex; gap: 2px; flex-shrink: 0;
-      opacity: 0; transition: opacity 0.15s;
     }
-    .list-item:hover .list-item__actions,
-    .list-item__actions:focus-within { opacity: 1; }
+    .list-item__real-icon { width: 20px; height: 20px; object-fit: contain; }
     .action-btn {
       width: 30px; height: 30px; border: 0; border-radius: 6px;
       background: transparent; color: var(--muted);
@@ -147,6 +189,32 @@
     .empty { text-align: center; padding: 72px 20px; color: var(--muted); }
     .empty__icon { font-size: 44px; margin-bottom: 12px; opacity: 0.5; }
     .empty__text { font-size: 14px; }
+
+    /* 右键菜单 */
+    .ctx-menu {
+      position: fixed;
+      z-index: 1000;
+      min-width: 172px;
+      padding: 6px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+    }
+    .ctx-menu__item {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .ctx-menu__item:hover { background: var(--hover); }
+    .ctx-menu__item--danger { color: var(--danger); }
   </style>
 </head>
 <body>
@@ -170,6 +238,8 @@
     <div id="downloadList"></div>
   </div>
 
+  <div id="ctxMenu" class="ctx-menu" style="display:none"></div>
+
   <script>
     const api = window.NeutronBrowser || {};
 
@@ -192,44 +262,48 @@
       open: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
       folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
       link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+      restart: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
       trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+    };
+
+    // ==================== 文件类型图标（可配置映射，与主窗口一致） ====================
+    // 后缀 → 类型组（新增后缀只需在这里加一行）
+    const FILE_ICON_EXT_TYPES = {
+      exe: 'exe', msi: 'exe', bat: 'exe', cmd: 'exe',
+      zip: 'archive', rar: 'archive', '7z': 'archive', tar: 'archive', gz: 'archive',
+      txt: 'text', log: 'text', md: 'text',
+      doc: 'word', docx: 'word',
+      xls: 'excel', xlsx: 'excel', csv: 'excel',
+      ppt: 'ppt', pptx: 'ppt',
+      pdf: 'pdf',
+      png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', bmp: 'image', webp: 'image', svg: 'image',
+      mp4: 'video', avi: 'video', mkv: 'video', mov: 'video', wmv: 'video',
+      mp3: 'audio', wav: 'audio', flac: 'audio', aac: 'audio',
+      py: 'code', js: 'code', html: 'code', css: 'code', java: 'code', json: 'code', xml: 'code',
+      iso: 'disk', img: 'disk',
+    };
+
+    // 类型 → 线性 SVG 图标（stroke 用 currentColor，颜色由 CSS 主题控制）
+    const FILE_ICON_SVGS = {
+      file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+      exe: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M12 15h5"/>',
+      archive: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="10 2 10 6 14 6 14 10"/><path d="M9 13h6"/><path d="M9 17h4"/>',
+      text: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13h6"/><path d="M9 17h6"/>',
+      word: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 12h6"/><path d="M9 15h6"/><path d="M9 18h3"/>',
+      excel: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 12h2"/><path d="M13 12h2"/><path d="M9 15h2"/><path d="M13 15h2"/><path d="M9 18h2"/><path d="M13 18h2"/>',
+      ppt: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 11v6"/><path d="M9 14h6"/>',
+      pdf: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 16c0-2 2-2 3-2s3 0 3 2-2 2-3 2-3 0-3-2z"/>',
+      image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
+      video: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4V8Z"/>',
+      audio: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+      code: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m10 9-3 3 3 3"/><path d="m14 9 3 3-3 3"/>',
+      disk: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="1.5"/><path d="M12 3v9"/>',
     };
 
     function getFileIcon(filename) {
       const ext = String(filename || '').split('.').pop().toLowerCase();
-      const table = {
-        pdf: ['PDF', '#d93025', 'rgba(217,48,37,0.12)'],
-        doc: ['DOC', '#1a73e8', 'rgba(26,115,232,0.12)'],
-        docx: ['DOC', '#1a73e8', 'rgba(26,115,232,0.12)'],
-        xls: ['XLS', '#188038', 'rgba(24,128,56,0.12)'],
-        xlsx: ['XLS', '#188038', 'rgba(24,128,56,0.12)'],
-        ppt: ['PPT', '#e8710a', 'rgba(232,113,10,0.14)'],
-        pptx: ['PPT', '#e8710a', 'rgba(232,113,10,0.14)'],
-        zip: ['ZIP', '#e8710a', 'rgba(232,113,10,0.14)'],
-        rar: ['RAR', '#e8710a', 'rgba(232,113,10,0.14)'],
-        '7z': ['7Z', '#e8710a', 'rgba(232,113,10,0.14)'],
-        jpg: ['IMG', '#9334e6', 'rgba(147,52,230,0.12)'],
-        jpeg: ['IMG', '#9334e6', 'rgba(147,52,230,0.12)'],
-        png: ['IMG', '#9334e6', 'rgba(147,52,230,0.12)'],
-        gif: ['IMG', '#9334e6', 'rgba(147,52,230,0.12)'],
-        svg: ['SVG', '#9334e6', 'rgba(147,52,230,0.12)'],
-        mp3: ['MP3', '#d01884', 'rgba(208,24,132,0.12)'],
-        wav: ['WAV', '#d01884', 'rgba(208,24,132,0.12)'],
-        flac: ['FLAC', '#d01884', 'rgba(208,24,132,0.12)'],
-        mp4: ['MP4', '#00897b', 'rgba(0,137,123,0.12)'],
-        avi: ['AVI', '#00897b', 'rgba(0,137,123,0.12)'],
-        mkv: ['MKV', '#00897b', 'rgba(0,137,123,0.12)'],
-        exe: ['EXE', '#5f6368', 'rgba(95,99,104,0.14)'],
-        msi: ['MSI', '#5f6368', 'rgba(95,99,104,0.14)'],
-        txt: ['TXT', '#4285f4', 'rgba(66,133,244,0.12)'],
-        md: ['MD', '#4285f4', 'rgba(66,133,244,0.12)'],
-        html: ['HTML', '#f9ab00', 'rgba(249,171,0,0.14)'],
-        css: ['CSS', '#1a73e8', 'rgba(26,115,232,0.12)'],
-        js: ['JS', '#f9ab00', 'rgba(249,171,0,0.14)'],
-        py: ['PY', '#188038', 'rgba(24,128,56,0.12)'],
-        json: ['JSON', '#5f6368', 'rgba(95,99,104,0.14)'],
-      };
-      return table[ext] || ['FILE', 'var(--muted)', 'var(--hover)'];
+      const type = FILE_ICON_EXT_TYPES[ext] || 'file';
+      return { svg: FILE_ICON_SVGS[type] || FILE_ICON_SVGS.file, type };
     }
 
     function getSource(item) {
@@ -292,6 +366,77 @@
       });
     }
 
+    function buildSubtitle(item) {
+      const parts = [];
+      const src = getSource(item);
+      if (src) parts.push(src);
+      if (item.state === 'in_progress') {
+        parts.push(item.totalBytes > 0 ? formatBytes(item.receivedBytes) + ' / ' + formatBytes(item.totalBytes) : formatBytes(item.receivedBytes));
+        if (item.speed) parts.push(formatSpeed(item.speed));
+      } else if (item.state === 'paused') {
+        parts.push(formatBytes(item.receivedBytes));
+      } else if (item.state === 'completed') {
+        parts.push(formatBytes(item.totalBytes));
+        parts.push(new Date(item.endTime || item.startTime).toLocaleString('zh-CN'));
+      } else if (item.state === 'failed') parts.push('下载失败');
+      else if (item.state === 'cancelled') parts.push('已取消');
+      else if (item.state === 'deleted') parts.push('已删除');
+      return parts.join(' · ');
+    }
+
+    function getStatusInfo(item, pct) {
+      switch (item.state) {
+        case 'in_progress': return { cls: 'status--progress', text: pct + '%' };
+        case 'paused': return { cls: 'status--progress', text: '已暂停' };
+        case 'completed': return { cls: 'status--done', text: '已完成' };
+        case 'failed': return { cls: 'status--failed', text: '失败' };
+        case 'cancelled': return { cls: 'status--muted', text: '已取消' };
+        case 'deleted': return { cls: 'status--muted', text: '已删除' };
+        default: return { cls: 'status--muted', text: '' };
+      }
+    }
+
+    // 增量更新已渲染的下载项（实时进度，避免全量重建导致进度条动画从 0 重置）
+    function updateDownloadRow(item) {
+      const row = document.querySelector('#downloadList .list-item[data-id="' + item.id + '"]');
+      if (!row) return false;
+
+      // 暂停 / 状态切换（完成/取消/失败等）：操作按钮需切换（暂停↔继续、出现重新开始等），
+      // 增量更新无法覆盖，直接全量重建列表
+      if (item.state !== 'in_progress') {
+        render();
+        return true;
+      }
+
+      // 下载中：增量更新进度条 + 副标题 + 状态（实时进度）
+      // 若行内仍是「继续」按钮（刚从暂停恢复），先重建切换为「暂停」
+      if (row.querySelector('.action-btn[title="继续"]')) {
+        render();
+        return true;
+      }
+      let pct = item.totalBytes > 0 ? Math.min(100, Math.round((item.receivedBytes / item.totalBytes) * 100)) : 0;
+      const bar = row.querySelector('.list-item__progress-bar');
+      if (bar) {
+        // 临时禁用过渡，避免从 0 重新动画
+        bar.style.transition = 'none';
+        bar.style.width = pct + '%';
+        requestAnimationFrame(() => { bar.style.transition = ''; });
+      }
+
+      // 副标题（大小 / 速度 / 时间）
+      const subtitle = row.querySelector('.list-item__subtitle');
+      if (subtitle) subtitle.textContent = buildSubtitle(item);
+
+      // 状态标签
+      const statusEl = row.querySelector('.list-item__status');
+      if (statusEl) {
+        const info = getStatusInfo(item, pct);
+        statusEl.className = 'list-item__status ' + info.cls;
+        statusEl.textContent = info.text;
+      }
+      return true;
+    }
+
     function render() {
       const container = document.getElementById('downloadList');
       const items = filtered();
@@ -310,15 +455,27 @@
       container.innerHTML = '';
       items.forEach((item) => {
         const row = document.createElement('div');
-        row.className = 'list-item';
+        row.className = 'list-item' + (item.state === 'cancelled' || item.state === 'deleted' ? ' list-item--inactive' : '');
+        row.dataset.id = item.id;
 
-        // 彩色图标
+        // 文件图标：优先真实系统图标（资源管理器风格，异步获取），加载期间/文件不存在时用类型 SVG 兜底
         const icon = getFileIcon(item.filename);
         const iconEl = document.createElement('div');
-        iconEl.className = 'list-item__icon';
-        iconEl.textContent = icon[0];
-        iconEl.style.color = icon[1];
-        iconEl.style.background = icon[2];
+        iconEl.className = 'list-item__icon dl-icon dl-icon--' + icon.type;
+        iconEl.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + icon.svg + '</svg>';
+        if (api && api.getDownloadFileIcon) {
+          api.getDownloadFileIcon(item.id).then((dataUrl) => {
+            if (dataUrl && iconEl.isConnected) {
+              iconEl.innerHTML = '';
+              iconEl.className = 'list-item__icon';
+              const img = document.createElement('img');
+              img.className = 'list-item__real-icon';
+              img.src = dataUrl;
+              img.draggable = false;
+              iconEl.appendChild(img);
+            }
+          }).catch(() => {});
+        }
 
         // 内容区
         const content = document.createElement('div');
@@ -336,21 +493,7 @@
 
         const subtitle = document.createElement('div');
         subtitle.className = 'list-item__subtitle';
-        const parts = [];
-        const src = getSource(item);
-        if (src) parts.push(src);
-        if (item.state === 'in_progress') {
-          parts.push(item.totalBytes > 0 ? formatBytes(item.receivedBytes) + ' / ' + formatBytes(item.totalBytes) : formatBytes(item.receivedBytes));
-          if (item.speed) parts.push(formatSpeed(item.speed));
-        } else if (item.state === 'paused') {
-          parts.push(formatBytes(item.receivedBytes));
-        } else if (item.state === 'completed') {
-          parts.push(formatBytes(item.totalBytes));
-          parts.push(new Date(item.endTime || item.startTime).toLocaleString('zh-CN'));
-        } else if (item.state === 'failed') parts.push('下载失败');
-        else if (item.state === 'cancelled') parts.push('已取消');
-        else if (item.state === 'deleted') parts.push('已删除');
-        subtitle.textContent = parts.join(' · ');
+        subtitle.textContent = buildSubtitle(item);
         content.appendChild(subtitle);
 
         // 进度
@@ -367,15 +510,9 @@
         }
 
         // 状态
-        let statusClass = 'status--muted', statusText = '';
-        switch (item.state) {
-          case 'in_progress': statusClass = 'status--progress'; statusText = pct + '%'; break;
-          case 'paused': statusClass = 'status--progress'; statusText = '已暂停'; break;
-          case 'completed': statusClass = 'status--done'; statusText = '已完成'; break;
-          case 'failed': statusClass = 'status--failed'; statusText = '失败'; break;
-          case 'cancelled': statusClass = 'status--muted'; statusText = '已取消'; break;
-          case 'deleted': statusClass = 'status--muted'; statusText = '已删除'; break;
-        }
+        const statusInfo = getStatusInfo(item, pct);
+        const statusClass = statusInfo.cls;
+        const statusText = statusInfo.text;
 
         // 操作
         const actions = document.createElement('div');
@@ -391,6 +528,10 @@
         }
         if (item.state === 'completed') {
           actions.appendChild(actionBtn('打开文件', '', 'open', async () => { await api.openDownloadFile(item.id); }));
+        }
+        // 已取消/失败：可重新开始下载
+        if (item.state === 'cancelled' || item.state === 'failed') {
+          actions.appendChild(actionBtn('重新开始', '', 'restart', async () => { await api.retryDownload(item.id); }));
         }
         if (item.state !== 'deleted') {
           actions.appendChild(actionBtn('打开文件夹', '', 'folder', async () => { await api.openDownloadFolder(item.id); }));
@@ -411,9 +552,55 @@
         row.appendChild(content);
         row.appendChild(statusEl);
         row.appendChild(actions);
+
+        // 右键菜单：重新开始 / 复制下载链接 / 打开文件 / 打开文件夹 / 从列表移除
+        row.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showDownloadContextMenu(e.clientX, e.clientY, item);
+        });
+
         container.appendChild(row);
       });
     }
+
+    // 下载项右键菜单
+    const ctxMenu = document.getElementById('ctxMenu');
+    function showDownloadContextMenu(x, y, item) {
+      ctxMenu.innerHTML = '';
+      const addItem = (label, action, danger) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ctx-menu__item' + (danger ? ' ctx-menu__item--danger' : '');
+        b.textContent = label;
+        b.addEventListener('click', () => {
+          ctxMenu.style.display = 'none';
+          action();
+        });
+        ctxMenu.appendChild(b);
+      };
+      if (item.state === 'cancelled' || item.state === 'failed') {
+        addItem('重新开始', async () => { await api.retryDownload(item.id); });
+      }
+      if (item.url) {
+        addItem('复制下载链接', async () => { await api.copyText(item.url); });
+      }
+      if (item.state === 'completed') {
+        addItem('打开文件', async () => { await api.openDownloadFile(item.id); });
+      }
+      if (item.state !== 'deleted') {
+        addItem('打开文件夹', async () => { await api.openDownloadFolder(item.id); });
+      }
+      addItem('从列表移除', async () => { await api.deleteDownload(item.id); await loadDownloads(); }, true);
+      if (!ctxMenu.children.length) return;
+      ctxMenu.style.display = 'block';
+      ctxMenu.style.left = Math.min(x, window.innerWidth - 180) + 'px';
+      ctxMenu.style.top = Math.min(y, window.innerHeight - 230) + 'px';
+    }
+    document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
+    document.addEventListener('contextmenu', (e) => {
+      if (!ctxMenu.contains(e.target)) ctxMenu.style.display = 'none';
+    });
 
     // 事件绑定
     document.querySelectorAll('.filter-tab').forEach((tab) => {
@@ -437,9 +624,18 @@
       }
     });
 
-    // 监听下载更新
+    // 监听下载更新：先同步本地数组，再对已渲染的行做增量更新（实时进度），
+    // 行不存在或状态切换时全量重建（进度条移除、打开按钮出现）
     if (api.onDownloadsUpdated) {
-      api.onDownloadsUpdated(() => loadDownloads());
+      api.onDownloadsUpdated((data) => {
+        if (!data || !data.id) return;
+        const idx = downloads.findIndex((d) => d.id === data.id);
+        if (idx !== -1) downloads[idx] = { ...downloads[idx], ...data };
+        else downloads.unshift(data);
+        if (!updateDownloadRow(data)) {
+          loadDownloads();
+        }
+      });
     }
 
     loadDownloads();

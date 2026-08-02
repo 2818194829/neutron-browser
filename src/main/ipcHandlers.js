@@ -811,6 +811,19 @@ function registerIpcHandlers() {
     return getStore('downloads').get('items', []);
   });
 
+  // 获取文件真实系统图标（资源管理器风格），文件不存在返回 null（渲染层用类型 SVG 兜底）
+  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_GET_FILE_ICON, async (event, { id }) => {
+    const items = getStore('downloads').get('items', []);
+    const item = items.find(d => d.id === id);
+    const savePath = resolveDownloadPath(item);
+    if (!savePath) return null;
+    try {
+      const icon = await app.getFileIcon(savePath, { size: 'normal' });
+      if (icon && !icon.isEmpty()) return icon.toDataURL();
+    } catch (e) { /* 忽略：返回 null 用 SVG 兜底 */ }
+    return null;
+  });
+
   ipcMain.handle(IPC_CHANNELS.DOWNLOADS_PAUSE, (event, { id }) => {
     const wm = getWM();
     if (wm && wm.pauseDownload) wm.pauseDownload(id);
@@ -827,6 +840,11 @@ function registerIpcHandlers() {
     const wm = getWM();
     if (wm && wm.cancelDownload) wm.cancelDownload(id);
     return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_RETRY, (event, { id }) => {
+    const wm = getWM();
+    return wm && wm.retryDownload ? wm.retryDownload(id) : false;
   });
 
   ipcMain.handle(IPC_CHANNELS.CLIPBOARD_COPY, (event, text) => {
@@ -933,8 +951,36 @@ function registerIpcHandlers() {
   });
 
   // ==================== 扩展 ====================
+  // 计算目录大小（字节）
+  function getDirectorySize(dir) {
+    let total = 0;
+    const walk = (d) => {
+      for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+        const full = path.join(d, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.isFile()) total += fs.statSync(full).size;
+      }
+    };
+    try { walk(dir); } catch (e) { /* 忽略 */ }
+    return total;
+  }
+
   ipcMain.handle(IPC_CHANNELS.EXTENSIONS_GET_ALL, () => {
-    return getInstalledExtensions();
+    const extensions = getInstalledExtensions();
+    // 补充详情字段（主页、站点权限、大小）——manifest 实时读取，无需重装扩展
+    return extensions.map((ext) => {
+      const enriched = { ...ext };
+      try {
+        if (ext.path && fs.existsSync(path.join(ext.path, 'manifest.json'))) {
+          const manifest = JSON.parse(fs.readFileSync(path.join(ext.path, 'manifest.json'), 'utf8'));
+          enriched.homepageUrl = manifest.homepage_url || manifest.homepage || '';
+          enriched.hostPermissions = Array.isArray(manifest.host_permissions) ? manifest.host_permissions : [];
+          enriched.optionsUrl = manifest.options_page || (manifest.options_ui && manifest.options_ui.page) || '';
+          enriched.size = getDirectorySize(ext.path);
+        }
+      } catch (e) { /* 忽略 */ }
+      return enriched;
+    });
   });
 
   ipcMain.handle(IPC_CHANNELS.EXTENSIONS_INSTALL, async () => {
@@ -955,6 +1001,19 @@ function registerIpcHandlers() {
       return { success: true, extension };
     } catch (e) {
       return { success: false, message: e.message };
+    }
+  });
+
+  // 拖放/指定文件路径安装扩展（.crx / .zip）
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_INSTALL_FILE, async (event, { path: filePath }) => {
+    if (!filePath || typeof filePath !== 'string') {
+      return { success: false, message: '无效的文件路径' };
+    }
+    try {
+      const extension = await installExtensionFile(filePath);
+      return { success: true, extension };
+    } catch (e) {
+      return { success: false, message: e.message || '安装失败' };
     }
   });
 
