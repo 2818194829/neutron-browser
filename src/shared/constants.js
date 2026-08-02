@@ -11,6 +11,9 @@ const IPC_CHANNELS = {
   WINDOW_CLOSE: 'window:close',
   WINDOW_IS_MAXIMIZED: 'window:isMaximized',
   WINDOW_STATE_CHANGED: 'window:stateChanged',
+  WINDOW_SET_ALWAYS_ON_TOP: 'window:setAlwaysOnTop',
+  WINDOW_IS_ALWAYS_ON_TOP: 'window:isAlwaysOnTop',
+  WINDOW_ALWAYS_ON_TOP_CHANGED: 'window:alwaysOnTopChanged',
   UI_MODAL_CHANGED: 'ui:modalChanged',
   UI_MODAL_SNAPSHOT: 'ui:modalSnapshot',
   UI_MODAL_SNAPSHOT_READY: 'ui:modalSnapshotReady',
@@ -79,6 +82,9 @@ const IPC_CHANNELS = {
   DOWNLOADS_SET_PATH: 'downloads:setPath',
   DOWNLOADS_UPDATED: 'downloads:updated',
 
+  // 剪贴板
+  CLIPBOARD_COPY: 'clipboard:copy',
+
   // 设置
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
@@ -96,6 +102,9 @@ const IPC_CHANNELS = {
   // 应用信息与更新
   APP_GET_INFO: 'app:getInfo',
   APP_CHECK_UPDATE: 'app:checkUpdate',
+  UPDATE_DOWNLOAD: 'update:download',
+  UPDATE_INSTALL: 'update:install',
+  UPDATE_EVENT: 'update:event',
 
   // 搜索建议
   SEARCH_SUGGEST: 'search:suggest',

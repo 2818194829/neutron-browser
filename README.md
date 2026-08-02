@@ -2,11 +2,11 @@
 
 Neutron Browser 是一款基于 Electron 的现代 PC 级浏览器，支持多标签页、书签管理、历史记录、下载管理、扩展安装，以及接近 Edge 的网页右键菜单体验。
 
-当前版本：**1.7.0**
+当前版本：**1.8.0**
 
 GitHub：[https://github.com/2818194829/neutron-browser](https://github.com/2818194829/neutron-browser)
 
-Release：[v1.7.0](https://github.com/2818194829/neutron-browser/releases/tag/v1.7.0)
+Release：[v1.8.0](https://github.com/2818194829/neutron-browser/releases/tag/v1.8.0)
 
 ## 功能特性
 
@@ -21,6 +21,13 @@ Release：[v1.7.0](https://github.com/2818194829/neutron-browser/releases/tag/v1
 - **无边框窗口**：自定义标题栏、窗口控制按钮和窗口状态记忆
 - **Edge 风格主题系统**：7 种强调色 × 12 套主题皮肤（含花纹 / 动漫氛围）× 明暗模式，设置页可视化选择
 - **完整快捷键**：Chrome 风格快捷键
+- **窗口置顶**：标题栏图钉按钮，一键置顶 / 取消，状态持久化
+
+### 下载与更新
+
+- **Edge 风格下载**：彩色文件图标、来源域名、下载进度、暂停 / 继续 / 取消、复制链接，工具栏下载按钮带环形进度与完成徽章
+- **下载管理页**：分类页签（全部 / 已完成 / 已取消 / 失败）、搜索、清空、悬停操作、明暗主题
+- **自动更新**：检测新版本后应用内自动下载、静默安装、自动重启（Edge 式一键更新）
 
 ### 数据管理
 
@@ -95,7 +102,7 @@ npm run build:installer
 生成位置：
 
 ```text
-build\Neutron Browser Setup 1.7.0.exe
+build\Neutron Browser Setup 1.8.0.exe
 ```
 
 安装包支持：
@@ -222,6 +229,15 @@ npm run build:win
 - 暂不支持完整 Manifest V3 后台 Service Worker 生态
 
 ## 版本记录
+
+### 1.8.0
+
+- Edge 风格下载功能：彩色文件图标、来源域名、下载进度与速度、暂停 / 继续 / 取消、复制链接，工具栏下载按钮支持环形进度与完成徽章
+- 下载管理页重构：分类页签（全部 / 已完成 / 已取消 / 失败）、搜索、清空、悬停操作、明暗主题跟随系统
+- 窗口置顶：标题栏图钉按钮（激活时主题色高亮 + 图钉归位动画），置顶状态持久化
+- 自动更新（Edge 式）：检测到新版本后应用内自动下载（含进度显示）、静默安装并自动重启浏览器
+- 发布流程升级：构建自动生成 app-update.yml 与 latest.yml，支持 electron-updater 自动更新
+
 
 ### 1.7.0
 

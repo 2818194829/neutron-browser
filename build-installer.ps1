@@ -17,6 +17,23 @@ Write-Host "[1/4] Building unpacked app..."
 npx electron-builder --win --dir --config.electronDist=node_modules/electron/dist --config.win.signAndEditExecutable=false
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+# electron-builder 在 --dir/--prepackaged 分步流程下不会自动生成 app-update.yml，
+# 手动写入自动更新 feed 配置（electron-updater 运行时读取 resources/app-update.yml）
+$appUpdateLines = @(
+  "provider: github",
+  "owner: 2818194829",
+  "repo: neutron-browser",
+  "releaseType: release",
+  "updaterCacheDirName: neutron-browser-updater"
+)
+$appUpdateYml = ($appUpdateLines -join [Environment]::NewLine) + [Environment]::NewLine
+[System.IO.File]::WriteAllText(
+  (Join-Path $root "build\win-unpacked\resources\app-update.yml"),
+  $appUpdateYml,
+  (New-Object System.Text.UTF8Encoding($false))
+)
+Write-Host "  [Updater] app-update.yml written to build\win-unpacked\resources\"
+
 $exe = Join-Path $root "build\win-unpacked\$productName.exe"
 $icon = Join-Path $root "assets\icons\icon.ico"
 $cacheDir = Join-Path $env:LOCALAPPDATA "electron-builder\Cache\winCodeSign"

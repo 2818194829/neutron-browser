@@ -6,149 +6,251 @@
   <title>下载内容</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #ffffff;
+      --panel: #f5f5f5;
+      --border: #e3e3e3;
+      --text: #202124;
+      --muted: #666666;
+      --hover: rgba(0, 0, 0, 0.055);
+      --accent: #0067c0;
+      --accent-soft: rgba(0, 103, 192, 0.16);
+      --danger: #c42b1c;
+      --danger-soft: rgba(196, 43, 28, 0.1);
+      --success: #188038;
+      --success-soft: rgba(24, 128, 56, 0.14);
+      --track: #e8eaed;
+    }
+    [data-theme="dark"] {
+      --bg: #1e1e26;
+      --panel: #26262e;
+      --border: #3b3b45;
+      --text: #f3f3f3;
+      --muted: #aaaaaa;
+      --hover: rgba(255, 255, 255, 0.07);
+      --accent: #70b5ff;
+      --accent-soft: rgba(112, 181, 255, 0.18);
+      --danger: #ff8a80;
+      --danger-soft: rgba(255, 138, 128, 0.12);
+      --success: #81c995;
+      --success-soft: rgba(129, 201, 149, 0.16);
+      --track: #3b3b45;
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
       font-size: 14px;
-      background: #202124;
-      color: #e8eaed;
-      height: 100vh;
-      overflow-y: auto;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      transition: background 0.2s, color 0.2s;
     }
-    .page { max-width: 800px; margin: 0 auto; padding: 40px 24px; }
-    h1 { font-size: 24px; font-weight: 400; margin-bottom: 24px; color: #ffffff; }
-    .list-item {
-      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
-      border-radius: 8px; transition: background 0.15s;
-      border-bottom: 1px solid #2d2e31;
+    .page { max-width: 900px; margin: 0 auto; padding: 32px 24px 48px; }
+
+    /* 页头 */
+    .page-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .page-header h1 { font-size: 22px; font-weight: 600; flex: 1; }
+    .search-box {
+      display: flex; align-items: center; gap: 6px;
+      height: 34px; padding: 0 12px;
+      border: 1px solid var(--border); border-radius: 6px;
+      background: var(--panel); color: var(--muted);
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
-    .list-item:hover { background: rgba(255,255,255,0.04); }
-    .list-item__icon {
-      width: 36px; height: 36px; border-radius: 8px; background: #3c4043;
-      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-      font-size: 18px;
+    .search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .search-box input {
+      border: 0; outline: 0; background: transparent; color: var(--text);
+      font-size: 13px; width: 170px;
     }
-    .list-item__content { flex: 1; min-width: 0; }
-    .list-item__title { font-size: 13px; color: #e8eaed; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .list-item__subtitle { font-size: 11px; color: #80868b; margin-top: 2px; }
-    .list-item__progress {
-      width: 100%; height: 3px; background: #3c4043; border-radius: 2px; margin-top: 6px;
-      overflow: hidden;
-    }
-    .list-item__progress-bar {
-      height: 100%; background: #8ab4f8; border-radius: 2px; transition: width 0.3s;
-    }
-    .list-item__status {
-      font-size: 11px; padding: 2px 8px; border-radius: 12px; flex-shrink: 0;
-    }
-    .status--progress { color: #8ab4f8; }
-    .status--completed { color: #34a853; }
-    .status--failed { color: #ea4335; }
-    .status--cancelled { color: #5f6368; }
-    .list-item__actions { display: flex; gap: 4px; flex-shrink: 0; }
-    .list-item__actions button {
-      padding: 4px 8px; border-radius: 4px; border: 1px solid #5f6368;
-      background: transparent; color: #8ab4f8; cursor: pointer; font-size: 11px;
+    .search-box input::placeholder { color: var(--muted); }
+    .header-btn {
+      height: 34px; padding: 0 14px;
+      border: 1px solid var(--border); border-radius: 6px;
+      background: var(--panel); color: var(--text);
+      font-size: 13px; cursor: pointer;
       transition: background 0.15s;
     }
-    .list-item__actions button:hover { background: rgba(138,180,248,0.1); }
-    .empty { text-align: center; padding: 64px 20px; color: #5f6368; }
-    .empty__icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+    .header-btn:hover { background: var(--hover); }
+
+    /* 分类页签 */
+    .filter-tabs { display: flex; gap: 2px; margin-top: 24px; border-bottom: 1px solid var(--border); }
+    .filter-tab {
+      padding: 8px 16px; border: 0; background: transparent;
+      color: var(--muted); font-size: 13px; cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .filter-tab:hover { color: var(--text); }
+    .filter-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+
+    /* 列表项 */
+    .list-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    .list-item:hover { background: var(--hover); }
+    .list-item__icon {
+      width: 38px; height: 38px; border-radius: 8px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700;
+    }
+    .list-item__content { flex: 1; min-width: 0; }
+    .list-item__title-row { display: flex; align-items: center; gap: 8px; }
+    .list-item__title {
+      font-size: 13px; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .list-item__title--danger { color: var(--danger); }
+    .list-item__subtitle { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .list-item__progress {
+      width: 100%; height: 4px; background: var(--track);
+      border-radius: 2px; margin-top: 8px; overflow: hidden;
+    }
+    .list-item__progress-bar {
+      height: 100%; background: var(--accent);
+      border-radius: 2px; transition: width 0.3s;
+    }
+    .list-item__progress-bar--paused { background: var(--muted); }
+    .list-item__status {
+      flex-shrink: 0; padding: 2px 10px; border-radius: 12px;
+      font-size: 11px; margin-left: 8px;
+    }
+    .status--done { background: var(--success-soft); color: var(--success); }
+    .status--failed { background: var(--danger-soft); color: var(--danger); }
+    .status--progress { background: var(--accent-soft); color: var(--accent); }
+    .status--muted { background: var(--hover); color: var(--muted); }
+    .list-item__actions {
+      display: flex; gap: 2px; flex-shrink: 0;
+      opacity: 0; transition: opacity 0.15s;
+    }
+    .list-item:hover .list-item__actions,
+    .list-item__actions:focus-within { opacity: 1; }
+    .action-btn {
+      width: 30px; height: 30px; border: 0; border-radius: 6px;
+      background: transparent; color: var(--muted);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: background 0.15s, color 0.15s;
+    }
+    .action-btn:hover { background: var(--hover); color: var(--text); }
+    .action-btn--danger:hover { color: var(--danger); }
+    .action-btn--accent { color: var(--accent); }
+    .action-btn--accent:hover { color: var(--accent); }
+    .text-btn {
+      height: 30px; padding: 0 10px; border: 0; border-radius: 6px;
+      background: transparent; color: var(--accent); font-size: 12px;
+      cursor: pointer; white-space: nowrap;
+    }
+    .text-btn:hover { background: var(--hover); text-decoration: underline; }
+
+    /* 空状态 */
+    .empty { text-align: center; padding: 72px 20px; color: var(--muted); }
+    .empty__icon { font-size: 44px; margin-bottom: 12px; opacity: 0.5; }
+    .empty__text { font-size: 14px; }
   </style>
 </head>
 <body>
   <div class="page">
-    <h1>📥 下载内容</h1>
-
-    <div id="downloadList">
-      <div class="empty">
-        <div class="empty__icon">📂</div>
-        <div>加载中...</div>
+    <div class="page-header">
+      <h1>下载内容</h1>
+      <div class="search-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="searchInput" placeholder="搜索下载内容" spellcheck="false">
       </div>
+      <button class="header-btn" id="btnClear">清空列表</button>
     </div>
+
+    <div class="filter-tabs" id="filterTabs">
+      <button class="filter-tab active" data-filter="all">全部</button>
+      <button class="filter-tab" data-filter="completed">已完成</button>
+      <button class="filter-tab" data-filter="cancelled">已取消</button>
+      <button class="filter-tab" data-filter="failed">失败</button>
+    </div>
+
+    <div id="downloadList"></div>
   </div>
 
   <script>
     const api = window.NeutronBrowser || {};
 
-    async function loadDownloads() {
-      const downloads = await api.getDownloads();
-      renderDownloads(downloads || []);
+    // 主题跟随系统
+    function applySystemTheme() {
+      const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    }
+    applySystemTheme();
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applySystemTheme);
+
+    const state = { filter: 'all', query: '' };
+    let downloads = [];
+
+    // 操作按钮 SVG
+    const ACTION_ICONS = {
+      pause: '<path d="M6 4h4v16H6z"/><path d="M14 4h4v16h-4z"/>',
+      play: '<polygon points="6 4 20 12 6 20 6 4"/>',
+      cancel: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+      open: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+      folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+      link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+      trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+    };
+
+    function getFileIcon(filename) {
+      const ext = String(filename || '').split('.').pop().toLowerCase();
+      const table = {
+        pdf: ['PDF', '#d93025', 'rgba(217,48,37,0.12)'],
+        doc: ['DOC', '#1a73e8', 'rgba(26,115,232,0.12)'],
+        docx: ['DOC', '#1a73e8', 'rgba(26,115,232,0.12)'],
+        xls: ['XLS', '#188038', 'rgba(24,128,56,0.12)'],
+        xlsx: ['XLS', '#188038', 'rgba(24,128,56,0.12)'],
+        ppt: ['PPT', '#e8710a', 'rgba(232,113,10,0.14)'],
+        pptx: ['PPT', '#e8710a', 'rgba(232,113,10,0.14)'],
+        zip: ['ZIP', '#e8710a', 'rgba(232,113,10,0.14)'],
+        rar: ['RAR', '#e8710a', 'rgba(232,113,10,0.14)'],
+        '7z': ['7Z', '#e8710a', 'rgba(232,113,10,0.14)'],
+        jpg: ['IMG', '#9334e6', 'rgba(147,52,230,0.12)'],
+        jpeg: ['IMG', '#9334e6', 'rgba(147,52,230,0.12)'],
+        png: ['IMG', '#9334e6', 'rgba(147,52,230,0.12)'],
+        gif: ['IMG', '#9334e6', 'rgba(147,52,230,0.12)'],
+        svg: ['SVG', '#9334e6', 'rgba(147,52,230,0.12)'],
+        mp3: ['MP3', '#d01884', 'rgba(208,24,132,0.12)'],
+        wav: ['WAV', '#d01884', 'rgba(208,24,132,0.12)'],
+        flac: ['FLAC', '#d01884', 'rgba(208,24,132,0.12)'],
+        mp4: ['MP4', '#00897b', 'rgba(0,137,123,0.12)'],
+        avi: ['AVI', '#00897b', 'rgba(0,137,123,0.12)'],
+        mkv: ['MKV', '#00897b', 'rgba(0,137,123,0.12)'],
+        exe: ['EXE', '#5f6368', 'rgba(95,99,104,0.14)'],
+        msi: ['MSI', '#5f6368', 'rgba(95,99,104,0.14)'],
+        txt: ['TXT', '#4285f4', 'rgba(66,133,244,0.12)'],
+        md: ['MD', '#4285f4', 'rgba(66,133,244,0.12)'],
+        html: ['HTML', '#f9ab00', 'rgba(249,171,0,0.14)'],
+        css: ['CSS', '#1a73e8', 'rgba(26,115,232,0.12)'],
+        js: ['JS', '#f9ab00', 'rgba(249,171,0,0.14)'],
+        py: ['PY', '#188038', 'rgba(24,128,56,0.12)'],
+        json: ['JSON', '#5f6368', 'rgba(95,99,104,0.14)'],
+      };
+      return table[ext] || ['FILE', 'var(--muted)', 'var(--hover)'];
     }
 
-    function renderDownloads(items) {
-      const container = document.getElementById('downloadList');
-
-      if (!items || items.length === 0) {
-        container.innerHTML = `<div class="empty"><div class="empty__icon">📂</div><div>没有下载内容</div></div>`;
-        return;
-      }
-
-      let html = '';
-      items.forEach(item => {
-        const progress = item.totalBytes > 0 ? Math.round((item.receivedBytes / item.totalBytes) * 100) : 0;
-        const size = formatBytes(item.totalBytes);
-        const received = formatBytes(item.receivedBytes);
-        const speed = formatSpeed(item.speed);
-        const date = new Date(item.startTime).toLocaleString('zh-CN');
-
-        let statusClass = '', statusText = '';
-        switch (item.state) {
-          case 'in_progress': statusClass = 'status--progress'; statusText = `${progress}%`; break;
-          case 'paused': statusClass = 'status--progress'; statusText = '已暂停'; break;
-          case 'completed': statusClass = 'status--completed'; statusText = '已完成'; break;
-          case 'failed': statusClass = 'status--failed'; statusText = '失败'; break;
-          case 'cancelled': statusClass = 'status--cancelled'; statusText = '已取消'; break;
-        }
-
-        const icon = getFileIcon(item.filename);
-
-        html += `
-          <div class="list-item">
-            <div class="list-item__icon">${icon}</div>
-            <div class="list-item__content">
-              <div class="list-item__title">${escapeHtml(item.filename)}</div>
-              <div class="list-item__subtitle">
-                ${received} / ${size}
-                ${item.state === 'in_progress' ? ` · ${speed}` : ''}
-                ${item.state === 'completed' ? ` · ${date}` : ''}
-              </div>
-              ${item.state === 'in_progress' ? `<div class="list-item__progress"><div class="list-item__progress-bar" style="width:${progress}%"></div></div>` : ''}
-            </div>
-            <span class="list-item__status ${statusClass}">${statusText}</span>
-            <div class="list-item__actions">
-              ${item.state === 'completed' ? `<button onclick="openFolder('${item.id}')">打开文件夹</button>` : ''}
-            </div>
-          </div>
-        `;
-      });
-
-      container.innerHTML = html;
+    function getSource(item) {
+      try {
+        if (item && item.url) return new URL(item.url).hostname.replace(/^www\./, '');
+      } catch (e) { /* ignore */ }
+      return '';
     }
 
     function formatBytes(bytes) {
-      if (!bytes || bytes <= 0) return '未知大小';
+      const value = Number(bytes) || 0;
+      if (value <= 0) return '未知大小';
       const k = 1024;
       const sizes = ['B', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+      const i = Math.min(sizes.length - 1, Math.floor(Math.log(value) / Math.log(k)));
+      return parseFloat((value / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     }
 
-    function formatSpeed(bytesPerSecond) {
-      if (!bytesPerSecond || bytesPerSecond <= 0) return '';
-      return formatBytes(bytesPerSecond) + '/s';
-    }
-
-    function getFileIcon(filename) {
-      const ext = filename.split('.').pop().toLowerCase();
-      const icons = {
-        'pdf': '📄', 'doc': '📝', 'docx': '📝', 'xls': '📊', 'xlsx': '📊',
-        'ppt': '📽️', 'pptx': '📽️', 'zip': '📦', 'rar': '📦', '7z': '📦',
-        'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️', 'svg': '🖼️',
-        'mp3': '🎵', 'wav': '🎵', 'mp4': '🎬', 'avi': '🎬', 'mkv': '🎬',
-        'exe': '⚙️', 'msi': '⚙️', 'txt': '📃', 'html': '🌐', 'js': '📜',
-        'py': '🐍', 'json': '📋',
-      };
-      return icons[ext] || '📎';
+    function formatSpeed(bps) {
+      const value = Number(bps) || 0;
+      return value > 0 ? formatBytes(value) + '/s' : '';
     }
 
     function escapeHtml(text) {
@@ -157,14 +259,188 @@
       return div.innerHTML;
     }
 
-    window.openFolder = async function(id) {
-      await api.openDownloadFolder(id);
-    };
+    function actionBtn(title, className, iconKey, handler) {
+      const btn = document.createElement('button');
+      btn.className = 'action-btn ' + className;
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (ACTION_ICONS[iconKey] || '') + '</svg>';
+      btn.addEventListener('click', handler);
+      return btn;
+    }
+
+    async function loadDownloads() {
+      try {
+        downloads = (await api.getDownloads()) || [];
+      } catch (e) {
+        downloads = [];
+      }
+      render();
+    }
+
+    function filtered() {
+      return downloads.filter((item) => {
+        if (state.filter === 'completed' && item.state !== 'completed') return false;
+        if (state.filter === 'cancelled' && item.state !== 'cancelled' && item.state !== 'deleted') return false;
+        if (state.filter === 'failed' && item.state !== 'failed') return false;
+        if (state.query) {
+          const f = String(item.filename || '').toLowerCase();
+          const u = String(item.url || '').toLowerCase();
+          if (!f.includes(state.query) && !u.includes(state.query)) return false;
+        }
+        return true;
+      });
+    }
+
+    function render() {
+      const container = document.getElementById('downloadList');
+      const items = filtered();
+
+      if (items.length === 0) {
+        const emptyText = {
+          all: '还没有下载内容',
+          completed: '没有已完成的下载',
+          cancelled: '没有已取消的下载',
+          failed: '没有失败的下载',
+        }[state.filter];
+        container.innerHTML = '<div class="empty"><div class="empty__icon">📥</div><div class="empty__text">' + emptyText + '</div></div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'list-item';
+
+        // 彩色图标
+        const icon = getFileIcon(item.filename);
+        const iconEl = document.createElement('div');
+        iconEl.className = 'list-item__icon';
+        iconEl.textContent = icon[0];
+        iconEl.style.color = icon[1];
+        iconEl.style.background = icon[2];
+
+        // 内容区
+        const content = document.createElement('div');
+        content.className = 'list-item__content';
+
+        const titleRow = document.createElement('div');
+        titleRow.className = 'list-item__title-row';
+        const title = document.createElement('div');
+        title.className = 'list-item__title';
+        if (item.state === 'failed') title.classList.add('list-item__title--danger');
+        title.textContent = item.filename || '未命名文件';
+        title.title = item.filename || '';
+        titleRow.appendChild(title);
+        content.appendChild(titleRow);
+
+        const subtitle = document.createElement('div');
+        subtitle.className = 'list-item__subtitle';
+        const parts = [];
+        const src = getSource(item);
+        if (src) parts.push(src);
+        if (item.state === 'in_progress') {
+          parts.push(item.totalBytes > 0 ? formatBytes(item.receivedBytes) + ' / ' + formatBytes(item.totalBytes) : formatBytes(item.receivedBytes));
+          if (item.speed) parts.push(formatSpeed(item.speed));
+        } else if (item.state === 'paused') {
+          parts.push(formatBytes(item.receivedBytes));
+        } else if (item.state === 'completed') {
+          parts.push(formatBytes(item.totalBytes));
+          parts.push(new Date(item.endTime || item.startTime).toLocaleString('zh-CN'));
+        } else if (item.state === 'failed') parts.push('下载失败');
+        else if (item.state === 'cancelled') parts.push('已取消');
+        else if (item.state === 'deleted') parts.push('已删除');
+        subtitle.textContent = parts.join(' · ');
+        content.appendChild(subtitle);
+
+        // 进度
+        let pct = 0;
+        if (item.state === 'in_progress' || item.state === 'paused') {
+          pct = item.totalBytes > 0 ? Math.min(100, Math.round((item.receivedBytes / item.totalBytes) * 100)) : 0;
+          const progress = document.createElement('div');
+          progress.className = 'list-item__progress';
+          const bar = document.createElement('div');
+          bar.className = 'list-item__progress-bar' + (item.state === 'paused' ? ' list-item__progress-bar--paused' : '');
+          bar.style.width = pct + '%';
+          progress.appendChild(bar);
+          content.appendChild(progress);
+        }
+
+        // 状态
+        let statusClass = 'status--muted', statusText = '';
+        switch (item.state) {
+          case 'in_progress': statusClass = 'status--progress'; statusText = pct + '%'; break;
+          case 'paused': statusClass = 'status--progress'; statusText = '已暂停'; break;
+          case 'completed': statusClass = 'status--done'; statusText = '已完成'; break;
+          case 'failed': statusClass = 'status--failed'; statusText = '失败'; break;
+          case 'cancelled': statusClass = 'status--muted'; statusText = '已取消'; break;
+          case 'deleted': statusClass = 'status--muted'; statusText = '已删除'; break;
+        }
+
+        // 操作
+        const actions = document.createElement('div');
+        actions.className = 'list-item__actions';
+
+        if (item.state === 'in_progress') {
+          actions.appendChild(actionBtn('暂停', 'action-btn--accent', 'pause', async () => { await api.pauseDownload(item.id); }));
+        } else if (item.state === 'paused') {
+          actions.appendChild(actionBtn('继续', 'action-btn--accent', 'play', async () => { await api.resumeDownload(item.id); }));
+        }
+        if (item.state === 'in_progress' || item.state === 'paused') {
+          actions.appendChild(actionBtn('取消', 'action-btn--danger', 'cancel', async () => { await api.cancelDownload(item.id); }));
+        }
+        if (item.state === 'completed') {
+          actions.appendChild(actionBtn('打开文件', '', 'open', async () => { await api.openDownloadFile(item.id); }));
+        }
+        if (item.state !== 'deleted') {
+          actions.appendChild(actionBtn('打开文件夹', '', 'folder', async () => { await api.openDownloadFolder(item.id); }));
+        }
+        if (item.url) {
+          actions.appendChild(actionBtn('复制链接', '', 'link', async () => { await api.copyText(item.url); }));
+        }
+        actions.appendChild(actionBtn('删除', 'action-btn--danger', 'trash', async () => {
+          await api.deleteDownload(item.id);
+          await loadDownloads();
+        }));
+
+        const statusEl = document.createElement('span');
+        statusEl.className = 'list-item__status ' + statusClass;
+        statusEl.textContent = statusText;
+
+        row.appendChild(iconEl);
+        row.appendChild(content);
+        row.appendChild(statusEl);
+        row.appendChild(actions);
+        container.appendChild(row);
+      });
+    }
+
+    // 事件绑定
+    document.querySelectorAll('.filter-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.filter-tab').forEach((t) => t.classList.remove('active'));
+        tab.classList.add('active');
+        state.filter = tab.dataset.filter;
+        render();
+      });
+    });
+
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      state.query = e.target.value.trim().toLowerCase();
+      render();
+    });
+
+    document.getElementById('btnClear').addEventListener('click', async () => {
+      if (confirm('确定要清空所有下载记录吗？此操作无法撤销。')) {
+        await api.clearDownloads();
+        await loadDownloads();
+      }
+    });
 
     // 监听下载更新
-    const unsub = api.onDownloadsUpdated(() => {
-      loadDownloads();
-    });
+    if (api.onDownloadsUpdated) {
+      api.onDownloadsUpdated(() => loadDownloads());
+    }
 
     loadDownloads();
   </script>

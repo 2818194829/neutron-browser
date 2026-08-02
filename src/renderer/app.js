@@ -14,6 +14,7 @@
     app: $('#app'),
     titleBar: $('#titleBar'),
     titleBarTabsArea: $('#titleBarTabsArea'),
+    btnPin: $('#btnPin'),
     btnMinimize: $('#btnMinimize'),
     btnMaximize: $('#btnMaximize'),
     btnClose: $('#btnClose'),
@@ -32,6 +33,9 @@
     btnBookmark: $('#btnBookmark'),
     bookmarkIcon: $('#bookmarkIcon'),
     btnDownloads: $('#btnDownloads'),
+    downloadBadge: $('#downloadBadge'),
+    downloadRing: $('#downloadRing'),
+    downloadRingFill: $('#downloadRingFill'),
     downloadPanel: $('#downloadPanel'),
     downloadList: $('#downloadList'),
     downloadSearch: $('#downloadSearch'),
@@ -115,6 +119,7 @@
     theme: 'system',
     accentColor: 'blue',
     themeSkin: 'default',
+    isAlwaysOnTop: false,
     folderPopupData: null,
     subFolderPopupTimeout: null,
     subFolderPopupDiv: null,
@@ -206,6 +211,34 @@
     dom.btnMinimize.addEventListener('click', () => api.minimizeWindow());
     dom.btnMaximize.addEventListener('click', () => api.maximizeWindow());
     dom.btnClose.addEventListener('click', () => api.closeWindow());
+
+    // 窗口置顶（图钉按钮）
+    if (api.isAlwaysOnTop) {
+      api.isAlwaysOnTop().then((flag) => {
+        state.isAlwaysOnTop = Boolean(flag);
+        updatePinButton();
+      });
+    }
+    dom.btnPin.addEventListener('click', async () => {
+      const next = !state.isAlwaysOnTop;
+      state.isAlwaysOnTop = next;
+      updatePinButton();
+      await api.setAlwaysOnTop(next);
+    });
+    if (api.onAlwaysOnTopChanged) {
+      const unsubPin = api.onAlwaysOnTopChanged((flag) => {
+        state.isAlwaysOnTop = Boolean(flag);
+        updatePinButton();
+      });
+      state.unsubscribers.push(unsubPin);
+    }
+  }
+
+  function updatePinButton() {
+    const active = state.isAlwaysOnTop;
+    dom.btnPin.classList.toggle('is-active', active);
+    dom.btnPin.setAttribute('aria-pressed', String(active));
+    dom.btnPin.title = active ? '取消窗口置顶' : '窗口置顶';
   }
 
   // ==================== 导航按钮 ====================
@@ -1118,6 +1151,12 @@
       if (e.key === 'Escape' && state.downloadPanelOpen) closeDownloadPanel();
     });
 
+    document.getElementById('btnDownloadShowAll').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeDownloadPanel();
+      api.createTab('neutron://downloads');
+    });
+
     document.getElementById('btnDownloadOpenDir').addEventListener('click', async (e) => {
       e.stopPropagation();
       await api.openDownloadDirectory();
@@ -1170,6 +1209,54 @@
       state.downloads = [];
     }
     renderDownloadPanel();
+    updateDownloadButton();
+  }
+
+  // 更新工具栏下载按钮：进行中显示环形进度，完成显示徽章
+  function updateDownloadButton() {
+    const active = state.downloads.filter((i) => i.state === 'in_progress');
+    const completed = state.downloads.filter((i) => i.state === 'completed');
+    if (!dom.downloadRing || !dom.downloadBadge) return;
+
+    if (active.length > 0) {
+      const total = active.reduce((s, i) => s + (i.totalBytes || 0), 0);
+      const received = active.reduce((s, i) => s + (i.receivedBytes || 0), 0);
+      const pct = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0;
+      const circumference = 62.8; // 2πr, r=10
+      dom.downloadRing.hidden = false;
+      dom.downloadRingFill.style.strokeDashoffset = String(circumference * (1 - pct / 100));
+      dom.btnDownloads.classList.add('tool-btn--downloading');
+      dom.downloadBadge.hidden = true;
+    } else {
+      dom.downloadRing.hidden = true;
+      dom.btnDownloads.classList.remove('tool-btn--downloading');
+      if (completed.length > 0) {
+        dom.downloadBadge.hidden = false;
+        dom.downloadBadge.textContent = completed.length > 99 ? '99+' : String(completed.length);
+      } else {
+        dom.downloadBadge.hidden = true;
+      }
+    }
+  }
+
+  // 构造下载项操作按钮
+  function makeDownloadAction(title, kind, handler) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `download-item__action download-item__action--${kind}`;
+    btn.title = title;
+    btn.setAttribute('aria-label', title);
+    const icons = {
+      pause: '<path d="M6 4h4v16H6z"/><path d="M14 4h4v16h-4z"/>',
+      play: '<polygon points="6 4 20 12 6 20 6 4"/>',
+      cancel: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+      folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+      link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+      trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+    };
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icons[kind] || ''}</svg>`;
+    btn.addEventListener('click', handler);
+    return btn;
   }
 
   function renderDownloadPanel() {
@@ -1179,13 +1266,17 @@
     const query = state.downloadSearchQuery;
     const items = state.downloads.filter((item) => {
       if (!query) return true;
-      return String(item.filename || '').toLowerCase().includes(query);
+      const f = String(item.filename || '').toLowerCase();
+      const u = String(item.url || '').toLowerCase();
+      return f.includes(query) || u.includes(query);
     });
 
     if (items.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'download-empty';
-      empty.textContent = query ? '没有匹配的下载内容' : '没有下载内容';
+      empty.innerHTML = query
+        ? '<div class="download-empty__icon">🔍</div><div>没有匹配的下载内容</div>'
+        : '<div class="download-empty__icon">📥</div><div>还没有下载内容</div>';
       list.appendChild(empty);
       return;
     }
@@ -1195,47 +1286,109 @@
       row.className = 'download-item';
       if (item.state === 'deleted') row.classList.add('download-item--deleted');
 
+      // 彩色文件类型图标
       const icon = document.createElement('div');
       icon.className = 'download-item__icon';
-      icon.textContent = getFileIcon(item.filename);
+      const iconInfo = getFileIcon(item.filename);
+      icon.style.color = iconInfo.color;
+      icon.style.background = iconInfo.bg;
+      icon.textContent = iconInfo.text;
 
+      // 主体
       const body = document.createElement('div');
       body.className = 'download-item__body';
 
+      // 文件名行（含状态标签）
+      const nameRow = document.createElement('div');
+      nameRow.className = 'download-item__name-row';
       const name = document.createElement('div');
       name.className = 'download-item__name';
       name.textContent = item.filename || '未命名文件';
+      name.title = item.filename || '';
+      nameRow.appendChild(name);
 
+      if (item.state === 'completed') {
+        const st = document.createElement('span');
+        st.className = 'download-item__status download-item__status--done';
+        st.textContent = '已完成';
+        nameRow.appendChild(st);
+      } else if (item.state === 'failed') {
+        const st = document.createElement('span');
+        st.className = 'download-item__status download-item__status--failed';
+        st.textContent = '失败';
+        nameRow.appendChild(st);
+      } else if (item.state === 'cancelled') {
+        const st = document.createElement('span');
+        st.className = 'download-item__status';
+        st.textContent = '已取消';
+        nameRow.appendChild(st);
+      } else if (item.state === 'paused') {
+        const st = document.createElement('span');
+        st.className = 'download-item__status';
+        st.textContent = '已暂停';
+        nameRow.appendChild(st);
+      }
+      body.appendChild(nameRow);
+
+      // 元信息：来源 · 大小/速度/时间
       const meta = document.createElement('div');
       meta.className = 'download-item__meta';
       meta.textContent = getDownloadMeta(item);
-
-      body.appendChild(name);
       body.appendChild(meta);
 
-      if (item.state === 'in_progress') {
+      // 进度条 + 百分比（下载中/暂停）
+      if (item.state === 'in_progress' || item.state === 'paused') {
+        const progressRow = document.createElement('div');
+        progressRow.className = 'download-item__progress-row';
         const progress = document.createElement('div');
         progress.className = 'download-item__progress';
-
         const bar = document.createElement('div');
         bar.className = 'download-item__progress-bar';
+        if (item.state === 'paused') bar.classList.add('download-item__progress-bar--paused');
         const percent = item.totalBytes > 0
           ? Math.min(100, Math.round((item.receivedBytes / item.totalBytes) * 100))
           : 0;
         bar.style.width = `${percent}%`;
-
         progress.appendChild(bar);
-        body.appendChild(progress);
+        const pct = document.createElement('span');
+        pct.className = 'download-item__percent';
+        pct.textContent = `${percent}%`;
+        progressRow.appendChild(progress);
+        progressRow.appendChild(pct);
+        body.appendChild(progressRow);
       }
 
+      // 操作按钮
       const actions = document.createElement('div');
       actions.className = 'download-item__actions';
 
+      // 暂停 / 继续
+      if (item.state === 'in_progress') {
+        actions.appendChild(makeDownloadAction('暂停', 'pause', async (e) => {
+          e.stopPropagation();
+          await api.pauseDownload(item.id);
+        }));
+      } else if (item.state === 'paused') {
+        actions.appendChild(makeDownloadAction('继续', 'play', async (e) => {
+          e.stopPropagation();
+          await api.resumeDownload(item.id);
+        }));
+      }
+
+      // 取消（下载中/暂停时）
+      if (item.state === 'in_progress' || item.state === 'paused') {
+        actions.appendChild(makeDownloadAction('取消', 'cancel', async (e) => {
+          e.stopPropagation();
+          await api.cancelDownload(item.id);
+        }));
+      }
+
+      // 打开文件（完成时）
       if (item.state === 'completed') {
         const openFile = document.createElement('button');
         openFile.type = 'button';
         openFile.className = 'download-item__open-file';
-        openFile.textContent = '打开文件';
+        openFile.textContent = '打开';
         openFile.addEventListener('click', async (e) => {
           e.stopPropagation();
           await api.openDownloadFile(item.id);
@@ -1243,32 +1396,28 @@
         actions.appendChild(openFile);
       }
 
+      // 打开文件夹
       if (item.state !== 'deleted') {
-        const openFolder = document.createElement('button');
-        openFolder.type = 'button';
-        openFolder.className = 'download-item__action';
-        openFolder.title = '打开文件夹';
-        openFolder.setAttribute('aria-label', '打开文件夹');
-        openFolder.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
-        openFolder.addEventListener('click', async (e) => {
+        actions.appendChild(makeDownloadAction('打开文件夹', 'folder', async (e) => {
           e.stopPropagation();
           await api.openDownloadFolder(item.id);
-        });
-        actions.appendChild(openFolder);
+        }));
       }
 
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'download-item__action download-item__action--danger';
-      remove.title = '删除';
-      remove.setAttribute('aria-label', '删除');
-      remove.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
-      remove.addEventListener('click', async (e) => {
+      // 复制链接
+      if (item.url) {
+        actions.appendChild(makeDownloadAction('复制链接', 'link', async (e) => {
+          e.stopPropagation();
+          await api.copyText(item.url);
+        }));
+      }
+
+      // 删除
+      actions.appendChild(makeDownloadAction('删除', 'trash', async (e) => {
         e.stopPropagation();
         await api.deleteDownload(item.id);
         await loadDownloads();
-      });
-      actions.appendChild(remove);
+      }));
 
       row.appendChild(icon);
       row.appendChild(body);
@@ -1277,20 +1426,41 @@
     });
   }
 
-  function getDownloadMeta(item) {
-    if (item.state === 'in_progress') {
-      const size = `${formatBytes(item.receivedBytes)} / ${formatBytes(item.totalBytes)}`;
-      const speed = item.speed ? ` · ${formatSpeed(item.speed)}` : '';
-      return size + speed;
-    }
-    if (item.state === 'completed') {
-      return `已完成 · ${new Date(item.endTime || item.startTime).toLocaleString('zh-CN')}`;
-    }
-    if (item.state === 'deleted') return '已删除';
-    if (item.state === 'paused') return '已暂停';
-    if (item.state === 'failed') return '失败';
-    if (item.state === 'cancelled') return '已取消';
+  function getDownloadSource(item) {
+    try {
+      if (item && item.url) {
+        return new URL(item.url).hostname.replace(/^www\./, '');
+      }
+    } catch (e) { /* ignore */ }
     return '';
+  }
+
+  function getDownloadMeta(item) {
+    const source = getDownloadSource(item);
+    const parts = [];
+    if (source) parts.push(source);
+
+    if (item.state === 'in_progress') {
+      const size = item.totalBytes > 0
+        ? `${formatBytes(item.receivedBytes)} / ${formatBytes(item.totalBytes)}`
+        : formatBytes(item.receivedBytes);
+      parts.push(size);
+      if (item.speed) parts.push(formatSpeed(item.speed));
+    } else if (item.state === 'paused') {
+      parts.push(formatBytes(item.receivedBytes));
+    } else if (item.state === 'completed') {
+      parts.push(formatBytes(item.totalBytes));
+      parts.push(new Date(item.endTime || item.startTime).toLocaleString('zh-CN', {
+        month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      }));
+    } else if (item.state === 'deleted') {
+      parts.push('已删除');
+    } else if (item.state === 'failed') {
+      parts.push('下载失败');
+    } else if (item.state === 'cancelled') {
+      parts.push('已取消');
+    }
+    return parts.join(' · ');
   }
 
   function formatBytes(bytes) {
@@ -1305,17 +1475,42 @@
     return `${formatBytes(bytesPerSecond)}/s`;
   }
 
+  // 彩色文件类型图标：返回 { text, color, bg }
   function getFileIcon(filename) {
     const ext = String(filename || '').split('.').pop().toLowerCase();
-    const icons = {
-      pdf: 'PDF', doc: 'DOC', docx: 'DOC', xls: 'XLS', xlsx: 'XLS',
-      ppt: 'PPT', pptx: 'PPT', zip: 'ZIP', rar: 'RAR', '7z': '7Z',
-      jpg: 'IMG', jpeg: 'IMG', png: 'IMG', gif: 'IMG', svg: 'SVG',
-      mp3: 'MP3', wav: 'WAV', mp4: 'MP4', avi: 'AVI', mkv: 'MKV',
-      exe: 'EXE', msi: 'MSI', txt: 'TXT', html: 'HTML', js: 'JS',
-      py: 'PY', json: 'JSON',
+    const table = {
+      pdf: { text: 'PDF', color: '#d93025', bg: 'rgba(217, 48, 37, 0.12)' },
+      doc: { text: 'DOC', color: '#1a73e8', bg: 'rgba(26, 115, 232, 0.12)' },
+      docx: { text: 'DOC', color: '#1a73e8', bg: 'rgba(26, 115, 232, 0.12)' },
+      xls: { text: 'XLS', color: '#188038', bg: 'rgba(24, 128, 56, 0.12)' },
+      xlsx: { text: 'XLS', color: '#188038', bg: 'rgba(24, 128, 56, 0.12)' },
+      ppt: { text: 'PPT', color: '#e8710a', bg: 'rgba(232, 113, 10, 0.14)' },
+      pptx: { text: 'PPT', color: '#e8710a', bg: 'rgba(232, 113, 10, 0.14)' },
+      zip: { text: 'ZIP', color: '#e8710a', bg: 'rgba(232, 113, 10, 0.14)' },
+      rar: { text: 'RAR', color: '#e8710a', bg: 'rgba(232, 113, 10, 0.14)' },
+      '7z': { text: '7Z', color: '#e8710a', bg: 'rgba(232, 113, 10, 0.14)' },
+      jpg: { text: 'IMG', color: '#9334e6', bg: 'rgba(147, 52, 230, 0.12)' },
+      jpeg: { text: 'IMG', color: '#9334e6', bg: 'rgba(147, 52, 230, 0.12)' },
+      png: { text: 'IMG', color: '#9334e6', bg: 'rgba(147, 52, 230, 0.12)' },
+      gif: { text: 'IMG', color: '#9334e6', bg: 'rgba(147, 52, 230, 0.12)' },
+      svg: { text: 'SVG', color: '#9334e6', bg: 'rgba(147, 52, 230, 0.12)' },
+      mp3: { text: 'MP3', color: '#d01884', bg: 'rgba(208, 24, 132, 0.12)' },
+      wav: { text: 'WAV', color: '#d01884', bg: 'rgba(208, 24, 132, 0.12)' },
+      flac: { text: 'FLAC', color: '#d01884', bg: 'rgba(208, 24, 132, 0.12)' },
+      mp4: { text: 'MP4', color: '#00897b', bg: 'rgba(0, 137, 123, 0.12)' },
+      avi: { text: 'AVI', color: '#00897b', bg: 'rgba(0, 137, 123, 0.12)' },
+      mkv: { text: 'MKV', color: '#00897b', bg: 'rgba(0, 137, 123, 0.12)' },
+      exe: { text: 'EXE', color: '#5f6368', bg: 'rgba(95, 99, 104, 0.14)' },
+      msi: { text: 'MSI', color: '#5f6368', bg: 'rgba(95, 99, 104, 0.14)' },
+      txt: { text: 'TXT', color: '#4285f4', bg: 'rgba(66, 133, 244, 0.12)' },
+      md: { text: 'MD', color: '#4285f4', bg: 'rgba(66, 133, 244, 0.12)' },
+      html: { text: 'HTML', color: '#f9ab00', bg: 'rgba(249, 171, 0, 0.14)' },
+      css: { text: 'CSS', color: '#1a73e8', bg: 'rgba(26, 115, 232, 0.12)' },
+      js: { text: 'JS', color: '#f9ab00', bg: 'rgba(249, 171, 0, 0.14)' },
+      py: { text: 'PY', color: '#188038', bg: 'rgba(24, 128, 56, 0.12)' },
+      json: { text: 'JSON', color: '#5f6368', bg: 'rgba(95, 99, 104, 0.14)' },
     };
-    return icons[ext] || 'FILE';
+    return table[ext] || { text: 'FILE', color: 'var(--text-secondary)', bg: 'var(--bg-hover)' };
   }
 
   async function openDownloadPanel() {
@@ -2503,6 +2698,7 @@
         state.downloads.unshift(data);
       }
       renderDownloadPanel();
+      updateDownloadButton();
 
       if (isNew && data.state === 'in_progress' && !state.downloadPanelOpen) {
         openDownloadPanel();

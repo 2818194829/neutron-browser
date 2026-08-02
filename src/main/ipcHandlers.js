@@ -109,6 +109,7 @@ function registerIpcHandlers() {
         currentVersion,
         latestVersion,
         updateAvailable: Boolean(latestVersion) && compareVersions(latestVersion, currentVersion) > 0,
+        isPackaged: app.isPackaged,
         releaseUrl: release.html_url || '',
         assetUrl: asset && asset.browser_download_url ? asset.browser_download_url : (release.html_url || ''),
         releaseName: release.name || release.tag_name || '',
@@ -146,6 +147,17 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.WINDOW_IS_MAXIMIZED, () => {
     const wm = getWM();
     return wm ? wm.mainWindow?.isMaximized() ?? false : false;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WINDOW_SET_ALWAYS_ON_TOP, (event, flag) => {
+    const wm = getWM();
+    if (wm && wm.setAlwaysOnTop) return wm.setAlwaysOnTop(flag);
+    return false;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WINDOW_IS_ALWAYS_ON_TOP, () => {
+    const wm = getWM();
+    return wm && wm.mainWindow ? wm.mainWindow.isAlwaysOnTop() : false;
   });
 
   ipcMain.on(IPC_CHANNELS.UI_MODAL_CHANGED, (event, visible) => {
@@ -797,6 +809,29 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.DOWNLOADS_GET_ALL, () => {
     return getStore('downloads').get('items', []);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_PAUSE, (event, { id }) => {
+    const wm = getWM();
+    if (wm && wm.pauseDownload) wm.pauseDownload(id);
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_RESUME, (event, { id }) => {
+    const wm = getWM();
+    if (wm && wm.resumeDownload) wm.resumeDownload(id);
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DOWNLOADS_CANCEL, (event, { id }) => {
+    const wm = getWM();
+    if (wm && wm.cancelDownload) wm.cancelDownload(id);
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CLIPBOARD_COPY, (event, text) => {
+    clipboard.writeText(String(text || ''));
+    return true;
   });
 
   ipcMain.handle(IPC_CHANNELS.DOWNLOADS_OPEN_FOLDER, (event, { id }) => {

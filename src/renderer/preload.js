@@ -23,6 +23,13 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   maximizeWindow: () => ipcRenderer.send(IPC_CHANNELS.WINDOW_MAXIMIZE),
   closeWindow: () => ipcRenderer.send(IPC_CHANNELS.WINDOW_CLOSE),
   isMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
+  setAlwaysOnTop: (flag) => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_SET_ALWAYS_ON_TOP, flag),
+  isAlwaysOnTop: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_ALWAYS_ON_TOP),
+  onAlwaysOnTopChanged: (callback) => {
+    const handler = (event, flag) => callback(flag);
+    ipcRenderer.on(IPC_CHANNELS.WINDOW_ALWAYS_ON_TOP_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.WINDOW_ALWAYS_ON_TOP_CHANGED, handler);
+  },
   setModalVisible: (visible) => ipcRenderer.send(IPC_CHANNELS.UI_MODAL_CHANGED, visible),
   onModalSnapshot: (callback) => {
     const handler = (event, data) => callback(data);
@@ -93,6 +100,10 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
 
   // ==================== 下载 ====================
   getDownloads: () => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_GET_ALL),
+  pauseDownload: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_PAUSE, { id }),
+  resumeDownload: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_RESUME, { id }),
+  cancelDownload: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_CANCEL, { id }),
+  copyText: (text) => ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_COPY, text),
   openDownloadFolder: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_OPEN_FOLDER, { id }),
   openDownloadFile: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_OPEN_FILE, { id }),
   openDownloadDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_OPEN_DIRECTORY),
@@ -156,6 +167,13 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   },
   getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_INFO),
   checkForUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.APP_CHECK_UPDATE),
+  downloadUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_DOWNLOAD),
+  installUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL),
+  onUpdateEvent: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.UPDATE_EVENT, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_EVENT, handler);
+  },
   onLoadingProgress: (callback) => {
     const handler = (event, data) => callback(data);
     ipcRenderer.on(IPC_CHANNELS.NAV_LOADING_PROGRESS, handler);

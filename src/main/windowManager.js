@@ -163,6 +163,11 @@ class WindowManager {
 
       // 根据启动行为创建初始标签页
       this.openStartupPages();
+
+      // 恢复窗口置顶状态
+      if (settings.get('windowAlwaysOnTop')) {
+        this.mainWindow.setAlwaysOnTop(true);
+      }
     });
 
     // 监听窗口状态变化
@@ -218,6 +223,21 @@ class WindowManager {
       this.createTab(url);
       return { action: 'deny' };
     });
+  }
+
+  /**
+   * 设置窗口置顶，持久化状态并通知渲染进程
+   * @param {boolean} flag
+   * @returns {boolean} 设置后的置顶状态
+   */
+  setAlwaysOnTop(flag) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return false;
+    this.mainWindow.setAlwaysOnTop(!!flag);
+    const current = this.mainWindow.isAlwaysOnTop();
+    const settings = getStore('settings');
+    settings.set('windowAlwaysOnTop', current);
+    this.sendToRenderer(IPC_CHANNELS.WINDOW_ALWAYS_ON_TOP_CHANGED, current);
+    return current;
   }
 
   /**
@@ -1021,6 +1041,9 @@ class WindowManager {
     downloads.unshift(downloadItem);
     downloadsStore.set('items', downloads);
 
+    // 保存 DownloadItem 引用（用于暂停/继续/取消）
+    this.downloadItems.set(downloadItem.id, item);
+
     // 通知渲染进程
     this.sendToRenderer(IPC_CHANNELS.DOWNLOADS_UPDATED, downloadItem);
 
@@ -1084,7 +1107,52 @@ class WindowManager {
         downloadsStore.set('items', allDownloads);
       }
       this.sendToRenderer(IPC_CHANNELS.DOWNLOADS_UPDATED, downloadItem);
+      this.downloadItems.delete(downloadItem.id);
     });
+  }
+
+  /**
+   * 暂停下载（保留 DownloadItem 引用以便恢复）
+   * @param {string} id
+   */
+  pauseDownload(id) {
+    const item = this.downloadItems.get(id);
+    if (item && !item.isDone() && item.canResume()) item.pause();
+    const store = getStore('downloads');
+    const items = store.get('items', []);
+    const d = items.find((x) => x.id === id);
+    if (d && d.state === 'in_progress') {
+      d.state = 'paused';
+      store.set('items', items);
+      this.sendToRenderer(IPC_CHANNELS.DOWNLOADS_UPDATED, d);
+    }
+  }
+
+  /**
+   * 继续下载
+   * @param {string} id
+   */
+  resumeDownload(id) {
+    const item = this.downloadItems.get(id);
+    if (item && !item.isDone() && item.canResume()) item.resume();
+    const store = getStore('downloads');
+    const items = store.get('items', []);
+    const d = items.find((x) => x.id === id);
+    if (d && d.state === 'paused') {
+      d.state = 'in_progress';
+      d.endTime = null;
+      store.set('items', items);
+      this.sendToRenderer(IPC_CHANNELS.DOWNLOADS_UPDATED, d);
+    }
+  }
+
+  /**
+   * 取消下载
+   * @param {string} id
+   */
+  cancelDownload(id) {
+    const item = this.downloadItems.get(id);
+    if (item && !item.isDone() && item.canCancel()) item.cancel();
   }
 
   /**

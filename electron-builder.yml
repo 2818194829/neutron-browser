@@ -4,6 +4,11 @@ copyright: Copyright © 2024 Neutron Browser Team
 directories:
   output: build
   buildResources: assets
+publish:
+  provider: github
+  owner: 2818194829
+  repo: neutron-browser
+  releaseType: release
 files:
   - src/**/*
   - assets/**/*

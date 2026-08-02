@@ -9,6 +9,7 @@ const { createAppMenu } = require('./menu');
 const { registerIpcHandlers } = require('./ipcHandlers');
 const { initStorage } = require('./storage');
 const { initExtensions } = require('./extensions');
+const { initUpdater } = require('./updater');
 const { IPC_CHANNELS, INTERNAL_PAGES } = require('../shared/constants');
 
 // 保持对窗口管理器的全局引用，防止被垃圾回收
@@ -58,6 +59,9 @@ app.whenReady().then(async () => {
 
   // 注册 IPC 处理器
   registerIpcHandlers();
+
+  // 初始化自动更新（electron-updater）
+  initUpdater(() => global.windowManager);
   console.log('[Main] IPC 处理器注册完成');
 
   // 注册内部协议 neutron://

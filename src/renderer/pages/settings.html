@@ -377,13 +377,21 @@
               <p class="mt-1 text-sm text-edge-muted">
                 Electron <span id="aboutElectron">-</span> · Chromium <span id="aboutChromium">-</span>
               </p>
-              <div class="mt-6 flex" style="align-items: center; gap: 12px;">
+              <div class="mt-6 flex" style="align-items: center; gap: 12px; flex-wrap: wrap;">
                 <button class="settings-button" type="button" id="btnCheckUpdate">检查更新</button>
+                <button class="settings-button" type="button" id="btnUpdateDownload" hidden>下载更新</button>
+                <button class="settings-button" type="button" id="btnUpdateInstall" hidden>重启并更新</button>
                 <span id="updateStatus" class="text-sm text-edge-muted"></span>
                 <a id="updateDownloadLink" href="#" hidden
                    style="color: var(--settings-accent); text-decoration: underline; font-size: 13px;">
                   前往下载
                 </a>
+              </div>
+              <div id="updateProgressWrap" hidden style="margin-top: 12px; display: flex; align-items: center; gap: 10px; max-width: 420px;">
+                <div style="flex: 1; height: 4px; background: var(--settings-border); border-radius: 2px; overflow: hidden;">
+                  <div id="updateProgressBar" style="height: 100%; width: 0%; background: var(--settings-accent); border-radius: 2px; transition: width 0.3s;"></div>
+                </div>
+                <span id="updateProgressText" class="text-sm text-edge-muted" style="min-width: 60px; text-align: right;"></span>
               </div>
             </div>
           </div>
@@ -517,8 +525,14 @@
       const button = document.getElementById('btnCheckUpdate');
       const status = document.getElementById('updateStatus');
       const link = document.getElementById('updateDownloadLink');
+      const btnDownload = document.getElementById('btnUpdateDownload');
+      const btnInstall = document.getElementById('btnUpdateInstall');
+      const progressWrap = document.getElementById('updateProgressWrap');
       button.disabled = true;
       link.hidden = true;
+      btnDownload.hidden = true;
+      btnInstall.hidden = true;
+      progressWrap.hidden = true;
       status.textContent = '正在检查更新...';
 
       let result;
@@ -536,8 +550,14 @@
 
       if (result.updateAvailable) {
         status.textContent = `发现新版本 ${result.latestVersion}`;
-        link.href = result.assetUrl || result.releaseUrl;
-        link.hidden = false;
+        if (result.isPackaged && api.downloadUpdate) {
+          // 安装版：应用内自动下载更新（Edge 式）
+          btnDownload.hidden = false;
+        } else {
+          // 开发版 / 无法自动更新：提供手动下载链接
+          link.href = result.assetUrl || result.releaseUrl;
+          link.hidden = false;
+        }
       } else {
         status.textContent = `已是最新版本（${result.currentVersion}）`;
       }
@@ -762,6 +782,57 @@
     });
 
     document.getElementById('btnCheckUpdate').addEventListener('click', checkForUpdate);
+
+    document.getElementById('btnUpdateDownload').addEventListener('click', async () => {
+      const btn = document.getElementById('btnUpdateDownload');
+      const progressWrap = document.getElementById('updateProgressWrap');
+      const status = document.getElementById('updateStatus');
+      btn.disabled = true;
+      progressWrap.hidden = false;
+      status.textContent = '正在下载更新...';
+      const res = await api.downloadUpdate();
+      if (res && !res.ok) {
+        status.textContent = `下载失败：${res.error || '未知错误'}`;
+        btn.disabled = false;
+        progressWrap.hidden = true;
+      }
+    });
+
+    document.getElementById('btnUpdateInstall').addEventListener('click', async () => {
+      const btn = document.getElementById('btnUpdateInstall');
+      btn.disabled = true;
+      document.getElementById('updateStatus').textContent = '正在重启并安装更新...';
+      await api.installUpdate();
+    });
+
+    if (api.onUpdateEvent) {
+      api.onUpdateEvent((data) => {
+        const status = document.getElementById('updateStatus');
+        const btnDownload = document.getElementById('btnUpdateDownload');
+        const btnInstall = document.getElementById('btnUpdateInstall');
+        const progressWrap = document.getElementById('updateProgressWrap');
+        const progressBar = document.getElementById('updateProgressBar');
+        const progressText = document.getElementById('updateProgressText');
+        switch (data.type) {
+          case 'progress':
+            progressWrap.hidden = false;
+            progressBar.style.width = `${data.percent}%`;
+            progressText.textContent = `${data.percent}%`;
+            break;
+          case 'downloaded':
+            progressWrap.hidden = true;
+            btnDownload.hidden = true;
+            btnInstall.hidden = false;
+            status.textContent = `更新已就绪，点击“重启并更新”完成安装（v${data.version}）`;
+            break;
+          case 'error':
+            progressWrap.hidden = true;
+            btnDownload.disabled = false;
+            status.textContent = `更新失败：${data.message || '未知错误'}`;
+            break;
+        }
+      });
+    }
 
     if (api.onThemeChanged) {
       api.onThemeChanged(applyTheme);

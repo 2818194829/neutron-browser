@@ -754,6 +754,35 @@ svg {
   color: #ffffff;
 }
 
+/* ==================== 窗口置顶按钮（图钉） ==================== */
+.window-control--pin .pin-icon {
+  transform: rotate(45deg);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.15s;
+}
+
+.window-control--pin:hover .pin-icon {
+  transform: rotate(45deg) scale(1.12);
+}
+
+/* 置顶激活态：主题色背景 + 图标归位 + 柔和阴影 */
+.window-control--pin.is-active {
+  background: var(--accent-primary);
+  color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08) inset;
+}
+
+.window-control--pin.is-active:hover {
+  background: var(--accent-primary-hover);
+}
+
+.window-control--pin.is-active .pin-icon {
+  transform: rotate(0deg);
+}
+
+.window-control--pin.is-active:hover .pin-icon {
+  transform: rotate(0deg) scale(1.12);
+}
+
 /* ==================== 标签页 ==================== */
 .tab {
   display: flex;
@@ -1346,9 +1375,8 @@ svg {
 }
 
 .download-item__progress {
-  width: 100%;
+  flex: 1;
   height: 3px;
-  margin-top: 6px;
   overflow: hidden;
   border-radius: 2px;
   background: var(--border-color);
@@ -1447,6 +1475,135 @@ svg {
 
 .download-more-menu button:hover {
   background: var(--bg-hover);
+}
+
+/* ==================== 下载：Edge 风格增强 ==================== */
+
+/* 工具栏下载按钮：环形进度 + 徽章 */
+.tool-btn--downloads {
+  position: relative;
+}
+
+.download-btn__ring {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  color: var(--accent-primary);
+}
+
+.download-btn__ring-fill {
+  transition: stroke-dashoffset 0.3s;
+}
+
+.tool-btn--downloading .download-btn__icon {
+  opacity: 0.4;
+}
+
+.tool-btn__badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-size: 9px;
+  line-height: 15px;
+  text-align: center;
+  font-weight: 600;
+  box-shadow: 0 0 0 2px var(--modal-bg);
+}
+
+/* 全部显示按钮 */
+.download-panel__show-all {
+  padding: 0 8px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.download-panel__show-all:hover {
+  background: var(--bg-hover);
+  text-decoration: underline;
+}
+
+/* 文件名行 + 状态标签 */
+.download-item__name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.download-item__status {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 10px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.download-item__status--done {
+  background: rgba(52, 168, 83, 0.16);
+  color: #34a853;
+}
+
+.download-item__status--failed {
+  background: rgba(234, 67, 53, 0.13);
+  color: var(--accent-danger);
+}
+
+/* 进度行 + 百分比 */
+.download-item__progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.download-item__percent {
+  flex-shrink: 0;
+  min-width: 30px;
+  text-align: right;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.download-item__progress-bar--paused {
+  background: var(--text-tertiary);
+}
+
+/* 操作按钮变体 */
+.download-item__action--pause {
+  color: var(--accent-primary);
+}
+
+.download-item__action--play {
+  color: var(--accent-primary);
+}
+
+.download-item__action--cancel {
+  color: var(--accent-danger);
+}
+
+.download-item__action--trash:hover {
+  color: var(--accent-danger);
+}
+
+/* 空状态图标 */
+.download-empty__icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  opacity: 0.5;
 }
 
 /* ==================== 历史悬浮面板 ==================== */
