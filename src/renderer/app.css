@@ -242,6 +242,7 @@
   --titlebar-bg: linear-gradient(135deg, #0d47a1, #1565c0);
   --toolbar-bg: linear-gradient(135deg, #1565c0, #1e88e5);
   --bookmark-bar-bg: #1e88e5;
+  --statusbar-bg: #1e88e5;
   --bookmark-folder-color: rgba(255, 255, 255, 0.95);
   --tab-bg: rgba(255, 255, 255, 0.14);
   --tab-hover-bg: rgba(255, 255, 255, 0.24);
@@ -261,6 +262,7 @@
   --titlebar-bg: linear-gradient(135deg, #0a2e68, #0d47a1);
   --toolbar-bg: linear-gradient(135deg, #0d47a1, #1565c0);
   --bookmark-bar-bg: #1565c0;
+  --statusbar-bg: #1565c0;
   --bookmark-folder-color: rgba(255, 255, 255, 0.95);
   --tab-bg: rgba(255, 255, 255, 0.08);
   --tab-hover-bg: rgba(255, 255, 255, 0.14);
@@ -282,6 +284,7 @@
   --titlebar-bg: linear-gradient(135deg, #1b5e20, #2e7d32);
   --toolbar-bg: linear-gradient(135deg, #2e7d32, #43a047);
   --bookmark-bar-bg: #43a047;
+  --statusbar-bg: #43a047;
   --bookmark-folder-color: rgba(255, 255, 255, 0.95);
   --tab-bg: rgba(255, 255, 255, 0.14);
   --tab-hover-bg: rgba(255, 255, 255, 0.24);
@@ -301,6 +304,7 @@
   --titlebar-bg: linear-gradient(135deg, #123f15, #1b5e20);
   --toolbar-bg: linear-gradient(135deg, #1b5e20, #2e7d32);
   --bookmark-bar-bg: #2e7d32;
+  --statusbar-bg: #2e7d32;
   --bookmark-folder-color: rgba(255, 255, 255, 0.95);
   --tab-bg: rgba(255, 255, 255, 0.08);
   --tab-hover-bg: rgba(255, 255, 255, 0.14);
@@ -322,6 +326,7 @@
   --titlebar-bg: linear-gradient(135deg, #bf360c, #e64a19);
   --toolbar-bg: linear-gradient(135deg, #e64a19, #f4511e);
   --bookmark-bar-bg: #f4511e;
+  --statusbar-bg: #f4511e;
   --bookmark-folder-color: rgba(255, 255, 255, 0.95);
   --tab-bg: rgba(255, 255, 255, 0.14);
   --tab-hover-bg: rgba(255, 255, 255, 0.24);
@@ -341,6 +346,7 @@
   --titlebar-bg: linear-gradient(135deg, #7f2a0e, #a53614);
   --toolbar-bg: linear-gradient(135deg, #a53614, #bf360c);
   --bookmark-bar-bg: #bf360c;
+  --statusbar-bg: #bf360c;
   --bookmark-folder-color: rgba(255, 255, 255, 0.95);
   --tab-bg: rgba(255, 255, 255, 0.08);
   --tab-hover-bg: rgba(255, 255, 255, 0.14);
@@ -362,6 +368,7 @@
   --titlebar-bg: linear-gradient(135deg, #311b92, #4527a0);
   --toolbar-bg: linear-gradient(135deg, #4527a0, #5e35b1);
   --bookmark-bar-bg: #5e35b1;
+  --statusbar-bg: #5e35b1;
   --bookmark-folder-color: rgba(255, 255, 255, 0.95);
   --tab-bg: rgba(255, 255, 255, 0.14);
   --tab-hover-bg: rgba(255, 255, 255, 0.24);
@@ -381,6 +388,7 @@
   --titlebar-bg: linear-gradient(135deg, #1a0f4a, #2c1a6e);
   --toolbar-bg: linear-gradient(135deg, #2c1a6e, #311b92);
   --bookmark-bar-bg: #311b92;
+  --statusbar-bg: #311b92;
   --bookmark-folder-color: rgba(255, 255, 255, 0.95);
   --tab-bg: rgba(255, 255, 255, 0.08);
   --tab-hover-bg: rgba(255, 255, 255, 0.14);
@@ -402,6 +410,7 @@
   --titlebar-bg: linear-gradient(135deg, #ad1457, #c2185b);
   --toolbar-bg: linear-gradient(135deg, #c2185b, #d81b60);
   --bookmark-bar-bg: #d81b60;
+  --statusbar-bg: #d81b60;
   --bookmark-folder-color: rgba(255, 255, 255, 0.95);
   --tab-bg: rgba(255, 255, 255, 0.14);
   --tab-hover-bg: rgba(255, 255, 255, 0.24);
@@ -421,6 +430,7 @@
   --titlebar-bg: linear-gradient(135deg, #5c0a2c, #7a0f3b);
   --toolbar-bg: linear-gradient(135deg, #7a0f3b, #8e1450);
   --bookmark-bar-bg: #8e1450;
+  --statusbar-bg: #8e1450;
   --bookmark-folder-color: rgba(255, 255, 255, 0.95);
   --tab-bg: rgba(255, 255, 255, 0.08);
   --tab-hover-bg: rgba(255, 255, 255, 0.14);
@@ -496,6 +506,7 @@
     repeating-radial-gradient(circle at 50% 120%, rgba(255, 255, 255, 0.14) 0 7px, transparent 7px 20px),
     linear-gradient(160deg, #29b6f6, #0277bd);
   --bookmark-bar-bg: #0277bd;
+  --statusbar-bg: #0277bd;
   --text-primary: #042f4a;
 }
 [data-theme="dark"][data-skin="wave"] {
@@ -506,6 +517,7 @@
     repeating-radial-gradient(circle at 50% 120%, rgba(255, 255, 255, 0.10) 0 7px, transparent 7px 20px),
     linear-gradient(160deg, #014a8c, #002f6c);
   --bookmark-bar-bg: #002f6c;
+  --statusbar-bg: #002f6c;
   --text-primary: #ffffff;
 }
 
@@ -518,6 +530,7 @@
     repeating-conic-gradient(rgba(255, 255, 255, 0.10) 0% 25%, rgba(255, 255, 255, 0.02) 0% 50%) 0 0 / 26px 26px,
     linear-gradient(160deg, #607d8b, #37474f);
   --bookmark-bar-bg: #37474f;
+  --statusbar-bg: #37474f;
   --text-primary: #102027;
 }
 [data-theme="dark"][data-skin="checker"] {
@@ -528,6 +541,7 @@
     repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, rgba(255, 255, 255, 0.02) 0% 50%) 0 0 / 26px 26px,
     linear-gradient(160deg, #2f3e46, #101820);
   --bookmark-bar-bg: #101820;
+  --statusbar-bg: #101820;
   --text-primary: #ffffff;
 }
 
@@ -548,6 +562,7 @@
     radial-gradient(1.5px 1.5px at 85% 60%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
     linear-gradient(160deg, #16266b, #0b1026);
   --bookmark-bar-bg: #0b1026;
+  --statusbar-bg: #0b1026;
   --text-primary: #0b1026;
 }
 [data-theme="dark"][data-skin="starfield"] {
@@ -565,6 +580,7 @@
     radial-gradient(1.5px 1.5px at 85% 60%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
     linear-gradient(160deg, #0b1333, #050814);
   --bookmark-bar-bg: #050814;
+  --statusbar-bg: #050814;
   --text-primary: #ffffff;
 }
 
@@ -585,6 +601,7 @@
     radial-gradient(2px 2px at 82% 60%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
     linear-gradient(160deg, #ffb7c5, #ff7f9e);
   --bookmark-bar-bg: #ff7f9e;
+  --statusbar-bg: #ff7f9e;
   --text-primary: #5c1f3a;
 }
 [data-theme="dark"][data-skin="sakura"] {
@@ -601,6 +618,7 @@
     radial-gradient(2px 2px at 58% 28%, rgba(255, 255, 255, 0.6) 50%, transparent 51%),
     linear-gradient(160deg, #7a3a54, #4a142e);
   --bookmark-bar-bg: #4a142e;
+  --statusbar-bg: #4a142e;
   --text-primary: #ffffff;
 }
 
@@ -618,6 +636,7 @@
     radial-gradient(1.5px 1.5px at 70% 30%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
     linear-gradient(160deg, #00cfa0, #0091ea);
   --bookmark-bar-bg: #0091ea;
+  --statusbar-bg: #0091ea;
   --text-primary: #00352a;
 }
 [data-theme="dark"][data-skin="mint"] {
@@ -631,6 +650,7 @@
     radial-gradient(1.5px 1.5px at 45% 65%, rgba(255, 255, 255, 0.45) 50%, transparent 51%),
     linear-gradient(160deg, #007a6e, #014a8c);
   --bookmark-bar-bg: #014a8c;
+  --statusbar-bg: #014a8c;
   --text-primary: #ffffff;
 }
 
@@ -645,6 +665,7 @@
     radial-gradient(ellipse 45% 40% at 70% 100%, rgba(255, 255, 255, 0.11) 0%, transparent 70%),
     linear-gradient(160deg, #ff8a94, #ffb88c 45%, #8f6fd1);
   --bookmark-bar-bg: #8f6fd1;
+  --statusbar-bg: #8f6fd1;
   --text-primary: #3d2a63;
 }
 [data-theme="dark"][data-skin="dusk"] {
@@ -657,6 +678,7 @@
     radial-gradient(ellipse 45% 40% at 70% 100%, rgba(255, 255, 255, 0.08) 0%, transparent 70%),
     linear-gradient(160deg, #8c3a44, #7a4a2e 45%, #3a2c60);
   --bookmark-bar-bg: #3a2c60;
+  --statusbar-bg: #3a2c60;
   --text-primary: #ffffff;
 }
 
@@ -1339,6 +1361,8 @@ svg {
 .context-menu,
 .bookmark-folder-popup,
 .bfp-sub-popup,
+.extension-popup,
+.panel-backdrop,
 .modal {
   --text-primary: var(--panel-text-primary);
   --text-secondary: var(--panel-text-secondary);
@@ -2041,6 +2065,41 @@ svg {
   margin: 4px 0;
 }
 
+/* ==================== 地址栏右键菜单（Edge 风格） ==================== */
+.context-menu--addressbar {
+  min-width: 300px;
+}
+
+.context-menu__item-icon {
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+}
+
+.context-menu__item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-menu__shortcut {
+  margin-left: auto;
+  padding-left: 24px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.context-menu__item--disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.context-menu__item--disabled:hover {
+  background: transparent;
+}
+
 /* ==================== 书签文件夹弹出菜单 ==================== */
 .bookmark-folder-popup {
   position: fixed;
@@ -2493,4 +2552,50 @@ svg {
   .toolbar__actions {
     display: none;
   }
+}
+
+/* ==================== 悬浮面板覆盖层模式 ==================== */
+/* 面板作为小型透明 BrowserView 浮在页面之上：
+   隐藏浏览器 UI，面板充满覆盖层视口。
+   覆盖层仅占面板大小，透明背景让 border-radius 圆角正确显示。 */
+html.overlay-mode {
+  background: transparent;
+}
+
+html.overlay-mode body {
+  background: transparent !important;
+}
+
+html.overlay-mode .app {
+  background: transparent !important;
+}
+
+html.overlay-mode #titleBar,
+html.overlay-mode #toolbar,
+html.overlay-mode #bookmarkBar,
+html.overlay-mode #statusBar,
+html.overlay-mode #contentArea,
+html.overlay-mode #contentSnapshot,
+html.overlay-mode #contentPlaceholder,
+html.overlay-mode .drop-overlay,
+html.overlay-mode .toast,
+html.overlay-mode .panel-backdrop {
+  display: none !important;
+}
+
+/* 面板充满覆盖层视口，圆角 + 自身不透明背景 */
+html.overlay-mode .download-panel:not([hidden]),
+html.overlay-mode .history-panel:not([hidden]),
+html.overlay-mode .extension-popup:not([hidden]) {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: none;
+  border: none;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }

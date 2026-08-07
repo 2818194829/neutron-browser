@@ -57,6 +57,15 @@ const IPC_CHANNELS = {
   BOOKMARKS_BAR_CONTEXT_MENU: 'bookmarks:barContextMenu',
   BOOKMARKS_IMPORT: 'bookmarks:import',
   BOOKMARKS_EXPORT: 'bookmarks:export',
+  // 书签跨窗口拖拽状态
+  BOOKMARK_DRAG_SET: 'bookmarkDrag:set',
+  BOOKMARK_DRAG_CLEAR: 'bookmarkDrag:clear',
+  BOOKMARK_DRAG_GET: 'bookmarkDrag:get',
+  // 刷新文件夹弹出菜单
+  BOOKMARK_FOLDER_REFRESH: 'bookmarkFolder:refresh',
+  // 书签已变更（叠加层移动书签后通知主窗口刷新书签栏）
+  BOOKMARKS_CHANGED: 'bookmarks:changed',
+  BOOKMARKS_REFRESH: 'bookmarks:refresh',
 
   // 历史记录
   HISTORY_GET_ALL: 'history:getAll',
@@ -85,6 +94,11 @@ const IPC_CHANNELS = {
 
   // 剪贴板
   CLIPBOARD_COPY: 'clipboard:copy',
+  CLIPBOARD_READ: 'clipboard:read',
+
+  // 地址栏编辑
+  ADDRESSBAR_EDIT: 'addressbar:edit',
+  ADDRESSBAR_OPEN_EMOJI: 'addressbar:openEmoji',
 
   // 设置
   SETTINGS_GET: 'settings:get',
@@ -119,6 +133,14 @@ const IPC_CHANNELS = {
   EXTENSIONS_DROP_FILE: 'extensions:dropFile',
   EXTENSIONS_TOGGLE: 'extensions:toggle',
   EXTENSIONS_UNINSTALL: 'extensions:uninstall',
+
+  // 悬浮面板覆盖层（面板叠加在实时页面之上显示）
+  PANEL_OVERLAY_SHOW: 'panelOverlay:show',
+  PANEL_OVERLAY_HIDE: 'panelOverlay:hide',
+  PANEL_OVERLAY_ANCHOR: 'panelOverlay:anchor',
+  PANEL_OVERLAY_GET_ANCHOR: 'panelOverlay:getAnchor',
+  PANEL_OVERLAY_CLOSED: 'panelOverlay:closed',
+  PANEL_OVERLAY_CLICK_OUTSIDE: 'panelOverlay:clickOutside',
 };
 
 // ==================== 默认设置 ====================

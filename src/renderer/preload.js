@@ -16,6 +16,23 @@ window.addEventListener('wheel', (event) => {
   }
 }, { passive: false });
 
+// ==================== 固定页面可见性（防止视频被暂停） ====================
+// 打开下载/历史/扩展等悬浮面板时，主进程会 removeBrowserView 让面板置顶，
+// 这会使网页 webContents 变为 hidden 并触发 visibilitychange。
+// 视频网站（如 B 站）监听到页面隐藏会主动暂停播放 → 表现为"视频卡住/暂停"。
+// 因此在页面主世界将 document.hidden/visibilityState 固定为 visible，
+// 让站点读取到的始终是可见状态，不会主动暂停视频（不影响 Electron 内部节流）。
+try {
+  webFrame.executeJavaScript(`
+    (function () {
+      try {
+        Object.defineProperty(document, 'hidden', { get: function () { return false; }, configurable: true });
+        Object.defineProperty(document, 'visibilityState', { get: function () { return 'visible'; }, configurable: true });
+      } catch (e) {}
+    })();
+  `, true);
+} catch (e) { /* 忽略：某些页面上下文可能无法注入 */ }
+
 // 暴露安全的 API 到渲染进程的 window.NeutronBrowser 对象
 contextBridge.exposeInMainWorld('NeutronBrowser', {
   // ==================== 窗口控制 ====================
@@ -37,6 +54,23 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.UI_MODAL_SNAPSHOT, handler);
   },
   notifyModalSnapshotReady: () => ipcRenderer.send(IPC_CHANNELS.UI_MODAL_SNAPSHOT_READY),
+
+  // ==================== 悬浮面板覆盖层 ====================
+  showPanelOverlay: (payload) => ipcRenderer.send(IPC_CHANNELS.PANEL_OVERLAY_SHOW, payload),
+  hidePanelOverlay: () => ipcRenderer.send(IPC_CHANNELS.PANEL_OVERLAY_HIDE),
+  getPanelOverlayAnchor: () => ipcRenderer.invoke(IPC_CHANNELS.PANEL_OVERLAY_GET_ANCHOR),
+  onPanelOverlayAnchor: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.PANEL_OVERLAY_ANCHOR, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.PANEL_OVERLAY_ANCHOR, handler);
+  },
+  onPanelOverlayClosed: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on(IPC_CHANNELS.PANEL_OVERLAY_CLOSED, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.PANEL_OVERLAY_CLOSED, handler);
+  },
+  // 网页点击通知主进程关闭悬浮面板（由注入脚本调用）
+  notifyPanelClickOutside: () => ipcRenderer.send(IPC_CHANNELS.PANEL_OVERLAY_CLICK_OUTSIDE),
 
   // ==================== 标签页管理 ====================
   createTab: (url, active = true) =>
@@ -88,6 +122,19 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   showBookmarkBarContextMenu: (payload) => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_BAR_CONTEXT_MENU, payload),
   importBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_IMPORT),
   exportBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_EXPORT),
+  // 书签跨窗口拖拽状态
+  setBookmarkDrag: (id) => ipcRenderer.send(IPC_CHANNELS.BOOKMARK_DRAG_SET, id),
+  clearBookmarkDrag: () => ipcRenderer.send(IPC_CHANNELS.BOOKMARK_DRAG_CLEAR),
+  getBookmarkDrag: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARK_DRAG_GET),
+  // 刷新打开的文件夹弹出菜单
+  refreshBookmarkFolder: (folderId) => ipcRenderer.send(IPC_CHANNELS.BOOKMARK_FOLDER_REFRESH, folderId),
+  // 书签已变更（通知主窗口刷新书签栏）
+  notifyBookmarksChanged: () => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_CHANGED),
+  onBookmarksRefresh: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on(IPC_CHANNELS.BOOKMARKS_REFRESH, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.BOOKMARKS_REFRESH, handler);
+  },
 
   // ==================== 历史记录 ====================
   getHistory: () => ipcRenderer.invoke(IPC_CHANNELS.HISTORY_GET_ALL),
@@ -106,6 +153,9 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   cancelDownload: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_CANCEL, { id }),
   retryDownload: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_RETRY, { id }),
   copyText: (text) => ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_COPY, text),
+  readClipboardText: () => ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_READ),
+  addressBarEdit: (command) => ipcRenderer.invoke(IPC_CHANNELS.ADDRESSBAR_EDIT, command),
+  openEmojiPanel: () => ipcRenderer.invoke(IPC_CHANNELS.ADDRESSBAR_OPEN_EMOJI),
   openDownloadFolder: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_OPEN_FOLDER, { id }),
   openDownloadFile: (id) => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_OPEN_FILE, { id }),
   openDownloadDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.DOWNLOADS_OPEN_DIRECTORY),

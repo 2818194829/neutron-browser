@@ -3,6 +3,7 @@
  * 处理来自渲染进程的所有 IPC 请求
  */
 const { ipcMain, dialog, shell, app, Menu, clipboard } = require('electron');
+const { execFile } = require('child_process');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
@@ -168,6 +169,32 @@ function registerIpcHandlers() {
   ipcMain.on(IPC_CHANNELS.UI_MODAL_SNAPSHOT_READY, () => {
     const wm = getWM();
     if (wm) wm.resolveModalSnapshot();
+  });
+
+  // ==================== 悬浮面板覆盖层 ====================
+  ipcMain.on(IPC_CHANNELS.PANEL_OVERLAY_SHOW, (event, payload) => {
+    const wm = getWM();
+    if (wm && wm.showPanelOverlay) wm.showPanelOverlay(payload || {});
+  });
+
+  ipcMain.on(IPC_CHANNELS.PANEL_OVERLAY_HIDE, () => {
+    const wm = getWM();
+    if (wm && wm.hidePanelOverlay) wm.hidePanelOverlay();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PANEL_OVERLAY_GET_ANCHOR, () => {
+    const wm = getWM();
+    return {
+      anchor: wm ? wm.panelOverlayAnchor : null,
+      contentOffsetY: 84,
+      bookmarkFolderData: wm ? (wm._bookmarkFolderData || null) : null,
+    };
+  });
+
+  // 网页点击通知 → 关闭悬浮面板（由注入脚本 notifyPanelClickOutside 触发）
+  ipcMain.on(IPC_CHANNELS.PANEL_OVERLAY_CLICK_OUTSIDE, () => {
+    const wm = getWM();
+    if (wm && wm.hidePanelOverlay) wm.hidePanelOverlay();
   });
 
   // ==================== 标签页管理 ====================
@@ -380,13 +407,46 @@ function registerIpcHandlers() {
       }));
     };
 
-    wm.mainWindow.webContents.send(IPC_CHANNELS.BOOKMARKS_FOLDER_MENU_OPEN, {
+    // 使用面板叠加层替代 setModalVisible，避免视频冻结
+    wm._bookmarkFolderData = {
       folderId: folder.id,
       folderTitle: folder.title || '未命名文件夹',
       x: payload.x,
       y: payload.y,
       items: buildItems(folder),
+    };
+    wm.showPanelOverlay({
+      type: 'bookmarkFolder',
+      anchor: { left: payload.x, top: payload.y, right: payload.x + 10, bottom: payload.y + 10, width: 10, height: 10 },
     });
+  });
+
+  // 书签跨窗口拖拽状态
+  ipcMain.on(IPC_CHANNELS.BOOKMARK_DRAG_SET, (event, id) => {
+    const wm = getWM();
+    if (wm) wm._draggedBookmarkId = id || null;
+  });
+  ipcMain.on(IPC_CHANNELS.BOOKMARK_DRAG_CLEAR, () => {
+    const wm = getWM();
+    if (wm) wm._draggedBookmarkId = null;
+  });
+  ipcMain.handle(IPC_CHANNELS.BOOKMARK_DRAG_GET, () => {
+    const wm = getWM();
+    return wm ? (wm._draggedBookmarkId || null) : null;
+  });
+
+  // 刷新打开的文件夹弹出菜单（书签移动后实时更新）
+  ipcMain.on(IPC_CHANNELS.BOOKMARK_FOLDER_REFRESH, (event, folderId) => {
+    const wm = getWM();
+    if (wm && wm.refreshBookmarkFolderPopup) wm.refreshBookmarkFolderPopup(folderId);
+  });
+
+  // 书签已变更（叠加层移动书签后，通知主窗口刷新书签栏）
+  ipcMain.on(IPC_CHANNELS.BOOKMARKS_CHANGED, () => {
+    const wm = getWM();
+    if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+      wm.mainWindow.webContents.send(IPC_CHANNELS.BOOKMARKS_REFRESH);
+    }
   });
 
   ipcMain.on(IPC_CHANNELS.BOOKMARKS_FOLDER_CONTEXT_MENU, (event, payload) => {
@@ -850,6 +910,50 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.CLIPBOARD_COPY, (event, text) => {
     clipboard.writeText(String(text || ''));
     return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CLIPBOARD_READ, () => clipboard.readText() || '');
+
+  // 地址栏编辑命令（作用于主窗口 webContents 当前聚焦元素 = 地址栏输入框）
+  ipcMain.handle(IPC_CHANNELS.ADDRESSBAR_EDIT, (event, command) => {
+    const wm = getWM();
+    const wc = wm && wm.mainWindow && wm.mainWindow.webContents;
+    if (!wc) return false;
+    const methods = {
+      undo: 'undo',
+      redo: 'redo',
+      cut: 'cut',
+      copy: 'copy',
+      paste: 'paste',
+      delete: 'delete',
+      selectAll: 'selectAll',
+    };
+    const method = methods[command];
+    if (method && typeof wc[method] === 'function') {
+      wc[method]();
+      return true;
+    }
+    return false;
+  });
+
+  // 打开系统表情面板（模拟 Win+句点 组合键）
+  ipcMain.handle(IPC_CHANNELS.ADDRESSBAR_OPEN_EMOJI, () => {
+    try {
+      const script = [
+        "Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class NK{[DllImport(\"user32.dll\")]public static extern void keybd_event(byte bVk,byte bScan,uint dwFlags,IntPtr dwExtraInfo);}';",
+        '[NK]::keybd_event(0x5B,0,0,[IntPtr]::Zero);',
+        '[NK]::keybd_event(0xBE,0,0,[IntPtr]::Zero);',
+        '[NK]::keybd_event(0xBE,0,2,[IntPtr]::Zero);',
+        '[NK]::keybd_event(0x5B,0,2,[IntPtr]::Zero);',
+      ].join('');
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], (err) => {
+        if (err) console.error('[Main] 打开表情面板失败:', err.message);
+      });
+      return true;
+    } catch (e) {
+      console.error('[Main] 打开表情面板失败:', e);
+      return false;
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.DOWNLOADS_OPEN_FOLDER, (event, { id }) => {

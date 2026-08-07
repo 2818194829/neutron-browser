@@ -36,6 +36,7 @@
     downloadBadge: $('#downloadBadge'),
     downloadRing: $('#downloadRing'),
     downloadRingFill: $('#downloadRingFill'),
+    panelBackdrop: $('#panelBackdrop'),
     downloadPanel: $('#downloadPanel'),
     downloadList: $('#downloadList'),
     downloadSearch: $('#downloadSearch'),
@@ -111,6 +112,8 @@
     bookmarkDragId: null,
     bookmarkDropPosition: 'before',
     bookmarkDropMode: 'before',
+    bookmarkFolderPopupOpenId: null, // 当前打开的文件夹弹出菜单对应文件夹 ID
+    folderPopupOpenTimer: null,      // 拖拽悬停时自动打开文件夹的防抖定时器
     extensionPopupOpen: false,
     extensionPopupExtensions: [],
     extensionSitePermissions: null,
@@ -120,6 +123,7 @@
     accentColor: 'blue',
     themeSkin: 'default',
     isAlwaysOnTop: false,
+    contextMenuOpen: false,
     folderPopupData: null,
     subFolderPopupTimeout: null,
     subFolderPopupDiv: null,
@@ -134,8 +138,20 @@
     return;
   }
 
+  // 覆盖层模式：面板作为透明覆盖层叠加在实时页面之上（?overlay=1&panel=xxx）
+  const IS_OVERLAY = new URLSearchParams(location.search).has('overlay');
+  const OVERLAY_PANEL = IS_OVERLAY
+    ? (new URLSearchParams(location.search).get('panel') || 'downloads')
+    : null;
+
   // ==================== 初始化 ====================
   async function init() {
+    // 覆盖层模式：只初始化当前面板
+    if (IS_OVERLAY) {
+      await initOverlay();
+      return;
+    }
+
     console.log('[Renderer] 初始化中...');
 
     // 加载外观（主题 + 强调色 + 皮肤）
@@ -184,7 +200,220 @@
     const unsubMenu = api.onMenuEvent(handleMenuEvent);
     state.unsubscribers.push(unsubMenu);
 
+    // 覆盖层面板被关闭（Esc/点击外部）时同步状态
+    if (api.onPanelOverlayClosed) {
+      const unsubOverlayClosed = api.onPanelOverlayClosed(() => {
+        state.downloadPanelOpen = false;
+        state.historyPanelOpen = false;
+        state.extensionPopupOpen = false;
+        state.bookmarkFolderPopupOpenId = null;
+        state.folderPopupData = null;
+      });
+      state.unsubscribers.push(unsubOverlayClosed);
+    }
+
     console.log('[Renderer] 初始化完成');
+  }
+
+  /**
+   * 覆盖层模式初始化：只渲染当前面板（面板叠加在实时页面之上显示）
+   */
+  async function initOverlay() {
+    console.log('[Overlay] 覆盖层初始化，panel =', OVERLAY_PANEL);
+    document.documentElement.classList.add('overlay-mode');
+    document.documentElement.dataset.overlayPanel = OVERLAY_PANEL;
+
+    // 外观（面板需要正确的主题变量）
+    state.theme = await api.getTheme();
+    const [accentColor, themeSkin] = await Promise.all([
+      api.getSetting('accentColor'),
+      api.getSetting('themeSkin'),
+    ]);
+    state.accentColor = accentColor || 'blue';
+    state.themeSkin = themeSkin || 'default';
+    applyAppearance();
+
+    // 绑定面板相关事件（复用主窗口逻辑）
+    bindDownloadPanel();
+    bindHistoryPanel();
+    bindExtensionPopup();
+    bindIPCListeners();
+
+    // 主进程推送锚点 → 显示并定位面板
+    if (api.onPanelOverlayAnchor) {
+      api.onPanelOverlayAnchor(({ anchor, contentOffsetY, bookmarkFolderData }) => {
+        state.overlayAnchor = anchor || null;
+        state.overlayOffsetY = contentOffsetY || 0;
+        if (bookmarkFolderData) {
+          state.bookmarkFolderData = bookmarkFolderData;
+          renderBookmarkFolderInOverlay(bookmarkFolderData);
+        }
+        showOverlayPanel();
+      });
+    }
+    // 主动拉取锚点（避免推送时序问题）
+    try {
+      const data = await api.getPanelOverlayAnchor();
+      if (data) {
+        state.overlayAnchor = data.anchor || null;
+        state.overlayOffsetY = data.contentOffsetY || 0;
+        if (data.bookmarkFolderData) {
+          state.bookmarkFolderData = data.bookmarkFolderData;
+          renderBookmarkFolderInOverlay(data.bookmarkFolderData);
+        }
+      }
+    } catch (e) { /* 忽略 */ }
+    showOverlayPanel();
+  }
+
+  /**
+   * 在叠加层中渲染书签文件夹弹出菜单
+   */
+  function renderBookmarkFolderInOverlay(data) {
+    const { items } = data || {};
+    if (!items) return;
+    const popup = dom.bookmarkFolderPopup;
+    popup.innerHTML = '';
+    popup.classList.toggle('bookmark-folder-popup--empty', items.length === 0);
+
+    const listEl = document.createElement('div');
+    listEl.className = 'bfp-list';
+    if (items.length === 0) {
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'bfp-empty';
+      emptyEl.textContent = '空';
+      listEl.appendChild(emptyEl);
+    } else {
+      renderFolderItemsInOverlay(listEl, items);
+    }
+    popup.appendChild(listEl);
+
+    // 支持从书签栏把书签拖入本文件夹（跨窗口，通过全局拖拽状态协调）
+    popup.ondragover = (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    };
+    popup.ondrop = async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      let draggedId = state.bookmarkDragId;
+      if (!draggedId && api.getBookmarkDrag) {
+        try { draggedId = await api.getBookmarkDrag(); } catch (err) { /* 忽略 */ }
+      }
+      const folderId = state.bookmarkFolderData && state.bookmarkFolderData.folderId;
+      if (!draggedId || !folderId) return;
+      try {
+        const moved = await api.moveBookmarkIntoFolder(draggedId, folderId);
+        state.bookmarkDragId = null;
+        if (api.clearBookmarkDrag) api.clearBookmarkDrag();
+        if (moved) {
+          // 通知主窗口刷新书签栏
+          if (api.notifyBookmarksChanged) api.notifyBookmarksChanged();
+          // 实时刷新当前文件夹弹出菜单
+          api.refreshBookmarkFolder(folderId);
+        }
+      } catch (err) {
+        console.error('[Overlay] 拖入书签失败:', err);
+      }
+    };
+  }
+
+  function renderFolderItemsInOverlay(container, items) {
+    items.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'bfp-item';
+      el.draggable = true;
+      el.dataset.bookmarkId = item.id || '';
+
+      if (item.type === 'folder') {
+        el.innerHTML = `<span class="bfp-item__icon bfp-item__icon--folder">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </span>
+        <span class="bfp-item__title">${escapeHtmlAttr(item.title)}</span>
+        <span class="bfp-item__arrow">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </span>`;
+      } else {
+        const siteFavicon = getTrustedFavicon(item.favicon, item.url) || getSiteFaviconUrl(item.url);
+        const googleFavicon = getGoogleFaviconUrl(item.url);
+        const favicon = siteFavicon || googleFavicon;
+        const iconHtml = favicon
+          ? `<span class="bfp-item__icon"><img src="${escapeHtmlAttr(favicon)}" width="16" height="16" alt="" referrerpolicy="no-referrer" onerror="this.style.display='none'"></span>`
+          : `<span class="bfp-item__icon">★</span>`;
+        el.innerHTML = `${iconHtml}<span class="bfp-item__title">${escapeHtmlAttr(item.title)}</span>`;
+        el.addEventListener('click', () => {
+          api.navigateTo(item.url);
+          closeDownloadPanel(); // 复用关闭逻辑
+        });
+        // 支持将文件夹内的书签拖拽到书签栏（跨窗口，通过全局拖拽状态协调）
+        el.addEventListener('dragstart', (e) => {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', item.id);
+          state.bookmarkDragId = item.id;
+          if (api.setBookmarkDrag) api.setBookmarkDrag(item.id);
+        });
+        el.addEventListener('dragend', () => {
+          state.bookmarkDragId = null;
+          if (api.clearBookmarkDrag) api.clearBookmarkDrag();
+        });
+      }
+      container.appendChild(el);
+    });
+  }
+
+  /**
+   * 覆盖层内显示当前面板（每次调用都会重新加载数据并定位）
+   */
+  async function showOverlayPanel() {
+    try {
+      if (OVERLAY_PANEL === 'downloads') {
+        state.downloadPanelOpen = true;
+        dom.downloadPanel.hidden = false;
+        dom.downloadPanel.style.visibility = 'hidden';
+        await loadDownloads();
+        positionDownloadPanel();
+        dom.downloadPanel.style.visibility = 'visible';
+        requestAnimationFrame(positionDownloadPanel);
+      } else if (OVERLAY_PANEL === 'history') {
+        state.historyPanelOpen = true;
+        dom.historyPanel.hidden = false;
+        dom.historyPanel.style.visibility = 'hidden';
+        await loadHistoryPanel();
+        positionHistoryPanel();
+        dom.historyPanel.style.visibility = 'visible';
+        requestAnimationFrame(positionHistoryPanel);
+      } else if (OVERLAY_PANEL === 'extensions') {
+        state.extensionPopupOpen = true;
+        dom.extensionPopup.hidden = false;
+        dom.extensionPopup.style.visibility = 'hidden';
+        positionExtensionPopup();
+        try {
+          await loadExtensionPopup();
+        } catch (e) {
+          state.extensionPopupExtensions = [];
+          renderExtensionList([], { enabled: true, blocked: {} });
+        }
+        positionExtensionPopup();
+        dom.extensionPopup.style.visibility = 'visible';
+        requestAnimationFrame(positionExtensionPopup);
+      } else if (OVERLAY_PANEL === 'bookmarkFolder') {
+        // 书签文件夹弹出菜单：数据由主进程通过 anchor 推送
+        state.downloadPanelOpen = true; // 复用关闭逻辑
+        // 若数据已到达则先渲染，再显示
+        if (state.bookmarkFolderData) {
+          renderBookmarkFolderInOverlay(state.bookmarkFolderData);
+        }
+        dom.bookmarkFolderPopup.style.display = 'block';
+        dom.bookmarkFolderPopup.style.left = '0';
+        dom.bookmarkFolderPopup.style.top = '0';
+        dom.bookmarkFolderPopup.style.maxHeight = '100%';
+        dom.bookmarkFolderPopup.style.width = '100%';
+        dom.bookmarkFolderPopup.style.borderRadius = '12px';
+        dom.bookmarkFolderPopup.style.overflow = 'hidden';
+      }
+    } catch (e) {
+      console.error('[Overlay] 显示面板失败:', e);
+    }
   }
 
   // ==================== 外观 ====================
@@ -319,6 +548,12 @@
     // 失去焦点时恢复显示当前 URL
     dom.addressInput.addEventListener('blur', () => {
       updateAddressBar();
+    });
+
+    // 右键菜单（Edge 风格）
+    dom.addressInput.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showAddressBarContextMenu(e.clientX, e.clientY);
     });
   }
 
@@ -644,6 +879,7 @@
   }
 
   function showFolderDialog(isEditing, folder = null, parentId = 'bookmark_bar') {
+    if (state.contextMenuOpen) closeContextMenu();
     if (state.downloadPanelOpen) closeDownloadPanel();
     if (state.historyPanelOpen) closeHistoryPanel();
     state.editingFolder = folder || null;
@@ -703,6 +939,7 @@
   }
 
   async function showBookmarkDialog(isEditing, bookmark = null, defaultFolderId = null) {
+    if (state.contextMenuOpen) closeContextMenu();
     if (state.downloadPanelOpen) closeDownloadPanel();
     if (state.historyPanelOpen) closeHistoryPanel();
     state.editingBookmark = bookmark || null;
@@ -823,6 +1060,30 @@
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', this.dataset.bookmarkId);
     this.classList.add('bookmark-item--dragging');
+    // 跨窗口拖拽：通知主进程记录被拖拽的书签
+    if (api.setBookmarkDrag) api.setBookmarkDrag(this.dataset.bookmarkId);
+  }
+
+  // 拖拽悬停在书签文件夹中间区域时，防抖自动打开该文件夹的悬浮窗
+  function scheduleFolderPopupOpen(folderEl) {
+    if (state.folderPopupOpenTimer) clearTimeout(state.folderPopupOpenTimer);
+    const folderId = folderEl && folderEl.dataset ? folderEl.dataset.bookmarkId : null;
+    if (!folderId) return;
+    const folder = state.bookmarks.bookmark_bar.children.find(c => c.id === folderId);
+    if (!folder || folder.type !== 'folder') return;
+
+    state.folderPopupOpenTimer = setTimeout(() => {
+      state.folderPopupOpenTimer = null;
+      // 若悬浮窗已打开且是该文件夹，无需重复打开
+      if (state.bookmarkFolderPopupOpenId === folderId) return;
+      state.bookmarkFolderPopupOpenId = folderId;
+      const rect = folderEl.getBoundingClientRect();
+      api.showBookmarkFolderMenu({
+        folder: folder,
+        x: rect.left,
+        y: rect.bottom + 4,
+      });
+    }, 350);
   }
 
   function handleBookmarkDragOver(e) {
@@ -835,6 +1096,7 @@
         'bookmark-item--drop-after',
         'bookmark-item--drop-into'
       );
+      if (state.folderPopupOpenTimer) { clearTimeout(state.folderPopupOpenTimer); state.folderPopupOpenTimer = null; }
       return;
     }
 
@@ -848,9 +1110,13 @@
       state.bookmarkDropMode = 'into';
       this.classList.add('bookmark-item--drop-into');
       this.classList.remove('bookmark-item--drop-before', 'bookmark-item--drop-after');
+      // 自动打开文件夹悬浮窗（防抖）
+      scheduleFolderPopupOpen(this);
       return;
     }
 
+    // 移出中间区域：取消待打开的悬浮窗
+    if (state.folderPopupOpenTimer) { clearTimeout(state.folderPopupOpenTimer); state.folderPopupOpenTimer = null; }
     state.bookmarkDropMode = 'before';
     state.bookmarkDropPosition = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
     this.classList.toggle('bookmark-item--drop-before', state.bookmarkDropPosition === 'before');
@@ -865,6 +1131,7 @@
       'bookmark-item--drop-after',
       'bookmark-item--drop-into'
     );
+    if (state.folderPopupOpenTimer) { clearTimeout(state.folderPopupOpenTimer); state.folderPopupOpenTimer = null; }
   }
 
   async function handleBookmarkDrop(e) {
@@ -872,12 +1139,17 @@
     e.stopPropagation();
 
     const targetId = this.dataset.bookmarkId;
-    const draggedId = state.bookmarkDragId;
+    let draggedId = state.bookmarkDragId;
+    // 拖拽可能来自覆盖层（文件夹弹出菜单），用全局拖拽状态兜底
+    if (!draggedId && api.getBookmarkDrag) {
+      try { draggedId = await api.getBookmarkDrag(); } catch (err) { /* 忽略 */ }
+    }
     const position = state.bookmarkDropPosition;
     const mode = state.bookmarkDropMode;
     clearBookmarkDragVisuals();
     state.bookmarkDragId = null;
     state.bookmarkDropMode = 'before';
+    if (state.folderPopupOpenTimer) { clearTimeout(state.folderPopupOpenTimer); state.folderPopupOpenTimer = null; }
 
     if (!draggedId || draggedId === targetId) return;
 
@@ -890,6 +1162,10 @@
           closeBookmarkFolderPopup();
         }
         await refreshBookmarks();
+        // 若目标文件夹的悬浮窗正打开着，实时刷新其内容
+        if (state.bookmarkFolderPopupOpenId === targetId) {
+          api.refreshBookmarkFolder(targetId);
+        }
       }
     } catch (error) {
       console.error('[Renderer] 书签排序失败:', error);
@@ -900,10 +1176,15 @@
     e.preventDefault();
     e.stopPropagation();
 
-    const draggedId = state.bookmarkDragId;
+    let draggedId = state.bookmarkDragId;
+    // 拖拽可能来自覆盖层（文件夹弹出菜单），用全局拖拽状态兜底
+    if (!draggedId && api.getBookmarkDrag) {
+      try { draggedId = await api.getBookmarkDrag(); } catch (err) { /* 忽略 */ }
+    }
     clearBookmarkDragVisuals();
     state.bookmarkDragId = null;
     state.bookmarkDropMode = 'before';
+    if (state.folderPopupOpenTimer) { clearTimeout(state.folderPopupOpenTimer); state.folderPopupOpenTimer = null; }
 
     if (!draggedId) return;
 
@@ -914,6 +1195,10 @@
           closeBookmarkFolderPopup();
         }
         await refreshBookmarks();
+        // 刷新正打开的文件夹弹出菜单（被拖出的书签从列表中移除）
+        if (state.bookmarkFolderPopupOpenId) {
+          api.refreshBookmarkFolder(state.bookmarkFolderPopupOpenId);
+        }
       }
     } catch (error) {
       console.error('[Renderer] 书签移动到书签栏失败:', error);
@@ -923,6 +1208,8 @@
   function handleBookmarkDragEnd() {
     clearBookmarkDragVisuals();
     state.bookmarkDragId = null;
+    if (state.folderPopupOpenTimer) { clearTimeout(state.folderPopupOpenTimer); state.folderPopupOpenTimer = null; }
+    if (api.clearBookmarkDrag) api.clearBookmarkDrag();
   }
 
   function renderBookmarkBar() {
@@ -987,7 +1274,14 @@
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           e.preventDefault();
+          // 再次点击同一文件夹 → 关闭悬浮窗
+          if (state.bookmarkFolderPopupOpenId === item.id) {
+            state.bookmarkFolderPopupOpenId = null;
+            api.hidePanelOverlay();
+            return;
+          }
           if (state.downloadPanelOpen) closeDownloadPanel();
+          state.bookmarkFolderPopupOpenId = item.id;
           const rect = el.getBoundingClientRect();
           api.showBookmarkFolderMenu({
             folder: item,
@@ -1138,6 +1432,31 @@
       if (state.downloadPanelOpen) closeDownloadPanel();
       if (state.historyPanelOpen) closeHistoryPanel();
       api.createTab('neutron://settings');
+    });
+
+    // 主窗口全局点击：当面板/文件夹悬浮窗打开时，点击工具栏/书签栏/标题栏关闭
+    document.addEventListener('mousedown', (e) => {
+      const anyOpen = state.downloadPanelOpen || state.historyPanelOpen ||
+        state.extensionPopupOpen || !!state.bookmarkFolderPopupOpenId;
+      if (!anyOpen) return;
+      // 排除面板按钮自身（由按钮 click 处理开关）
+      if (dom.btnDownloads.contains(e.target) || dom.btnHistory.contains(e.target) ||
+          dom.btnExtensions.contains(e.target) || dom.btnSettings.contains(e.target)) return;
+      // 排除书签文件夹自身（由文件夹 click 处理开关）
+      if (state.bookmarkFolderPopupOpenId && e.target.closest) {
+        const folderEl = e.target.closest('.bookmark-item--folder');
+        if (folderEl && folderEl.dataset.bookmarkId === state.bookmarkFolderPopupOpenId) return;
+      }
+      // 排除地址栏（用户可能在输入）
+      if (dom.addressInput.contains(e.target)) return;
+      // 关闭所有面板
+      if (state.downloadPanelOpen) closeDownloadPanel();
+      if (state.historyPanelOpen) closeHistoryPanel();
+      if (state.extensionPopupOpen) closeExtensionPopup();
+      if (state.bookmarkFolderPopupOpenId) {
+        state.bookmarkFolderPopupOpenId = null;
+        api.hidePanelOverlay();
+      }
     });
   }
 
@@ -1626,38 +1945,45 @@
     return { svg: FILE_ICON_SVGS[type] || FILE_ICON_SVGS.file, type };
   }
 
+  // 面板定位锚点：主窗口用按钮位置；覆盖层用主进程传入的锚点（转覆盖层视口坐标）
+  function getPanelAnchorRect(btnEl) {
+    if (!IS_OVERLAY) return btnEl.getBoundingClientRect();
+    const a = state.overlayAnchor || {};
+    const offY = state.overlayOffsetY || 0;
+    const left = a.left || 0;
+    const right = a.right || (a.left + (a.width || 380));
+    const top = (a.top || 0) - offY;
+    const bottom = (a.bottom || (a.top || 0)) - offY;
+    return { left, right, top, bottom, width: right - left, height: bottom - top };
+  }
+
   async function openDownloadPanel() {
     if (state.downloadPanelOpen) return;
+
+    if (IS_OVERLAY) {
+      // 覆盖层内：直接在当前覆盖层中显示面板
+      state.downloadPanelOpen = true;
+      dom.downloadPanel.hidden = false;
+      dom.downloadPanel.style.visibility = 'hidden';
+      await loadDownloads();
+      if (!state.downloadPanelOpen) return;
+      positionDownloadPanel();
+      dom.downloadPanel.style.visibility = 'visible';
+      requestAnimationFrame(positionDownloadPanel);
+      return;
+    }
+
+    // 主窗口：面板显示到透明覆盖层（叠加在实时页面上，页面不缩放、不暂停）
+    if (state.contextMenuOpen) closeContextMenu();
     if (state.historyPanelOpen) closeHistoryPanel();
     if (state.extensionPopupOpen) closeExtensionPopup();
     if (dom.bookmarkFolderPopup.style.display === 'block') closeBookmarkFolderPopup();
-
-    const token = ++state.downloadPanelToken;
+    const r = dom.btnDownloads.getBoundingClientRect();
     state.downloadPanelOpen = true;
-    dom.downloadPanel.hidden = false;
-    dom.downloadPanel.style.visibility = 'hidden';
-
-    const snapshotReady = new Promise((resolve) => {
-      state.modalSnapshotResolver = resolve;
-      setTimeout(() => {
-        if (state.modalSnapshotResolver === resolve) {
-          state.modalSnapshotResolver = null;
-          resolve(null);
-        }
-      }, 1000);
+    api.showPanelOverlay({
+      type: 'downloads',
+      anchor: { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height },
     });
-
-    api.setModalVisible(true);
-    await snapshotReady;
-
-    if (token !== state.downloadPanelToken || !state.downloadPanelOpen) return;
-
-    await loadDownloads();
-    if (token !== state.downloadPanelToken || !state.downloadPanelOpen) return;
-
-    positionDownloadPanel();
-    dom.downloadPanel.style.visibility = 'visible';
-    requestAnimationFrame(positionDownloadPanel);
   }
 
   function closeDownloadPanel() {
@@ -1667,11 +1993,16 @@
     dom.downloadPanel.hidden = true;
     dom.downloadPanel.style.visibility = '';
     dom.downloadMoreMenu.hidden = true;
-    api.setModalVisible(false);
+    api.hidePanelOverlay();
   }
 
   function positionDownloadPanel() {
-    const rect = dom.btnDownloads.getBoundingClientRect();
+    if (IS_OVERLAY) {
+      dom.downloadPanel.style.left = '0';
+      dom.downloadPanel.style.top = '0';
+      return;
+    }
+    const rect = getPanelAnchorRect(dom.btnDownloads);
     const width = dom.downloadPanel.offsetWidth || 380;
     const height = dom.downloadPanel.offsetHeight || 420;
     let left = rect.right - width;
@@ -1994,13 +2325,13 @@
     item.className = 'context-menu__item context-menu__item--danger';
     item.textContent = '从历史记录中删除';
     item.addEventListener('click', async () => {
-      dom.contextMenu.style.display = 'none';
+      closeContextMenu();
       await api.deleteHistoryItem(id);
       await loadHistoryPanel();
     });
 
     dom.contextMenu.appendChild(item);
-    dom.contextMenu.style.display = 'block';
+    openContextMenu();
     dom.contextMenu.style.left = Math.min(x, window.innerWidth - 220) + 'px';
     dom.contextMenu.style.top = Math.min(y, window.innerHeight - 200) + 'px';
   }
@@ -2012,7 +2343,7 @@
       el.className = 'context-menu__item ' + cls;
       el.textContent = label;
       el.addEventListener('click', () => {
-        dom.contextMenu.style.display = 'none';
+        closeContextMenu();
         action();
       });
       dom.contextMenu.appendChild(el);
@@ -2054,43 +2385,38 @@
       await loadDownloads();
     }, 'context-menu__item--danger');
 
-    dom.contextMenu.style.display = 'block';
+    openContextMenu();
     dom.contextMenu.style.left = Math.min(x, window.innerWidth - 220) + 'px';
     dom.contextMenu.style.top = Math.min(y, window.innerHeight - 240) + 'px';
   }
 
   async function openHistoryPanel() {
     if (state.historyPanelOpen) return;
+
+    if (IS_OVERLAY) {
+      // 覆盖层内：直接在当前覆盖层中显示面板
+      state.historyPanelOpen = true;
+      dom.historyPanel.hidden = false;
+      dom.historyPanel.style.visibility = 'hidden';
+      await loadHistoryPanel();
+      if (!state.historyPanelOpen) return;
+      positionHistoryPanel();
+      dom.historyPanel.style.visibility = 'visible';
+      requestAnimationFrame(positionHistoryPanel);
+      return;
+    }
+
+    // 主窗口：面板显示到透明覆盖层（叠加在实时页面上，页面不缩放、不暂停）
+    if (state.contextMenuOpen) closeContextMenu();
     if (state.downloadPanelOpen) closeDownloadPanel();
     if (state.extensionPopupOpen) closeExtensionPopup();
     if (dom.bookmarkFolderPopup.style.display === 'block') closeBookmarkFolderPopup();
-
-    const token = ++state.historyPanelToken;
+    const r = dom.btnHistory.getBoundingClientRect();
     state.historyPanelOpen = true;
-    dom.historyPanel.hidden = false;
-    dom.historyPanel.style.visibility = 'hidden';
-
-    const snapshotReady = new Promise((resolve) => {
-      state.modalSnapshotResolver = resolve;
-      setTimeout(() => {
-        if (state.modalSnapshotResolver === resolve) {
-          state.modalSnapshotResolver = null;
-          resolve(null);
-        }
-      }, 1000);
+    api.showPanelOverlay({
+      type: 'history',
+      anchor: { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height },
     });
-
-    api.setModalVisible(true);
-    await snapshotReady;
-
-    if (token !== state.historyPanelToken || !state.historyPanelOpen) return;
-
-    await loadHistoryPanel();
-    if (token !== state.historyPanelToken || !state.historyPanelOpen) return;
-
-    positionHistoryPanel();
-    dom.historyPanel.style.visibility = 'visible';
-    requestAnimationFrame(positionHistoryPanel);
   }
 
   function closeHistoryPanel() {
@@ -2100,11 +2426,16 @@
     dom.historyPanel.hidden = true;
     dom.historyPanel.style.visibility = '';
     dom.historyMoreMenu.hidden = true;
-    api.setModalVisible(false);
+    api.hidePanelOverlay();
   }
 
   function positionHistoryPanel() {
-    const rect = dom.btnHistory.getBoundingClientRect();
+    if (IS_OVERLAY) {
+      dom.historyPanel.style.left = '0';
+      dom.historyPanel.style.top = '0';
+      return;
+    }
+    const rect = getPanelAnchorRect(dom.btnHistory);
     const width = dom.historyPanel.offsetWidth || 420;
     const height = dom.historyPanel.offsetHeight || 460;
     let left = rect.right - width;
@@ -2156,41 +2487,36 @@
   }
 
   async function openExtensionPopup() {
-    if (state.downloadPanelOpen) closeDownloadPanel();
-    if (state.historyPanelOpen) closeHistoryPanel();
-    const token = ++state.extensionPopupToken;
-    state.extensionPopupOpen = true;
-
-    const snapshotReady = new Promise((resolve) => {
-      state.modalSnapshotResolver = resolve;
-      setTimeout(() => {
-        if (state.modalSnapshotResolver === resolve) {
-          state.modalSnapshotResolver = null;
-          resolve(null);
-        }
-      }, 1000);
-    });
-
-    api.setModalVisible(true);
-    await snapshotReady;
-
-    if (token !== state.extensionPopupToken || !state.extensionPopupOpen) return;
-
-    dom.extensionPopup.hidden = false;
-    dom.extensionPopup.style.visibility = 'hidden';
-    positionExtensionPopup();
-
-    try {
-      await loadExtensionPopup();
-    } catch (error) {
-      console.error('[Renderer] 扩展弹窗加载失败:', error);
-      state.extensionPopupExtensions = [];
-      renderExtensionList([], { enabled: true, blocked: {} });
+    if (IS_OVERLAY) {
+      // 覆盖层内：直接在当前覆盖层中显示面板
+      state.extensionPopupOpen = true;
+      dom.extensionPopup.hidden = false;
+      dom.extensionPopup.style.visibility = 'hidden';
+      positionExtensionPopup();
+      try {
+        await loadExtensionPopup();
+      } catch (error) {
+        console.error('[Renderer] 扩展弹窗加载失败:', error);
+        state.extensionPopupExtensions = [];
+        renderExtensionList([], { enabled: true, blocked: {} });
+      }
+      if (!state.extensionPopupOpen) return;
+      positionExtensionPopup();
+      dom.extensionPopup.style.visibility = 'visible';
+      requestAnimationFrame(positionExtensionPopup);
+      return;
     }
 
-    positionExtensionPopup();
-    dom.extensionPopup.style.visibility = 'visible';
-    requestAnimationFrame(positionExtensionPopup);
+    // 主窗口：面板显示到透明覆盖层（叠加在实时页面上，页面不缩放、不暂停）
+    if (state.contextMenuOpen) closeContextMenu();
+    if (state.downloadPanelOpen) closeDownloadPanel();
+    if (state.historyPanelOpen) closeHistoryPanel();
+    const r = dom.btnExtensions.getBoundingClientRect();
+    state.extensionPopupOpen = true;
+    api.showPanelOverlay({
+      type: 'extensions',
+      anchor: { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height },
+    });
   }
 
   function closeExtensionPopup() {
@@ -2201,11 +2527,16 @@
     document.querySelectorAll('.extension-more-menu').forEach((menu) => {
       menu.hidden = true;
     });
-    api.setModalVisible(false);
+    api.hidePanelOverlay();
   }
 
   function positionExtensionPopup() {
-    const rect = dom.btnExtensions.getBoundingClientRect();
+    if (IS_OVERLAY) {
+      dom.extensionPopup.style.left = '0';
+      dom.extensionPopup.style.top = '0';
+      return;
+    }
+    const rect = getPanelAnchorRect(dom.btnExtensions);
     const width = dom.extensionPopup.offsetWidth || 380;
     const height = dom.extensionPopup.offsetHeight || 420;
     let left = rect.right;
@@ -2395,10 +2726,49 @@
     });
   }
 
-  // ==================== 右键菜单 ====================
+  // ==================== 右键菜单（统一置顶管理） ====================
+  // BrowserView 是原生视图，永远盖在主窗口 webContents 之上，
+  // 因此打开任何悬浮菜单前必须 setModalVisible(true) 移除 BrowserView（显示内容快照），
+  // 否则菜单落入内容区时会被网页遮挡；关闭时再恢复。
+  function isAnyOverlayOpen() {
+    return state.downloadPanelOpen || state.historyPanelOpen || state.extensionPopupOpen ||
+      dom.bookmarkDialog.style.display === 'flex' || dom.folderDialog.style.display === 'flex' ||
+      dom.bookmarkFolderPopup.style.display === 'block';
+  }
+
+  function openContextMenu() {
+    // 覆盖层内：右键菜单已在最上层，直接显示（不关闭面板、不调用 setModalVisible）
+    if (IS_OVERLAY) {
+      state.contextMenuOpen = true;
+      dom.contextMenu.style.display = 'block';
+      return;
+    }
+    // 与其他悬浮窗互斥：打开右键菜单前先关闭其他悬浮窗
+    if (state.downloadPanelOpen) closeDownloadPanel();
+    if (state.historyPanelOpen) closeHistoryPanel();
+    if (state.extensionPopupOpen) closeExtensionPopup();
+    if (dom.bookmarkFolderPopup.style.display === 'block') closeBookmarkFolderPopup();
+    if (dom.bookmarkDialog.style.display === 'flex') closeBookmarkDialog();
+    if (dom.folderDialog.style.display === 'flex') closeFolderDialog();
+    state.contextMenuOpen = true;
+    dom.contextMenu.style.display = 'block';
+    api.setModalVisible(true);
+  }
+
+  function closeContextMenu() {
+    if (!state.contextMenuOpen) return;
+    state.contextMenuOpen = false;
+    dom.contextMenu.style.display = 'none';
+    dom.contextMenu.classList.remove('context-menu--addressbar');
+    // 覆盖层内不调用 setModalVisible（覆盖层本身就是最上层）
+    if (!IS_OVERLAY && !isAnyOverlayOpen()) {
+      api.setModalVisible(false);
+    }
+  }
+
   function bindContextMenu() {
     document.addEventListener('click', (e) => {
-      dom.contextMenu.style.display = 'none';
+      closeContextMenu();
 
       // Don't close folder popup if clicking inside it or on the folder button that opened it
       if (dom.bookmarkFolderPopup.style.display === 'block') {
@@ -2412,6 +2782,130 @@
         }
       }
     });
+
+    // Esc 关闭右键菜单
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && state.contextMenuOpen) {
+        closeContextMenu();
+      }
+    });
+  }
+
+  // ==================== 地址栏右键菜单（Edge 风格） ====================
+  function showAddressBarContextMenu(x, y) {
+    const input = dom.addressInput;
+    const hasSelection = input.selectionStart !== input.selectionEnd;
+    const hasText = input.value.length > 0;
+
+    dom.contextMenu.innerHTML = '';
+    dom.contextMenu.classList.add('context-menu--addressbar');
+
+    const makeItem = (config) => {
+      const el = document.createElement('div');
+      const disabled = config.enabled === false;
+      el.className = 'context-menu__item' + (disabled ? ' context-menu__item--disabled' : '');
+      el.innerHTML =
+        `<span class="context-menu__item-icon">${config.icon || ''}</span>` +
+        `<span class="context-menu__item-label">${config.label}</span>` +
+        (config.shortcut ? `<span class="context-menu__shortcut">${config.shortcut}</span>` : '');
+      if (!disabled && config.action) {
+        el.addEventListener('click', () => {
+          closeContextMenu();
+          config.action();
+        });
+      }
+      return el;
+    };
+
+    const appendSeparator = () => {
+      const sep = document.createElement('div');
+      sep.className = 'context-menu__separator';
+      dom.contextMenu.appendChild(sep);
+    };
+
+    // 表情符号
+    dom.contextMenu.appendChild(makeItem({
+      icon: '😀',
+      label: '表情符号',
+      shortcut: 'Win+句点',
+      action: () => api.openEmojiPanel(),
+    }));
+    // 发送标签页到你的设备（暂无设备同步，给出提示）
+    dom.contextMenu.appendChild(makeItem({
+      icon: '📤',
+      label: '发送标签页到你的设备',
+      action: () => showToast('设备同步功能暂未支持，敬请期待'),
+    }));
+    appendSeparator();
+
+    // 编辑命令
+    const editCommands = [
+      { label: '撤消', shortcut: 'Ctrl+Z', command: 'undo', enabled: true },
+      { label: '恢复', shortcut: 'Ctrl+Y', command: 'redo', enabled: true },
+      { label: '剪切', shortcut: 'Ctrl+X', command: 'cut', enabled: hasSelection },
+      { label: '复制', shortcut: 'Ctrl+C', command: 'copy', enabled: hasSelection },
+      { label: '粘贴', shortcut: 'Ctrl+V', command: 'paste', enabled: true },
+    ];
+    editCommands.forEach((cmd) => {
+      dom.contextMenu.appendChild(makeItem({
+        label: cmd.label,
+        shortcut: cmd.shortcut,
+        enabled: cmd.enabled,
+        action: () => runAddressBarEdit(cmd.command),
+      }));
+    });
+
+    // 粘贴并转到（异步读取剪贴板后填充预览）
+    const pasteGoItem = makeItem({
+      label: '粘贴并转到',
+      shortcut: 'Ctrl+Shift+L',
+      enabled: false,
+      action: null,
+    });
+    dom.contextMenu.appendChild(pasteGoItem);
+    api.readClipboardText().then((text) => {
+      const clip = String(text || '').trim();
+      if (!clip || !document.body.contains(pasteGoItem)) return;
+      pasteGoItem.classList.remove('context-menu__item--disabled');
+      const labelEl = pasteGoItem.querySelector('.context-menu__item-label');
+      if (labelEl) {
+        const preview = clip.length > 42 ? clip.slice(0, 42) + '…' : clip;
+        labelEl.textContent = '粘贴并转到 ' + preview;
+      }
+      pasteGoItem.addEventListener('click', () => {
+        closeContextMenu();
+        navigateToUrl(clip);
+      });
+    }).catch(() => {});
+
+    // 删除
+    dom.contextMenu.appendChild(makeItem({
+      label: '删除',
+      enabled: hasSelection || hasText,
+      action: () => runAddressBarEdit('delete'),
+    }));
+    appendSeparator();
+
+    // 全选
+    dom.contextMenu.appendChild(makeItem({
+      label: '全选',
+      shortcut: 'Ctrl+A',
+      enabled: hasText,
+      action: () => {
+        input.focus();
+        input.select();
+      },
+    }));
+
+    openContextMenu();
+    dom.contextMenu.style.left = Math.max(0, Math.min(x, window.innerWidth - 300)) + 'px';
+    dom.contextMenu.style.top = Math.max(0, Math.min(y, window.innerHeight - 460)) + 'px';
+  }
+
+  function runAddressBarEdit(command) {
+    // 点击菜单项后焦点会离开输入框，先重新聚焦再执行编辑命令
+    dom.addressInput.focus();
+    api.addressBarEdit(command);
   }
 
   function showTabContextMenu(x, y, tab) {
@@ -2440,13 +2934,13 @@
       el.className = 'context-menu__item ' + (item.cls || '');
       el.innerHTML = `<span>${item.icon}</span> ${item.label}`;
       el.addEventListener('click', () => {
-        dom.contextMenu.style.display = 'none';
+        closeContextMenu();
         if (item.action) item.action();
       });
       dom.contextMenu.appendChild(el);
     });
 
-    dom.contextMenu.style.display = 'block';
+    openContextMenu();
     dom.contextMenu.style.left = Math.min(x, window.innerWidth - 220) + 'px';
     dom.contextMenu.style.top = Math.min(y, window.innerHeight - 300) + 'px';
   }
@@ -2458,9 +2952,9 @@
 
   // ==================== 书签文件夹弹出菜单 ====================
   function closeBookmarkFolderPopup() {
-    api.setModalVisible(false);
     dom.bookmarkFolderPopup.style.display = 'none';
     state.folderPopupData = null;
+    state.bookmarkFolderPopupOpenId = null;
     clearTimeout(state.subFolderPopupTimeout);
     removeSubFolderPopup();
   }
@@ -2479,7 +2973,9 @@
 
   function showBookmarkFolderPopup(data) {
     const { x, y, items } = data;
-    api.setModalVisible(true);
+    if (state.contextMenuOpen) closeContextMenu();
+    // 书签文件夹弹出菜单已改用面板叠加层（showPanelOverlay），
+    // 不再调用 setModalVisible，避免视频冻结。
     const popup = dom.bookmarkFolderPopup;
     popup.innerHTML = '';
     popup.classList.toggle('bookmark-folder-popup--empty', items.length === 0);
@@ -2847,7 +3343,6 @@
       state.tabs = data.tabs || [];
       state.activeTabId = data.activeTabId;
       renderTabs();
-      if (state.historyPanelOpen) closeHistoryPanel();
 
       // 更新内容区域占位符
       if (state.tabs.length === 0) {
@@ -2959,7 +3454,7 @@
       }
       updateDownloadButton();
 
-      if (isNew && data.state === 'in_progress' && !state.downloadPanelOpen) {
+      if (!IS_OVERLAY && isNew && data.state === 'in_progress' && !state.downloadPanelOpen) {
         openDownloadPanel();
       }
     });
@@ -2968,6 +3463,14 @@
     // 书签文件夹弹出菜单
     const unsubFolderMenu = api.onBookmarkFolderMenuOpen(handleBookmarkFolderMenuOpen);
     state.unsubscribers.push(unsubFolderMenu);
+
+    // 书签已变更（叠加层移动书签后）→ 刷新书签栏
+    if (api.onBookmarksRefresh) {
+      const unsubBookmarksRefresh = api.onBookmarksRefresh(() => {
+        refreshBookmarks();
+      });
+      state.unsubscribers.push(unsubBookmarksRefresh);
+    }
   }
 
   // ==================== 菜单事件处理 ====================

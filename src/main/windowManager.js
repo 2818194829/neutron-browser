@@ -92,6 +92,17 @@ class WindowManager {
     /** @type {Map<string, DownloadItem>} 活动下载项（用于暂停/继续/取消） */
     this.downloadItems = new Map();
 
+    /** @type {BrowserView|null} 悬浮面板透明覆盖层视图（叠加在实时页面之上） */
+    this.panelOverlayView = null;
+    /** @type {string|null} 当前覆盖层显示的面板类型 */
+    this.panelOverlayType = null;
+    /** @type {Object|null} 当前覆盖层面板的锚点（按钮位置，窗口坐标） */
+    this.panelOverlayAnchor = null;
+    /** @type {Object|null} 书签文件夹弹出菜单数据 */
+    this._bookmarkFolderData = null;
+    /** @type {string|null} 跨窗口拖拽中的书签 ID */
+    this._draggedBookmarkId = null;
+
     // 绑定方法
     this.handleNewWindow = this.handleNewWindow.bind(this);
 
@@ -108,7 +119,8 @@ class WindowManager {
     const sharedSession = session.defaultSession;
 
     sharedSession.setPermissionRequestHandler((webContents, permission, callback) => {
-      const allowedPermissions = ['clipboard-read', 'clipboard-sanitized-write'];
+      // fullscreen 必须放行，否则网页 HTML5 全屏（requestFullscreen）会被拒绝，视频无法全屏
+      const allowedPermissions = ['clipboard-read', 'clipboard-sanitized-write', 'fullscreen'];
       callback(allowedPermissions.includes(permission));
     });
 
@@ -122,6 +134,9 @@ class WindowManager {
    * 创建主窗口
    */
   createMainWindow() {
+    // 防止重复创建
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) return;
+
     // 加载窗口状态
     const settings = getStore('settings');
     const windowState = settings ? settings.get('windowState') : null;
@@ -276,8 +291,9 @@ class WindowManager {
       view.webContents.setUserAgent(EDGE_USER_AGENT);
     }
 
-    // 添加视图到窗口
+    // 添加视图到窗口（保持附加；初始先缩小隐藏，由 switchTab/layoutViews 定位）
     this.mainWindow.addBrowserView(view);
+    this.hideViewInvisible(view);
 
     // 加载 URL
     view.webContents.loadURL(resolvedUrl);
@@ -322,6 +338,9 @@ class WindowManager {
    * 根据启动设置打开初始页面
    */
   openStartupPages() {
+    // 防止重复调用（已有标签页时跳过）
+    if (this.tabs.length > 0) return;
+
     const settings = getStore('settings');
     const startupBehavior = settings ? settings.get('startupBehavior', 'home') : 'home';
     const homePage = settings ? settings.get('homePage', 'https://www.google.com') : 'https://www.google.com';
@@ -367,15 +386,16 @@ class WindowManager {
       this.mainWindow.setFullScreen(false);
     }
 
-    // 隐藏之前活动的标签页（从窗口中移除）
+    // 隐藏之前活动的标签页（缩小为 1x1 而非移除视图，保持其画面持续渲染，
+    // 否则后台标签的视频会"声音正常、画面冻结"）
     if (this.activeTabId) {
       const prevTab = this.tabs.find(t => t.id === this.activeTabId);
       if (prevTab && prevTab.view) {
-        this.mainWindow.removeBrowserView(prevTab.view);
+        this.hideViewInvisible(prevTab.view);
       }
     }
 
-    // 显示目标标签页（添加到窗口）
+    // 显示目标标签页（确保附加到窗口，addBrowserView 幂等）
     this.activeTabId = tabId;
     this.mainWindow.addBrowserView(targetTab.view);
     this.layoutViews();
@@ -481,6 +501,22 @@ class WindowManager {
   }
 
   /**
+   * 将 BrowserView 缩小为 1x1 并留在窗口左上角（保持附加在窗口内）。
+   * 为什么不能 removeBrowserView：视图被移出窗口后，display compositor 会
+   * 停止提交该视图的画面帧 → 网页/视频画面冻结，但媒体仍在解码（声音正常）。
+   * 为什么不能移出屏幕（负坐标）：会触发遮挡检测，页面变 hidden → 视频暂停。
+   * 保持附加且留在窗口内、仅缩小到 1x1：页面保持 visible、合成器持续渲染，
+   * 视频画面与声音都不会中断（仅占用左上角 1 个像素，肉眼不可见）。
+   * @param {Electron.BrowserView} view
+   */
+  hideViewInvisible(view) {
+    if (!view) return;
+    try {
+      view.setBounds({ x: 0, y: 0, width: 1, height: 1 });
+    } catch (e) { /* 忽略 */ }
+  }
+
+  /**
    * 重排视图布局
    */
   layoutViews() {
@@ -500,6 +536,10 @@ class WindowManager {
       return;
     }
 
+    // 模态框（下载/历史/扩展面板）打开期间，被挂起的标签页保持 1x1 缩小隐藏，
+    // 防止这里把它放回屏幕而盖住面板
+    if (this.suspendedTabId) return;
+
     // 浏览器 UI 高度（与 app.css 中的 CSS 变量保持一致）
     const titleBarHeight = 38;
     const toolbarHeight = 46;
@@ -518,11 +558,15 @@ class WindowManager {
         height: contentBounds.height - topOffset - statusBarHeight,
       });
     }
+
+    // 悬浮面板覆盖层跟随内容区布局
+    this.layoutPanelOverlay();
   }
 
   /**
    * 切换 HTML 模态框与 BrowserView 的可见关系
-   * BrowserView 始终盖在主窗口 webContents 之上，因此显示模态框时需要暂时移除当前标签页视图
+   * BrowserView 始终盖在主窗口 webContents 之上，因此显示模态框时需要把当前标签页
+   * 缩小为 1x1（保持附加且留在窗口内，避免视频画面冻结）
    * @param {boolean} visible
    */
   async setModalVisible(visible) {
@@ -564,7 +608,10 @@ class WindowManager {
           if (operationId !== this.modalOperationId || this.suspendedTabId !== this.activeTabId) {
             return;
           }
-          this.mainWindow.removeBrowserView(tab.view);
+          // 缩小为 1x1 而非 removeBrowserView：保持附加且留在窗口内，
+          // 让视频画面持续渲染（不会出现"声音正常、画面冻结"），
+          // 关闭面板后无缝恢复，视频不被打断、不改变显示形态
+          this.hideViewInvisible(tab.view);
         }
       }
       return;
@@ -576,12 +623,12 @@ class WindowManager {
     }
 
     const target = this.tabs.find(t => t.id === this.suspendedTabId);
+    this.suspendedTabId = null; // 先清除，layoutViews 才能把标签页放回屏幕
     if (target && target.view) {
-      this.mainWindow.addBrowserView(target.view);
+      this.mainWindow.addBrowserView(target.view); // 幂等
       this.layoutViews();
     }
     this.sendToRenderer(IPC_CHANNELS.UI_MODAL_SNAPSHOT, { dataUrl: '' });
-    this.suspendedTabId = null;
   }
 
   resolveModalSnapshot() {
@@ -589,6 +636,230 @@ class WindowManager {
     const resolve = this.modalSnapshotResolve;
     this.modalSnapshotResolve = null;
     resolve();
+  }
+
+  // ==================== 悬浮面板覆盖层 ====================
+
+  /**
+   * 创建/获取悬浮面板覆盖层视图（小型透明，仅占面板大小）。
+   * 透明背景让 CSS border-radius 圆角正确显示，面板内容不透明
+   * 由 CSS 背景色提供。尺寸小，不会触发全屏遮挡导致的视频冻结。
+   * @returns {Electron.BrowserView}
+   */
+  ensurePanelOverlayView() {
+    if (this.panelOverlayView) return this.panelOverlayView;
+    const overlay = new BrowserView({
+      webPreferences: {
+        preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        transparent: true,
+        backgroundThrottling: false,
+      },
+    });
+    try {
+      overlay.setBackgroundColor('#00000000');
+    } catch (e) { /* 忽略 */ }
+    this.panelOverlayView = overlay;
+    overlay.webContents.on('did-finish-load', () => {
+      this.sendPanelOverlayAnchor();
+    });
+    return overlay;
+  }
+
+  /**
+   * 根据面板类型估算面板尺寸
+   */
+  _getPanelSize(type) {
+    switch (type) {
+      case 'downloads': return { width: 380, height: 440 };
+      case 'history': return { width: 420, height: 480 };
+      case 'extensions': return { width: 380, height: 420 };
+      case 'bookmarkFolder': return { width: 280, height: 360 };
+      default: return { width: 380, height: 420 };
+    }
+  }
+
+  /**
+   * 向活动标签页注入"点击关闭面板"监听器。
+   * 用户点击网页任意位置 → IPC 通知主进程关闭悬浮面板。
+   */
+  _injectPanelClickCloser() {
+    const activeTab = this.tabs.find(t => t.id === this.activeTabId);
+    if (!activeTab || !activeTab.view || activeTab.view.webContents.isDestroyed()) return;
+    activeTab.view.webContents.executeJavaScript(`
+      if (!window.__neutronPanelCloser) {
+        window.__neutronPanelCloser = function() {
+          document.removeEventListener('click', window.__neutronPanelCloser, true);
+          delete window.__neutronPanelCloser;
+          if (window.NeutronBrowser && window.NeutronBrowser.notifyPanelClickOutside) {
+            window.NeutronBrowser.notifyPanelClickOutside();
+          }
+        };
+        document.addEventListener('click', window.__neutronPanelCloser, true);
+      }
+    `).catch(() => {});
+  }
+
+  /**
+   * 从活动标签页清除"点击关闭面板"监听器。
+   */
+  _removePanelClickCloser() {
+    const activeTab = this.tabs.find(t => t.id === this.activeTabId);
+    if (!activeTab || !activeTab.view || activeTab.view.webContents.isDestroyed()) return;
+    activeTab.view.webContents.executeJavaScript(`
+      if (window.__neutronPanelCloser) {
+        document.removeEventListener('click', window.__neutronPanelCloser, true);
+        delete window.__neutronPanelCloser;
+      }
+    `).catch(() => {});
+  }
+
+  /**
+   * 显示悬浮面板覆盖层：小型不透明面板浮在页面之上。
+   * @param {Object} payload - { type: 'downloads'|'history'|'extensions', anchor }
+   */
+  async showPanelOverlay(payload) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const type = payload && payload.type;
+    if (!type) return;
+    const overlay = this.ensurePanelOverlayView();
+    this.panelOverlayType = type;
+    this.panelOverlayAnchor = (payload && payload.anchor) || null;
+
+    this.mainWindow.addBrowserView(overlay);
+    this.mainWindow.setTopBrowserView(overlay);
+    this.layoutPanelOverlay();
+
+    const targetUrl = 'file:///' + path.join(__dirname, '..', 'renderer', 'app.html').replace(/\\/g, '/')
+      + `?overlay=1&panel=${encodeURIComponent(type)}`;
+    if (overlay.webContents.getURL() !== targetUrl) {
+      await overlay.webContents.loadURL(targetUrl).catch(() => {});
+    }
+    this.sendPanelOverlayAnchor();
+
+    // 向活动页面注入"点击任意位置关闭面板"监听器
+    this._injectPanelClickCloser();
+  }
+
+  /**
+   * 隐藏悬浮面板覆盖层
+   */
+  hidePanelOverlay() {
+    if (!this.panelOverlayView) return;
+    // 清除页面注入的点击监听器
+    this._removePanelClickCloser();
+    try {
+      this.mainWindow.removeBrowserView(this.panelOverlayView);
+    } catch (e) { /* 忽略 */ }
+    this.panelOverlayType = null;
+    this.panelOverlayAnchor = null;
+    this._bookmarkFolderData = null;
+    this.sendToRenderer(IPC_CHANNELS.PANEL_OVERLAY_CLOSED, {});
+  }
+
+  /**
+   * 覆盖层布局：仅占面板大小，定位在触发按钮附近。
+   */
+  layoutPanelOverlay() {
+    if (!this.mainWindow || !this.panelOverlayView) return;
+    const contentBounds = this.mainWindow.getContentBounds();
+    const size = this._getPanelSize(this.panelOverlayType || 'downloads');
+    const anchor = this.panelOverlayAnchor || { left: 100, top: 0, right: 140, bottom: 36, width: 40, height: 36 };
+    const titleBarH = 38;
+    const toolbarH = 46;
+
+    let left, top;
+
+    if (this.panelOverlayType === 'bookmarkFolder') {
+      // 书签文件夹弹出菜单：直接定位到点击坐标
+      left = anchor.left;
+      top = anchor.top;
+    } else {
+      // 下载/历史/扩展面板：右对齐按钮，向下偏移
+      left = anchor.right - size.width;
+      top = titleBarH + toolbarH + (anchor.bottom - anchor.top) + 8;
+    }
+
+    if (left < 8) left = 8;
+    if (left + size.width > contentBounds.width - 8) {
+      left = Math.max(8, contentBounds.width - size.width - 8);
+    }
+    if (top + size.height > contentBounds.height - 32) {
+      top = Math.max(titleBarH + toolbarH + 4, anchor.top - size.height - 8);
+    }
+
+    // setBounds 要求整数坐标，浮点数会导致 conversion failure
+    this.panelOverlayView.setBounds({
+      x: Math.round(left),
+      y: Math.round(top),
+      width: Math.round(size.width),
+      height: Math.round(size.height),
+    });
+  }
+
+  /**
+   * 发送锚点（按钮位置）到覆盖层，供面板定位。
+   * 覆盖层视口坐标 = 窗口坐标 - contentOffsetY。
+   */
+  sendPanelOverlayAnchor() {
+    if (!this.panelOverlayView || this.panelOverlayView.webContents.isDestroyed()) return;
+    this.panelOverlayView.webContents.send(IPC_CHANNELS.PANEL_OVERLAY_ANCHOR, {
+      anchor: this.panelOverlayAnchor,
+      contentOffsetY: 84,
+      bookmarkFolderData: this._bookmarkFolderData || null,
+    });
+    // 数据不在此清除，由 hidePanelOverlay 统一清理（避免推送时序丢失）
+  }
+
+  /**
+   * 刷新书签文件夹弹出菜单（书签被移入/移出后实时更新）。
+   * 重新从存储读取文件夹内容并推送到覆盖层重新渲染。
+   * @param {string} folderId
+   */
+  refreshBookmarkFolderPopup(folderId) {
+    if (!folderId) return;
+    const store = getStore('bookmarks');
+    const data = store.getAll();
+
+    const findFolder = (folder) => {
+      if (!folder) return null;
+      if (folder.id === folderId) return folder;
+      for (const child of (folder.children || [])) {
+        if (child.type === 'folder') {
+          const found = findFolder(child);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    let folder = null;
+    for (const key of Object.keys(data)) {
+      if (data[key].type !== 'folder') continue;
+      folder = folder || findFolder(data[key]);
+    }
+    if (!folder || !this.panelOverlayView || this.panelOverlayView.webContents.isDestroyed()) return;
+
+    const buildItems = (parent) => (parent.children || []).map(child => ({
+      id: child.id,
+      title: child.title || (child.type === 'folder' ? '未命名文件夹' : '未命名书签'),
+      url: child.url || '',
+      favicon: child.favicon || '',
+      type: child.type,
+      children: child.type === 'folder' ? buildItems(child) : [],
+    }));
+
+    this._bookmarkFolderData = {
+      folderId: folder.id,
+      folderTitle: folder.title || '未命名文件夹',
+      x: (this._bookmarkFolderData && this._bookmarkFolderData.x) || 0,
+      y: (this._bookmarkFolderData && this._bookmarkFolderData.y) || 0,
+      items: buildItems(folder),
+    };
+    // 推送到覆盖层重新渲染
+    this.sendPanelOverlayAnchor();
   }
 
   /**
@@ -721,6 +992,9 @@ class WindowManager {
 
     // 加载开始
     wc.on('did-start-loading', () => {
+      // 新页面开始加载：重置媒体计数与后台节流（上一页面的媒体已被销毁）
+      mediaCount = 0;
+      setThrottling(true);
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
         tab.isLoading = true;
@@ -762,8 +1036,21 @@ class WindowManager {
       }
     });
 
-    // 音频状态变化
+    // 音频状态变化 + 后台节流控制
+    // 媒体播放期间关闭后台节流（setBackgroundThrottling(false)）：窗口最小化/
+    // 被遮挡等窗口级隐藏时，页面仍报告可见、不节流 rAF/定时器、媒体不被挂起，
+    // 站点也不会因 visibilitychange 主动调 video.pause()。
+    // （标签页被缩小隐藏时页面仍保持可见，主要由 hideViewInvisible 保证渲染。）
+    let mediaCount = 0;
+    const setThrottling = (allowed) => {
+      try {
+        if (!wc.isDestroyed()) wc.setBackgroundThrottling(allowed);
+      } catch (e) { /* 忽略：某些情况下 webContents 已不可用 */ }
+    };
+
     wc.on('media-started-playing', () => {
+      mediaCount += 1;
+      setThrottling(false); // 有媒体在播：禁止后台节流，防止视频被挂起/暂停
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
         tab.isAudible = true;
@@ -772,10 +1059,12 @@ class WindowManager {
     });
 
     wc.on('media-paused', () => {
+      mediaCount = Math.max(0, mediaCount - 1);
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
         // 可能存在多个媒体，简单检查
-        if (!wc.isCurrentlyAudible()) {
+        if (!wc.isCurrentlyAudible() && mediaCount === 0) {
+          setThrottling(true); // 无任何媒体播放：恢复正常后台节流
           tab.isAudible = false;
           this.syncTabsToRenderer();
         }
@@ -981,6 +1270,18 @@ class WindowManager {
   }
 
   /**
+   * 广播到主窗口与悬浮面板覆盖层（面板需要实时更新，如下载进度）
+   */
+  broadcast(channel, data) {
+    this.sendToRenderer(channel, data);
+    if (this.panelOverlayView && !this.panelOverlayView.webContents.isDestroyed()) {
+      try {
+        this.panelOverlayView.webContents.send(channel, data);
+      } catch (e) { /* 忽略 */ }
+    }
+  }
+
+  /**
    * 将 file:// URL 转为本地文件路径（Windows 兼容）
    * @param {string} url
    * @returns {string}
@@ -1093,8 +1394,8 @@ class WindowManager {
     // 保存 DownloadItem 引用（用于暂停/继续/取消）
     this.downloadItems.set(downloadItem.id, item);
 
-    // 通知渲染进程
-    this.sendToRenderer(IPC_CHANNELS.DOWNLOADS_UPDATED, downloadItem);
+    // 通知渲染进程（主窗口 + 悬浮面板覆盖层）
+    this.broadcast(IPC_CHANNELS.DOWNLOADS_UPDATED, downloadItem);
 
     // 监听下载进度（updated 事件周期性触发；速度用字节差值计算，Electron 无 getCurrentSpeed）
     let speedLastBytes = 0;
@@ -1144,7 +1445,7 @@ class WindowManager {
         downloadsStore.set('items', allDownloads);
       }
 
-      this.sendToRenderer(IPC_CHANNELS.DOWNLOADS_UPDATED, downloadItem);
+      this.broadcast(IPC_CHANNELS.DOWNLOADS_UPDATED, downloadItem);
     });
 
     item.once('done', (event, state) => {
@@ -1175,7 +1476,7 @@ class WindowManager {
         allDownloads[idx] = downloadItem;
         downloadsStore.set('items', allDownloads);
       }
-      this.sendToRenderer(IPC_CHANNELS.DOWNLOADS_UPDATED, downloadItem);
+      this.broadcast(IPC_CHANNELS.DOWNLOADS_UPDATED, downloadItem);
       this.downloadItems.delete(downloadItem.id);
     });
   }
@@ -1194,7 +1495,7 @@ class WindowManager {
     if (d && d.state === 'in_progress') {
       d.state = 'paused';
       store.set('items', items);
-      this.sendToRenderer(IPC_CHANNELS.DOWNLOADS_UPDATED, d);
+      this.broadcast(IPC_CHANNELS.DOWNLOADS_UPDATED, d);
     }
   }
 
@@ -1212,7 +1513,7 @@ class WindowManager {
       d.state = 'in_progress';
       d.endTime = null;
       store.set('items', items);
-      this.sendToRenderer(IPC_CHANNELS.DOWNLOADS_UPDATED, d);
+      this.broadcast(IPC_CHANNELS.DOWNLOADS_UPDATED, d);
     }
   }
 
@@ -1284,6 +1585,15 @@ class WindowManager {
     this.tabs = [];
     this.suspendedTabId = null;
     this.viewCache.clear();
+
+    // 销毁悬浮面板覆盖层
+    if (this.panelOverlayView) {
+      try {
+        this.mainWindow.removeBrowserView(this.panelOverlayView);
+        this.panelOverlayView.webContents.close();
+      } catch (e) { /* 忽略 */ }
+      this.panelOverlayView = null;
+    }
   }
 }
 
