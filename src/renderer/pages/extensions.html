@@ -930,6 +930,14 @@
           if (ext) showExtensionDetail(ext);
         });
       });
+
+      // 检查视图：打开扩展后台页 DevTools（对齐 Edge，开发模式下显示）
+      extensionsList.querySelectorAll('.btn-inspect').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (api.inspectExtensionView) api.inspectExtensionView(btn.dataset.extId);
+        });
+      });
     }
 
     function buildCard(ext, hasDevMode) {
@@ -972,6 +980,7 @@
         </div>
         <div class="ext-card__bottom">
           <button class="btn-card btn-details" data-ext-id="${escapeHtml(ext.id)}" data-ext-name="${escapeHtml(ext.name)}">详细信息</button>
+          ${hasDevMode ? `<button class="btn-card btn-inspect" data-ext-id="${escapeHtml(ext.id)}" title="打开扩展后台页 DevTools">检查视图</button>` : ''}
           <button class="btn-card btn-card--danger btn-delete" data-ext-id="${escapeHtml(ext.id)}" data-ext-name="${escapeHtml(ext.name)}">删除</button>
         </div>
       </div>`;
@@ -1105,6 +1114,7 @@
           ${ext.size ? `<div class="ext-detail__row"><span class="ext-detail__row-label">大小</span><span class="ext-detail__row-value">${escapeHtml(formatBytes(ext.size))}</span></div>` : ''}
           ${isDev && ext.backgroundType ? `<div class="ext-detail__row"><span class="ext-detail__row-label">后台类型</span><span class="ext-detail__row-value">${escapeHtml(ext.backgroundType === 'service_worker' ? 'Service Worker' : '后台页面')}</span></div>` : ''}
           ${isDev && ext.path ? `<div class="ext-detail__row"><span class="ext-detail__row-label">路径</span><span class="ext-detail__row-value" style="font-size:12px">${escapeHtml(ext.path)}</span></div>` : ''}
+          ${isDev ? `<div class="ext-detail__row"><span class="ext-detail__row-label">检查视图</span><span class="ext-detail__row-value"><button class="ext-detail__id-copy" id="extInspectView">打开 DevTools</button></span></div>` : ''}
         </div>
 
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
@@ -1143,6 +1153,11 @@
         await api.copyText(ext.id || '');
         copyBtn.textContent = '已复制';
         setTimeout(() => { copyBtn.textContent = '复制'; }, 1500);
+      });
+
+      const inspectBtn = document.getElementById('extInspectView');
+      if (inspectBtn) inspectBtn.addEventListener('click', () => {
+        if (api.inspectExtensionView) api.inspectExtensionView(ext.id);
       });
 
       const openSite = document.getElementById('extOpenSite');

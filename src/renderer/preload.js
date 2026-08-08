@@ -122,6 +122,7 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   showBookmarkBarContextMenu: (payload) => ipcRenderer.send(IPC_CHANNELS.BOOKMARKS_BAR_CONTEXT_MENU, payload),
   importBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_IMPORT),
   exportBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_EXPORT),
+  removeDuplicateBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_REMOVE_DUPLICATES),
   // 书签跨窗口拖拽状态
   setBookmarkDrag: (id) => ipcRenderer.send(IPC_CHANNELS.BOOKMARK_DRAG_SET, id),
   clearBookmarkDrag: () => ipcRenderer.send(IPC_CHANNELS.BOOKMARK_DRAG_CLEAR),
@@ -177,10 +178,25 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   installFromEdgeStore: (input) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_INSTALL_FROM_EDGE, input),
   toggleExtension: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_TOGGLE, { id }),
   uninstallExtension: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_UNINSTALL, { id }),
+  // ==================== 扩展动作（工具栏图标/徽章/Popup） ====================
+  getExtensionActions: () => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_GET_ACTIONS),
+  onExtensionActionChanged: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.EXTENSIONS_ACTION_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXTENSIONS_ACTION_CHANGED, handler);
+  },
+  triggerExtensionAction: (id) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_ACTION_CLICKED, { id }),
+  openExtensionPopup: (payload) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_ACTION_OPEN_POPUP, payload),
+  hideExtensionPopup: () => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_ACTION_HIDE_POPUP),
+  inspectExtensionView: (id, url) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_INSPECT_VIEW, { id, url }),
+  triggerExtensionCommand: (id, name) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_COMMANDS, { id, name }),
 
   // ==================== 设置 ====================
   getSetting: (key) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET, key),
   setSetting: (key, value) => ipcRenderer.send(IPC_CHANNELS.SETTINGS_SET, { key, value }),
+  // 验证码（真实发送）
+  sendVerifyCode: (account) => ipcRenderer.invoke(IPC_CHANNELS.VERIFY_CODE_SEND, account),
+  checkVerifyCode: (account, code) => ipcRenderer.invoke(IPC_CHANNELS.VERIFY_CODE_CHECK, { account, code }),
   getAllSettings: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_ALL),
   onSettingsChanged: (callback) => {
     const handler = (event, data) => callback(data);
@@ -223,6 +239,8 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
     ipcRenderer.on(IPC_CHANNELS.MENU_EVENT, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.MENU_EVENT, handler);
   },
+  // 请求主窗口执行菜单事件（覆盖层面板使用）
+  requestMenuEvent: (action, data) => ipcRenderer.send(IPC_CHANNELS.MENU_EVENT_REQUEST, { action, data }),
   getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_INFO),
   checkForUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.APP_CHECK_UPDATE),
   downloadUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_DOWNLOAD),

@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>账户登录下拉菜单 · 组件演示</title>
+
+<!-- ==========================================================
+     ① 样式 (CSS)
+========================================================== -->
+<style>
+  /* ---------- 基础 ---------- */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --accent: #1a73e8;
+    --text-primary: #202124;
+    --text-secondary: #5f6368;
+    --text-tertiary: #80868b;
+    --border-color: #e8eaed;
+    --bg-hover: #f1f3f4;
+    --danger: #d93025;
+  }
+
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    background: linear-gradient(180deg, #dde1e6 0%, #c3c7ce 100%);
+    min-height: 100vh;
+    padding: 28px 16px 64px;
+    -webkit-font-smoothing: antialiased;
+    color: var(--text-primary);
+  }
+
+  /* 页面顶部使用说明 */
+  .demo-hint {
+    max-width: 960px;
+    margin: 0 auto 20px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: #3c4043;
+    line-height: 1.9;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  }
+  .demo-hint strong { color: var(--accent); }
+  .demo-hint code {
+    background: #f1f3f4;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 12px;
+    color: var(--danger);
+  }
+
+  /* ---------- 模拟浏览器外壳 ---------- */
+  .browser-window {
+    width: 960px;
+    max-width: 100%;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  /* 标题栏 */
+  .title-bar {
+    height: 38px;
+    background: #dee1e6;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    padding-left: 8px;
+  }
+  .title-bar__tabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    padding-top: 5px;
+  }
+  .fake-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 20px;
+    background: #fff;
+    border-radius: 8px 8px 0 0;
+    font-size: 12px;
+    color: #3c4043;
+    position: relative;
+  }
+  .fake-tab__dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6a9bff, #1a5dff);
+  }
+  .title-bar__controls {
+    display: flex;
+    align-items: stretch;
+    height: 100%;
+  }
+  .window-control {
+    width: 46px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: #5f6368;
+    cursor: pointer;
+  }
+  .window-control:hover { background: rgba(0, 0, 0, 0.09); }
+  .window-control--close:hover { background: #e81123; color: #fff; }
+
+  /* 工具栏 */
+  .toolbar {
+    height: 46px;
+    background: #f1f3f4;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+  }
+  .toolbar__nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .nav-btn, .tool-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #5f6368;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .nav-btn:hover, .tool-btn:hover { background: rgba(0, 0, 0, 0.06); }
+  .nav-btn:disabled { color: #bdc1c6; cursor: default; }
+
+  /* 地址栏 */
+  .address-bar {
+    flex: 1;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    border-radius: 16px;
+    padding: 0 14px;
+    border: 1px solid transparent;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  }
+  .address-bar:focus-within { border-color: var(--accent); }
+  .address-bar__security { color: #5f6368; display: flex; }
+  .address-bar input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: transparent;
+    font-family: inherit;
+  }
+  .address-bar__bookmark { color: #5f6368; display: flex; cursor: pointer; }
+
+  /* 工具栏右侧：动作按钮 + 账户头像区 */
+  .toolbar__actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 100%;
+  }
+  .toolbar__divider {
+    width: 1px;
+    height: 20px;
+    background: #dadce0;
+    margin: 0 8px;
+  }
+
+  /* ========== 账户头像入口按钮 ========== */
+  .account-area {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding-left: 4px;
+  }
+  .account-avatar {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #dadce0;                 /* 未登录：灰色底 */
+    color: #9aa0a6;
+    overflow: hidden;
+    transition: box-shadow 0.15s ease;
+  }
+  .account-avatar:hover { box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.18); }
+  .account-avatar--logged-in {
+    background: linear-gradient(135deg, #6a9bff, #1a5dff); /* 登录：蓝色渐变 */
+    color: #fff;
+  }
+  .account-avatar__initial { font-size: 14px; font-weight: 600; line-height: 1; }
+
+  /* ---------- 账户下拉菜单 ---------- */
+  .account-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 300px;
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+    z-index: 1000;
+    transform-origin: top right;
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+    transition: opacity 0.16s ease, transform 0.16s ease;
+    pointer-events: none;
+  }
+  .account-menu.is-open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+
+  /* 顶部信息块（浅紫底） */
+  .account-menu__header {
+    background: #f0f4ff;
+    padding: 20px 16px 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+  }
+  .account-menu__avatar-lg {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6a9bff, #1a5dff);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    box-shadow: 0 2px 8px rgba(26, 115, 232, 0.25);
+  }
+  .account-menu__name { font-size: 15px; font-weight: 600; color: #202124; }
+  .account-menu__email { font-size: 12px; color: #5f6368; }
+
+  /* 菜单项 */
+  .account-menu__item {
+    width: 100%;
+    border: none;
+    background: transparent;
+    text-align: left;
+    padding: 11px 18px;
+    font-size: 13px;
+    color: #202124;
+    font-family: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: background 0.12s ease;
+  }
+  .account-menu__item:hover { background: #f5f5f5; }
+  .account-menu__item--danger {
+    color: var(--danger);
+    font-weight: 500;
+  }
+  .account-menu__item--danger svg { color: var(--danger); }
+  .account-menu__item--danger:hover { background: #fce8e6; }
+
+  /* 分割线 */
+  .account-menu__divider {
+    height: 1px;
+    background: #e8eaed;
+    margin: 4px 0;
+  }
+
+  /* ---------- 内容区域（模拟网页） ---------- */
+  .content-area { min-height: 460px; background: #fff; }
+  .fake-page { min-height: 460px; }
+  .fake-page__nav {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    padding: 16px 32px;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .fake-page__logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #6a9bff, #1a5dff);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+  .fake-page__nav-link { font-size: 13px; color: var(--text-secondary); }
+  .fake-page__nav-link--right { margin-left: auto; color: var(--accent); font-weight: 500; }
+  .fake-page__body { padding: 56px 32px; text-align: center; }
+  .fake-page__body h1 { font-size: 26px; margin-bottom: 12px; }
+  .fake-page__body p { font-size: 13px; color: var(--text-secondary); line-height: 1.8; max-width: 480px; margin: 0 auto; }
+  .fake-page__cards {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 40px;
+  }
+  .fake-page__card {
+    width: 220px;
+    height: 120px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #eef2ff, #e4e9f7);
+    border: 1px solid #e3e8f5;
+  }
+
+  /* ---------- 全局提示 Toast ---------- */
+  .toast {
+    position: fixed;
+    bottom: 36px;
+    left: 50%;
+    transform: translateX(-50%) translateY(16px);
+    background: #323232;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 2000;
+  }
+  .toast.is-show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+  <!-- 使用说明 -->
+  <div class="demo-hint">
+    <strong>账户下拉菜单演示</strong> · 点击右上角圆形头像打开 / 关闭菜单；点击菜单外部任意区域自动收起。<br>
+    交互流程：① 点击【退出账号】→ 弹出确认框 → 确认后头像重置为默认灰色；② 未登录状态点击头像 → 弹出系统 <code>confirm</code>（确定=登录，取消=注册）；③ 所有菜单项操作均打印到控制台（F12 查看）。
+  </div>
+
+  <!-- ==========================================================
+       ② 结构 (HTML) —— 模拟浏览器外壳
+  ========================================================== -->
+  <div class="browser-window">
+
+    <!-- 标题栏 -->
+    <div class="title-bar">
+      <div class="title-bar__tabs">
+        <div class="fake-tab">
+          <span class="fake-tab__dot"></span>
+          <span>新标签页</span>
+        </div>
+      </div>
+      <div class="title-bar__controls">
+        <button class="window-control" title="窗口置顶" aria-label="窗口置顶">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>
+        </button>
+        <button class="window-control" title="最小化" aria-label="最小化">
+          <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="4.5" width="8" height="1" fill="currentColor"/></svg>
+        </button>
+        <button class="window-control" title="最大化" aria-label="最大化">
+          <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+        <button class="window-control window-control--close" title="关闭" aria-label="关闭">
+          <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1.5" y1="1.5" x2="8.5" y2="8.5" stroke="currentColor" stroke-width="1.2"/><line x1="8.5" y1="1.5" x2="1.5" y2="8.5" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 工具栏（地址栏右侧 = 账户头像区） -->
+    <div class="toolbar">
+      <div class="toolbar__nav">
+        <button class="nav-btn" title="后退" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <button class="nav-btn" title="前进" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+        <button class="nav-btn" title="刷新"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+        <button class="nav-btn" title="主页"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></button>
+      </div>
+
+      <!-- 地址栏 -->
+      <div class="address-bar">
+        <span class="address-bar__security" title="连接安全">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </span>
+        <input type="text" value="https://www.example.com" spellcheck="false" readonly>
+        <span class="address-bar__bookmark" title="添加书签">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </span>
+      </div>
+
+      <div class="toolbar__actions">
+        <button class="tool-btn" title="下载内容"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+        <button class="tool-btn" title="历史记录"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+        <button class="tool-btn" title="扩展程序"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 0 0-.289-.877l-1.568-1.568A2.402 2.402 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.23 8.77c.24-.24.581-.353.917-.303.515.077.877.528 1.073 1.01a2.5 2.5 0 1 0 3.259-3.259c-.482-.196-.933-.558-1.01-1.073-.05-.336.062-.676.303-.917l1.525-1.525A2.402 2.402 0 0 1 12 1.998c0 .617.236 1.234.706 1.704l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02Z"/></svg></button>
+        <button class="tool-btn" title="设置"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+
+        <!-- 垂直分割线 -->
+        <div class="toolbar__divider"></div>
+
+        <!-- ========== 账户头像入口（地址栏右侧、窗口控制按钮左侧） ========== -->
+        <div class="account-area">
+          <button id="accountAvatar" class="account-avatar" type="button"
+                  title="账户" aria-label="账户" aria-haspopup="menu" aria-expanded="false">
+            <!-- 头像内容由 JS 渲染 -->
+          </button>
+
+          <!-- ========== 账户下拉菜单 ========== -->
+          <div id="accountMenu" class="account-menu" role="menu" aria-label="账户菜单" hidden>
+            <!-- 顶部信息块（浅紫底） -->
+            <div class="account-menu__header">
+              <div class="account-menu__avatar-lg" id="accountMenuAvatarLg">俊</div>
+              <div class="account-menu__name" id="accountMenuName">俊文</div>
+              <div class="account-menu__email" id="accountMenuEmail">2818...@qq.com</div>
+            </div>
+
+            <!-- 菜单项 -->
+            <button class="account-menu__item" type="button" role="menuitem" data-action="passwords">密码和自动填充</button>
+            <button class="account-menu__item" type="button" role="menuitem" data-action="profile">个人资料设置</button>
+            <button class="account-menu__item" type="button" role="menuitem" data-action="sync">同步已启用</button>
+
+            <div class="account-menu__divider"></div>
+
+            <button class="account-menu__item" type="button" role="menuitem" data-action="new-profile">设置新配置文件</button>
+            <button class="account-menu__item" type="button" role="menuitem" data-action="guest">以访客身份浏览</button>
+
+            <!-- 底部新增分割线 + 退出账号 -->
+            <div class="account-menu__divider"></div>
+            <button class="account-menu__item account-menu__item--danger" type="button" role="menuitem" data-action="logout">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <span>退出账号</span>
+            </button>
+          </div>
+        </div>
+        <!-- ========== 账户头像区结束 ========== -->
+      </div>
+    </div>
+
+    <!-- 内容区域（模拟网页） -->
+    <div class="content-area">
+      <div class="fake-page">
+        <div class="fake-page__nav">
+          <span class="fake-page__logo">◆</span>
+          <span class="fake-page__nav-link">首页</span>
+          <span class="fake-page__nav-link">新闻</span>
+          <span class="fake-page__nav-link">关于</span>
+          <span class="fake-page__nav-link fake-page__nav-link--right">登录</span>
+        </div>
+        <div class="fake-page__body">
+          <h1>欢迎访问示例网站</h1>
+          <p>这是一个模拟的网页内容区域。点击此处任意位置，可以测试「点击菜单外部自动收起」的效果。</p>
+          <div class="fake-page__cards">
+            <div class="fake-page__card"></div>
+            <div class="fake-page__card"></div>
+            <div class="fake-page__card"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全局提示 -->
+  <div id="toast" class="toast" role="status"></div>
+
+  <!-- ==========================================================
+       ③ 逻辑 (JavaScript)
+  ========================================================== -->
+  <script>
+    'use strict';
+
+    /* ---------- 应用状态 ---------- */
+    const state = {
+      isLoggedIn: true,                       // 初始为已登录（匹配参考图）
+      user: { name: '俊文', email: '2818...@qq.com' }
+    };
+
+    /* ---------- DOM 引用 ---------- */
+    const dom = {
+      avatar:   document.getElementById('accountAvatar'),
+      menu:     document.getElementById('accountMenu'),
+      menuName:   document.getElementById('accountMenuName'),
+      menuEmail:  document.getElementById('accountMenuEmail'),
+      menuAvatar: document.getElementById('accountMenuAvatarLg'),
+      toast:    document.getElementById('toast')
+    };
+
+    /* ---------- 头像渲染 ---------- */
+    function renderAvatar() {
+      if (state.isLoggedIn) {
+        const initial = (state.user.name || '?').trim().charAt(0);
+        dom.avatar.innerHTML = '<span class="account-avatar__initial">' + initial + '</span>';
+        dom.avatar.classList.add('account-avatar--logged-in');
+        dom.avatar.title = state.user.name;
+      } else {
+        // 未登录：默认灰色头像图标
+        dom.avatar.innerHTML =
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+          'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>' +
+          '<circle cx="12" cy="7" r="4"/></svg>';
+        dom.avatar.classList.remove('account-avatar--logged-in');
+        dom.avatar.title = '账户';
+      }
+    }
+
+    /* ---------- 菜单内容同步 ---------- */
+    function syncMenuUser() {
+      dom.menuName.textContent   = state.user.name;
+      dom.menuEmail.textContent  = state.user.email;
+      dom.menuAvatar.textContent = (state.user.name || '?').trim().charAt(0);
+    }
+
+    /* ---------- 打开 / 关闭菜单 ---------- */
+    function openAccountMenu() {
+      if (!state.isLoggedIn) {
+        // 未登录：不弹菜单，改为原生 confirm —— 确定=登录，取消=注册
+        const goLogin = confirm('您还未登录，是否前往登录？');
+        if (goLogin) { handleLogin(); } else { handleRegister(); }
+        return;
+      }
+
+      clearTimeout(closeAccountMenu._t);   // 取消未完成的关闭动画
+      syncMenuUser();
+      dom.menu.hidden = false;
+      dom.menu.getBoundingClientRect();    // 强制回流，让初始样式先生效
+      dom.menu.classList.add('is-open');
+      dom.avatar.setAttribute('aria-expanded', 'true');
+    }
+
+    function closeAccountMenu() {
+      if (dom.menu.hidden) return;
+      dom.menu.classList.remove('is-open');
+      dom.avatar.setAttribute('aria-expanded', 'false');
+      clearTimeout(closeAccountMenu._t);
+      closeAccountMenu._t = setTimeout(function () {
+        dom.menu.hidden = true;
+      }, 170);                             // 与 CSS 过渡时长保持一致
+    }
+
+    function toggleAccountMenu() {
+      if (dom.menu.hidden) { openAccountMenu(); } else { closeAccountMenu(); }
+    }
+
+    /* ---------- 登录 / 注册（模拟） ---------- */
+    function handleLogin() {
+      console.log('登录');
+      state.isLoggedIn = true;
+      state.user = { name: '俊文', email: '2818...@qq.com' };
+      renderAvatar();
+      showToast('登录成功，欢迎回来，' + state.user.name);
+      openAccountMenu();                   // 登录后展示菜单（已登录状态）
+    }
+
+    function handleRegister() {
+      console.log('注册');
+      state.isLoggedIn = true;
+      state.user = { name: '新用户', email: 'newuser@example.com' };
+      renderAvatar();
+      showToast('注册成功，已自动登录');
+      openAccountMenu();
+    }
+
+    /* ---------- 退出账号 ---------- */
+    function handleLogout() {
+      const ok = confirm('确定要退出账号吗？');
+      if (!ok) return;
+      console.log('退出账号');
+      state.isLoggedIn = false;
+      state.user = null;
+      renderAvatar();                      // 重置为默认灰色头像
+      closeAccountMenu();                  // 收起菜单
+      showToast('已退出账号');
+    }
+
+    /* ---------- 菜单项点击（占位逻辑） ---------- */
+    function handleMenuItem(action) {
+      const labels = {
+        passwords:    '密码和自动填充',
+        profile:      '个人资料设置',
+        sync:         '同步已启用',
+        'new-profile': '设置新配置文件',
+        guest:        '以访客身份浏览'
+      };
+      if (labels[action]) {
+        console.log(labels[action]);       // 占位逻辑：打印操作名
+        closeAccountMenu();
+      } else if (action === 'logout') {
+        handleLogout();
+      }
+    }
+
+    /* ---------- Toast 提示 ---------- */
+    function showToast(msg) {
+      dom.toast.textContent = msg;
+      dom.toast.classList.add('is-show');
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(function () {
+        dom.toast.classList.remove('is-show');
+      }, 2200);
+    }
+
+    /* ---------- 事件绑定 ---------- */
+    // 1. 点击头像：已登录 -> 开关菜单；未登录 -> 触发登录/注册确认
+    dom.avatar.addEventListener('click', function () {
+      toggleAccountMenu();
+    });
+
+    // 2. 菜单项点击（事件委托）
+    dom.menu.addEventListener('click', function (e) {
+      const item = e.target.closest('.account-menu__item');
+      if (!item) return;
+      handleMenuItem(item.dataset.action);
+    });
+
+    // 3. 点击菜单外部任意区域 -> 自动收起（点击菜单内部不会收起）
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('.account-area')) return;   // 头像与菜单内部
+      if (!dom.menu.hidden) closeAccountMenu();
+    });
+
+    // 4. Esc 键收起
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !dom.menu.hidden) closeAccountMenu();
+    });
+
+    // 5. 窗口尺寸变化时收起（防止菜单悬空错位）
+    window.addEventListener('resize', function () {
+      if (!dom.menu.hidden) closeAccountMenu();
+    });
+
+    /* ---------- 初始化 ---------- */
+    renderAvatar();
+  </script>
+</body>
+</html>

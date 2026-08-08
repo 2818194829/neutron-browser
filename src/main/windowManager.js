@@ -7,13 +7,22 @@ const path = require('path');
 const { IPC_CHANNELS, INTERNAL_PAGES, INTERNAL_PAGE_TITLES } = require('../shared/constants');
 const { getStore } = require('./storage');
 const { normalizeHistoryTitle, sanitizeFavicon } = require('../shared/siteMeta');
+const { collectExtensionCommands, triggerExtensionCommand } = require('./extensions');
 
 // 应用图标路径（开发与 ASAR 打包路径均从 src/main 上两级到项目根目录）
 const APP_ICON_PATH = path.join(__dirname, '..', '..', 'icon', 'Rocket Browser.png');
 
-const EDGE_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0';
+// ==================== Edge 商店兼容性（动态生成，与真实内核版本一致） ====================
+// 写死旧版本号会导致商店判定"与你的浏览器不兼容"：
+// 1) UA/客户端提示版本过旧；2) 与 Chromium 自动发送的真实 Sec-CH-UA-Full-Version-List 不一致。
+// 因此基于 process.versions.chrome（如 150.0.7871.212）动态生成，保证与内核完全一致。
+const CHROME_VERSION = process.versions.chrome || '150.0.0.0';
+const CHROME_MAJOR = String(CHROME_VERSION).split('.')[0] || '150';
 
-const EDGE_SEC_CH_UA = '"Microsoft Edge";v="120", "Not=A?Brand";v="24", "Chromium";v="120"';
+const EDGE_USER_AGENT = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_VERSION} Safari/537.36 Edg/${CHROME_VERSION}`;
+
+const EDGE_SEC_CH_UA = `"Microsoft Edge";v="${CHROME_MAJOR}", "Not=A?Brand";v="99", "Chromium";v="${CHROME_MAJOR}"`;
+const EDGE_SEC_CH_UA_FULL = `"Microsoft Edge";v="${CHROME_VERSION}", "Not=A?Brand";v="99.0.0.0", "Chromium";v="${CHROME_VERSION}"`;
 const EDGE_SEC_CH_UA_PLATFORM = '"Windows"';
 
 const EDGE_STORE_JS_PATCH = `
@@ -21,9 +30,9 @@ if (!navigator.userAgentData || !navigator.userAgentData.brands.some(b => b.bran
   Object.defineProperty(navigator, 'userAgentData', {
     get: () => ({
       brands: [
-        { brand: "Microsoft Edge", version: "120" },
-        { brand: "Not=A?Brand", version: "24" },
-        { brand: "Chromium", version: "120" }
+        { brand: "Microsoft Edge", version: "${CHROME_MAJOR}" },
+        { brand: "Not=A?Brand", version: "99" },
+        { brand: "Chromium", version: "${CHROME_MAJOR}" }
       ],
       mobile: false,
       platform: "Windows"
@@ -50,7 +59,9 @@ function setupEdgeStoreHeaders() {
     { urls: ['*://microsoftedge.microsoft.com/*'] },
     (details, callback) => {
       details.requestHeaders['Sec-CH-UA'] = EDGE_SEC_CH_UA;
+      details.requestHeaders['Sec-CH-UA-Full-Version-List'] = EDGE_SEC_CH_UA_FULL;
       details.requestHeaders['Sec-CH-UA-Platform'] = EDGE_SEC_CH_UA_PLATFORM;
+      details.requestHeaders['Sec-CH-UA-Mobile'] = '?0';
       callback({ requestHeaders: details.requestHeaders });
     }
   );
@@ -102,6 +113,10 @@ class WindowManager {
     this._bookmarkFolderData = null;
     /** @type {string|null} 跨窗口拖拽中的书签 ID */
     this._draggedBookmarkId = null;
+    /** @type {BrowserView|null} 扩展 Popup 覆盖层视图（点击工具栏扩展图标弹出） */
+    this.extensionPopupView = null;
+    /** @type {string|null} 当前打开的扩展 Popup 对应扩展 ID */
+    this.extensionPopupId = null;
 
     // 绑定方法
     this.handleNewWindow = this.handleNewWindow.bind(this);
@@ -169,6 +184,9 @@ class WindowManager {
 
     // 加载主界面 HTML
     this.mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'app.html'));
+
+    // 注册扩展命令快捷键（对齐 Edge：manifest.commands 的 suggested_key）
+    this.registerExtensionCommands();
 
     // 窗口准备好后显示（避免白屏闪烁）
     this.mainWindow.once('ready-to-show', () => {
@@ -676,7 +694,9 @@ class WindowManager {
       case 'downloads': return { width: 380, height: 440 };
       case 'history': return { width: 420, height: 480 };
       case 'extensions': return { width: 380, height: 420 };
+      case 'bookmarks': return { width: 400, height: 520 };
       case 'bookmarkFolder': return { width: 280, height: 360 };
+      case 'account': return { width: 320, height: 500 };
       default: return { width: 380, height: 420 };
     }
   }
@@ -860,6 +880,139 @@ class WindowManager {
     };
     // 推送到覆盖层重新渲染
     this.sendPanelOverlayAnchor();
+  }
+
+  // ==================== 扩展 Popup 覆盖层（对齐 Edge：点击工具栏扩展图标弹出） ====================
+
+  /** 创建/获取扩展 Popup 覆盖层视图（透明 BrowserView，加载 chrome-extension:// 的 popup.html） */
+  ensureExtensionPopupView() {
+    if (this.extensionPopupView) return this.extensionPopupView;
+    const overlay = new BrowserView({
+      webPreferences: {
+        preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        transparent: true,
+        backgroundThrottling: false,
+      },
+    });
+    try {
+      overlay.setBackgroundColor('#00000000');
+    } catch (e) { /* 忽略 */ }
+    this.extensionPopupView = overlay;
+    return overlay;
+  }
+
+  /**
+   * 打开扩展 Popup（悬浮在工具栏扩展图标下方）
+   * @param {Object} payload - { id, popup, anchor }
+   */
+  async openExtensionPopup(payload) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const { id, popup, anchor } = payload || {};
+    if (!id || !popup) return;
+
+    // 关闭其他悬浮面板覆盖层
+    if (this.panelOverlayView && this.panelOverlayType) this.hidePanelOverlay();
+
+    const view = this.ensureExtensionPopupView();
+    this.extensionPopupId = id;
+    this.mainWindow.addBrowserView(view);
+    this.mainWindow.setTopBrowserView(view);
+
+    const targetUrl = `chrome-extension://${id}/${String(popup).replace(/^\/+/, '')}`;
+    if (view.webContents.getURL() !== targetUrl) {
+      await view.webContents.loadURL(targetUrl).catch(() => {});
+    }
+
+    // 定位在锚点（工具栏图标）下方，右对齐
+    const size = { width: 380, height: 500 };
+    const rect = anchor || { left: 100, top: 0, right: 140, bottom: 36, width: 40, height: 36 };
+    const contentBounds = this.mainWindow.getContentBounds();
+    const titleBarH = 38;
+    const toolbarH = 46;
+    let left = rect.right - size.width;
+    let top = titleBarH + toolbarH + (rect.bottom - rect.top) + 8;
+    if (left < 8) left = 8;
+    if (left + size.width > contentBounds.width - 8) {
+      left = Math.max(8, contentBounds.width - size.width - 8);
+    }
+    if (top + size.height > contentBounds.height - 32) {
+      top = Math.max(titleBarH + toolbarH + 4, rect.top - size.height - 8);
+    }
+
+    view.setBounds({
+      x: Math.round(left),
+      y: Math.round(top),
+      width: size.width,
+      height: size.height,
+    });
+
+    // 点击网页任意位置关闭 Popup
+    this._injectPanelClickCloser();
+  }
+
+  /** 关闭扩展 Popup */
+  hideExtensionPopup() {
+    if (!this.extensionPopupView) return;
+    this._removePanelClickCloser();
+    try {
+      this.mainWindow.removeBrowserView(this.extensionPopupView);
+    } catch (e) { /* 忽略 */ }
+    this.extensionPopupId = null;
+  }
+
+  /** 检查视图 fallback：打开扩展任意页面（后台页/选项页）的 DevTools */
+  openExtensionInspectView(extId) {
+    const { webContents } = require('electron');
+    const target = webContents.getAllWebContents().find((wc) => {
+      const url = wc.getURL();
+      return url.includes(`chrome-extension://${extId}/`);
+    });
+    if (target && !target.isDestroyed()) target.openDevTools({ mode: 'detach' });
+  }
+
+  // ==================== 扩展命令快捷键（对齐 Edge：manifest.commands） ====================
+
+  /** 注册扩展命令快捷键（应用级 before-input-event 捕获） */
+  registerExtensionCommands() {
+    this._extensionCommands = collectExtensionCommands() || [];
+    if (this._extensionCommands.length === 0 || !this.mainWindow) return;
+
+    this.mainWindow.webContents.on('before-input-event', (event, input) => {
+      const cmd = this._extensionCommands.find((c) => this.matchAccelerator(c.accelerator, input));
+      if (!cmd) return;
+      event.preventDefault();
+      triggerExtensionCommand(cmd.extId, cmd.name);
+    });
+  }
+
+  /** 匹配加速键字符串与键盘输入（支持 Ctrl/Alt/Shift/Cmd/CommandOrControl/功能键） */
+  matchAccelerator(accelerator, input) {
+    const parts = String(accelerator || '')
+      .split('+')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const MODS = ['ctrl', 'control', 'command', 'cmd', 'meta', 'alt', 'option',
+      'shift', 'super', 'win', 'commandorcontrol', 'cmdorctrl'];
+    const key = parts.filter((p) => !MODS.includes(p)).join('');
+    if (!key) return false;
+
+    const hasCtrl = parts.includes('ctrl') || parts.includes('control');
+    const hasCmd = parts.includes('command') || parts.includes('cmd') || parts.includes('meta');
+    const hasAlt = parts.includes('alt') || parts.includes('option');
+    const hasShift = parts.includes('shift');
+    const hasCmdOrCtrl = parts.includes('commandorcontrol') || parts.includes('cmdorctrl');
+
+    const inputKey = String(input.key || '').toLowerCase();
+    if (inputKey !== key) return false;
+
+    const ctrlOk = hasCmdOrCtrl ? (input.control || input.meta) : (hasCtrl ? input.control : !input.control);
+    const cmdOk = hasCmdOrCtrl ? true : (hasCmd ? input.meta : !input.meta);
+    const altOk = hasAlt ? input.alt : !input.alt;
+    const shiftOk = hasShift ? input.shift : !input.shift;
+    return ctrlOk && cmdOk && altOk && shiftOk;
   }
 
   /**
@@ -1194,6 +1347,24 @@ class WindowManager {
         }
       );
 
+      // 扩展右键菜单项（对齐 Edge：chrome.contextMenus）
+      try {
+        const { buildExtensionContextMenuItems } = require('./extensionBridge');
+        const extItems = buildExtensionContextMenuItems(params, (extId, menuId, info) => {
+          const { findExtensionBackgroundWebContents } = require('./extensions');
+          const extWc = findExtensionBackgroundWebContents(extId);
+          if (extWc && !extWc.isDestroyed()) {
+            extWc.executeJavaScript(
+              `window.__neutronFireContextMenuClick && window.__neutronFireContextMenuClick(${JSON.stringify(menuId)}, ${JSON.stringify(info)})`
+            ).catch(() => {});
+          }
+        });
+        if (extItems.length > 0) {
+          template.push({ type: 'separator' });
+          extItems.forEach((item) => template.push(item));
+        }
+      } catch (e) { /* 扩展菜单构建失败不影响默认菜单 */ }
+
       const menu = Menu.buildFromTemplate(template);
       const tab = this.tabs.find(item => item.view && item.view.webContents === wc);
       const viewBounds = tab && tab.view ? tab.view.getBounds() : { x: 0, y: 0 };
@@ -1310,7 +1481,13 @@ class WindowManager {
     if (input.startsWith('neutron://')) {
       if (global.resolveInternalPage) {
         const filePath = global.resolveInternalPage(input);
-        return 'file:///' + filePath.replace(/\\/g, '/');
+        // 保留 query 与 hash（如 neutron://settings#privacy → settings.html#privacy）
+        let suffix = '';
+        try {
+          const u = new URL(input);
+          suffix = (u.search || '') + (u.hash || '');
+        } catch (e) { /* 忽略 */ }
+        return 'file:///' + filePath.replace(/\\/g, '/') + suffix;
       }
       return input;
     }
@@ -1593,6 +1770,15 @@ class WindowManager {
         this.panelOverlayView.webContents.close();
       } catch (e) { /* 忽略 */ }
       this.panelOverlayView = null;
+    }
+
+    // 销毁扩展 Popup 覆盖层
+    if (this.extensionPopupView) {
+      try {
+        this.mainWindow.removeBrowserView(this.extensionPopupView);
+        this.extensionPopupView.webContents.close();
+      } catch (e) { /* 忽略 */ }
+      this.extensionPopupView = null;
     }
   }
 }

@@ -253,6 +253,16 @@ function createAppMenu() {
             if (wm) wm.createTab(INTERNAL_PAGES.BOOKMARKS);
           },
         },
+        {
+          label: '显示收藏夹',
+          accelerator: 'CmdOrCtrl+Shift+B',
+          click: () => {
+            const wm = getWM();
+            if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+              wm.mainWindow.webContents.send(IPC_CHANNELS.MENU_EVENT, { action: 'toggleBookmarksPanel' });
+            }
+          },
+        },
         { type: 'separator' },
         {
           label: '导入书签',

@@ -2,7 +2,7 @@
  * 扩展管理模块
  * 支持安装 .zip/.crx、加载已解压扩展，并通过 Electron session 实际启用扩展
  */
-const { app, session, net } = require('electron');
+const { app, session, net, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
@@ -61,6 +61,65 @@ function findManifestDir(root) {
 
 function readManifest(extRoot) {
   return JSON.parse(fs.readFileSync(path.join(extRoot, 'manifest.json'), 'utf8'));
+}
+
+// ==================== 安装权限确认（对齐 Edge） ====================
+
+// 常见无害/低敏感权限，安装时不逐项提示
+const QUIET_PERMISSIONS = new Set([
+  'storage', 'activeTab', 'alarms', 'notifications',
+  'unlimitedStorage', 'background', 'scripting',
+]);
+
+/** 人性化权限名称映射（未映射的原样显示） */
+const PERMISSION_NAMES = {
+  tabs: '读取浏览记录',
+  cookies: '读取和更改 Cookie',
+  history: '读取浏览历史',
+  bookmarks: '读取和更改书签',
+  downloads: '管理下载',
+  webRequest: '拦截并修改网络请求',
+  webNavigation: '读取导航记录',
+  clipboardRead: '读取剪贴板',
+  clipboardWrite: '写入剪贴板',
+  geolocation: '访问位置信息',
+  contextMenus: '在右键菜单中添加项目',
+  management: '管理其它扩展',
+  proxy: '更改代理设置',
+  'declarativeNetRequest': '拦截并修改网络请求',
+  '<all_urls>': '在所有网站上读取和更改数据',
+};
+
+/**
+ * 安装前权限确认。返回 true 允许安装，false 用户取消。
+ * 环境变量 NEUTRON_SKIP_EXT_CONFIRM=1 可跳过（自动化/测试用）。
+ * @param {Object} manifest
+ */
+async function confirmExtensionPermissions(manifest) {
+  if (process.env.NEUTRON_SKIP_EXT_CONFIRM === '1') return true;
+  const collected = [
+    ...(Array.isArray(manifest.permissions) ? manifest.permissions : []),
+    ...(Array.isArray(manifest.host_permissions) ? manifest.host_permissions : []),
+  ].filter((p) => !QUIET_PERMISSIONS.has(p));
+
+  if (collected.length === 0) return true;
+
+  const list = collected
+    .map((p) => `•  ${PERMISSION_NAMES[p] || p}`)
+    .join('\n');
+
+  const parent = (global.windowManager && global.windowManager.mainWindow) || undefined;
+  const { response } = await dialog.showMessageBox(parent, {
+    type: 'info',
+    title: '安装扩展',
+    message: `添加“${manifest.name || '未命名扩展'}”？`,
+    detail: `此扩展将能够：\n${list}\n\n仅安装您信任的扩展。`,
+    buttons: ['取消', '添加扩展'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+  return response === 1;
 }
 
 function resolveSource(manifest) {
@@ -184,6 +243,12 @@ async function installFromArchiveBuffer(buffer, source) {
     zip.extractAllTo(tempDir, true);
 
     const sourceRoot = findManifestDir(tempDir);
+
+    // 安装前权限确认（对齐 Edge）
+    if (!(await confirmExtensionPermissions(readManifest(sourceRoot)))) {
+      throw new Error('已取消安装');
+    }
+
     const destDir = path.join(extensionsRoot(), `ext_${Date.now()}`);
     copyDirectory(sourceRoot, destDir);
 
@@ -207,6 +272,12 @@ async function installUnpackedExtension(dirPath) {
   fs.mkdirSync(extensionsRoot(), { recursive: true });
 
   const sourceRoot = findManifestDir(dirPath);
+
+  // 安装前权限确认（对齐 Edge）
+  if (!(await confirmExtensionPermissions(readManifest(sourceRoot)))) {
+    throw new Error('已取消安装');
+  }
+
   const destDir = path.join(extensionsRoot(), `ext_${Date.now()}`);
   copyDirectory(sourceRoot, destDir);
 
@@ -328,7 +399,168 @@ async function uninstallExtension(id) {
     removeInstalledDirectory(ext.path);
   }
 
+  // 清理该扩展的徽章状态
+  const states = getBadgeStates();
+  if (states[id]) {
+    delete states[id];
+    saveBadgeStates(states);
+  }
+
+  // 清理该扩展的右键菜单注册
+  try {
+    const { contextMenuUnregisterAll } = require('./extensionBridge');
+    contextMenuUnregisterAll(id);
+  } catch (e) { /* 忽略 */ }
+
   return { success: true };
+}
+
+// ==================== 扩展动作（工具栏图标/徽章/Popup，对齐 Edge） ====================
+
+/** 徽章状态持久化（extensions.json 的 badgeStates 字段） */
+function getBadgeStates() {
+  return getStore('extensions').get('badgeStates', {});
+}
+
+function saveBadgeStates(states) {
+  getStore('extensions').set('badgeStates', states);
+}
+
+/** 从 manifest 解析动作配置（browser_action / action） */
+function resolveActionConfig(ext, manifest) {
+  const action = manifest.browser_action || manifest.action || null;
+  if (!action) return null;
+
+  let iconRel = '';
+  const icon = action.default_icon;
+  if (typeof icon === 'string') {
+    iconRel = icon;
+  } else if (icon && typeof icon === 'object') {
+    const entries = Object.entries(icon).sort((a, b) => Number(b[0]) - Number(a[0]));
+    if (entries.length > 0) iconRel = entries[0][1];
+  }
+  let iconPath = '';
+  if (iconRel) {
+    const candidate = path.join(ext.path, iconRel);
+    if (fs.existsSync(candidate)) iconPath = candidate;
+  }
+  if (!iconPath) iconPath = resolveIcon(manifest, ext.path);
+
+  return {
+    defaultTitle: action.default_title || ext.name || '扩展',
+    defaultPopup: action.default_popup || '',
+    defaultIcon: iconPath,
+  };
+}
+
+/** 获取所有已启用扩展的动作配置（含徽章状态），供工具栏渲染 */
+function getExtensionActions() {
+  const installed = getInstalledExtensions();
+  const badgeStates = getBadgeStates();
+  return installed
+    .filter((ext) => ext.enabled && ext.path && fs.existsSync(path.join(ext.path, 'manifest.json')))
+    .map((ext) => {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(ext.path, 'manifest.json'), 'utf8'));
+        const action = resolveActionConfig(ext, manifest);
+        if (!action) return null;
+        const badge = badgeStates[ext.id] || {};
+        return {
+          id: ext.id,
+          name: ext.name,
+          icon: action.defaultIcon,
+          title: badge.title || action.defaultTitle,
+          popup: action.defaultPopup,
+          badgeText: badge.text || '',
+          badgeColor: badge.color || '#666666',
+        };
+      } catch (e) {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+/**
+ * 设置扩展徽章/标题（由 polyfill 的 browserAction/action API 调用）。
+ * @param {string} extId
+ * @param {{text?:string, color?:string, title?:string}} patch
+ */
+function setExtensionBadge(extId, patch) {
+  const states = getBadgeStates();
+  const cur = states[extId] || {};
+  if (patch && patch.text !== undefined) cur.text = String(patch.text || '');
+  if (patch && patch.color !== undefined) cur.color = patch.color || '#666666';
+  if (patch && patch.title !== undefined) cur.title = String(patch.title || '');
+  states[extId] = cur;
+  saveBadgeStates(states);
+  return { id: extId, ...cur };
+}
+
+/** 收集扩展的键盘命令（manifest.commands），供快捷键注册 */
+function collectExtensionCommands() {
+  const installed = getInstalledExtensions().filter((ext) => ext.enabled);
+  const result = [];
+  for (const ext of installed) {
+    if (!ext.path || !fs.existsSync(path.join(ext.path, 'manifest.json'))) continue;
+    try {
+      const manifest = JSON.parse(fs.readFileSync(path.join(ext.path, 'manifest.json'), 'utf8'));
+      const commands = manifest.commands || {};
+      for (const [name, cmd] of Object.entries(commands)) {
+        const accel = (cmd.suggested_key && cmd.suggested_key.default) || '';
+        if (!accel) continue;
+        result.push({
+          extId: ext.id,
+          extName: ext.name,
+          name,
+          description: cmd.description || name,
+          accelerator: accel,
+        });
+      }
+    } catch (e) { /* 忽略损坏的 manifest */ }
+  }
+  return result;
+}
+
+/** 查找扩展的后台 webContents（MV2 后台页；MV3 用模拟后台宿主页） */
+function findExtensionBackgroundWebContents(extId) {
+  const { webContents } = require('electron');
+  const all = webContents.getAllWebContents();
+  const candidates = all.filter((wc) => {
+    const url = wc.getURL();
+    return url.includes(`chrome-extension://${extId}/`) &&
+      (url.includes('_generated_background_page') || /background/i.test(url));
+  });
+  // 优先精确匹配 MV2 后台页
+  const bg = candidates.find((wc) => wc.getURL().includes('_generated_background_page')) || candidates[0];
+  if (bg) return bg;
+  // 其次查找 MV3 模拟后台宿主页
+  try {
+    const { findMv3BackgroundWebContents } = require('./extensionBridge');
+    const mv3 = findMv3BackgroundWebContents(extId);
+    if (mv3) return mv3;
+  } catch (e) { /* 忽略 */ }
+  return null;
+}
+
+/** 触发扩展后台的 browserAction/action onClicked 事件 */
+function triggerExtensionActionClicked(extId) {
+  const wc = findExtensionBackgroundWebContents(extId);
+  if (!wc || wc.isDestroyed()) return false;
+  wc.executeJavaScript(
+    'window.__neutronFireActionClicked && window.__neutronFireActionClicked()'
+  ).catch(() => {});
+  return true;
+}
+
+/** 触发扩展后台的 commands.onCommand 事件 */
+function triggerExtensionCommand(extId, commandName) {
+  const wc = findExtensionBackgroundWebContents(extId);
+  if (!wc || wc.isDestroyed()) return false;
+  wc.executeJavaScript(
+    `window.__neutronFireCommand && window.__neutronFireCommand(${JSON.stringify(commandName)})`
+  ).catch(() => {});
+  return true;
 }
 
 module.exports = {
@@ -339,4 +571,10 @@ module.exports = {
   installFromEdgeStore,
   setExtensionEnabled,
   uninstallExtension,
+  getExtensionActions,
+  setExtensionBadge,
+  collectExtensionCommands,
+  findExtensionBackgroundWebContents,
+  triggerExtensionActionClicked,
+  triggerExtensionCommand,
 };

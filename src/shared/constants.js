@@ -66,6 +66,8 @@ const IPC_CHANNELS = {
   // 书签已变更（叠加层移动书签后通知主窗口刷新书签栏）
   BOOKMARKS_CHANGED: 'bookmarks:changed',
   BOOKMARKS_REFRESH: 'bookmarks:refresh',
+  // 删除重复书签
+  BOOKMARKS_REMOVE_DUPLICATES: 'bookmarks:removeDuplicates',
 
   // 历史记录
   HISTORY_GET_ALL: 'history:getAll',
@@ -113,6 +115,8 @@ const IPC_CHANNELS = {
 
   // 菜单事件
   MENU_EVENT: 'menu:event',
+  // 覆盖层请求主窗口执行菜单事件（如收藏夹面板内添加书签/新建文件夹）
+  MENU_EVENT_REQUEST: 'menu:eventRequest',
 
   // 应用信息与更新
   APP_GET_INFO: 'app:getInfo',
@@ -133,6 +137,36 @@ const IPC_CHANNELS = {
   EXTENSIONS_DROP_FILE: 'extensions:dropFile',
   EXTENSIONS_TOGGLE: 'extensions:toggle',
   EXTENSIONS_UNINSTALL: 'extensions:uninstall',
+  // 扩展动作（工具栏图标/徽章/Popup）
+  EXTENSIONS_GET_ACTIONS: 'extensions:getActions',
+  EXTENSIONS_ACTION_BADGE: 'extensions:actionBadge',
+  EXTENSIONS_ACTION_CHANGED: 'extensions:actionChanged',
+  EXTENSIONS_ACTION_OPEN_POPUP: 'extensions:actionOpenPopup',
+  EXTENSIONS_ACTION_HIDE_POPUP: 'extensions:actionHidePopup',
+  EXTENSIONS_ACTION_CLICKED: 'extensions:actionClicked',
+  EXTENSIONS_INSPECT_VIEW: 'extensions:inspectView',
+  // 扩展真实 API 桥接（webRequest/notifications/cookies/contextMenus）
+  EXT_WEBREQUEST_REGISTER: 'ext:webRequestRegister',
+  EXT_WEBREQUEST_UNREGISTER: 'ext:webRequestUnregister',
+  EXT_NOTIFICATIONS_CREATE: 'ext:notificationsCreate',
+  EXT_NOTIFICATIONS_CLEAR: 'ext:notificationsClear',
+  EXT_COOKIES_GET: 'ext:cookiesGet',
+  EXT_COOKIES_GET_ALL: 'ext:cookiesGetAll',
+  EXT_COOKIES_SET: 'ext:cookiesSet',
+  EXT_COOKIES_REMOVE: 'ext:cookiesRemove',
+  EXT_CONTEXTMENU_REGISTER: 'ext:contextMenuRegister',
+  EXT_CONTEXTMENU_UNREGISTER: 'ext:contextMenuUnregister',
+  EXT_CONTEXTMENU_CLICKED: 'ext:contextMenuClicked',
+  // 扩展真实数据桥接（bookmarks/history/commands）
+  EXT_BOOKMARKS: 'ext:bookmarks',
+  EXT_HISTORY: 'ext:history',
+  EXT_COMMANDS_GET_ALL: 'ext:commandsGetAll',
+  // 扩展标签页/窗口/脚本注入桥接
+  EXT_TABS: 'ext:tabs',
+  EXT_WINDOWS: 'ext:windows',
+  EXT_SCRIPTING: 'ext:scripting',
+  // 扩展 storage 兜底桥接（Electron 原生 storage 可能异步就绪，扩展脚本早期不可用）
+  EXT_STORAGE: 'ext:storage',
 
   // 悬浮面板覆盖层（面板叠加在实时页面之上显示）
   PANEL_OVERLAY_SHOW: 'panelOverlay:show',
@@ -141,6 +175,10 @@ const IPC_CHANNELS = {
   PANEL_OVERLAY_GET_ANCHOR: 'panelOverlay:getAnchor',
   PANEL_OVERLAY_CLOSED: 'panelOverlay:closed',
   PANEL_OVERLAY_CLICK_OUTSIDE: 'panelOverlay:clickOutside',
+
+  // 验证码（真实发送）
+  VERIFY_CODE_SEND: 'verify:codeSend',
+  VERIFY_CODE_CHECK: 'verify:codeCheck',
 };
 
 // ==================== 默认设置 ====================
@@ -163,6 +201,7 @@ const DEFAULT_SETTINGS = {
   preloadNewTabPage: false,
   launchAtLogin: false,
   showBookmarkBar: true,
+  showBookmarksButton: true,      // 工具栏收藏夹按钮是否显示
   downloadPath: '',           // 空表示使用系统默认下载目录
   askDownloadPath: true,
   startupBehavior: 'home', // 'newTab' | 'home' | 'restore' | 'custom'
@@ -174,6 +213,8 @@ const DEFAULT_SETTINGS = {
   doNotTrack: false,
   clearOnExit: false,
   siteExtensionPermissions: {},
+  // 验证码后端地址（由站长在官网 verify-server 统一管理配置，普通用户不可见）
+  verifyServerUrl: '',
 };
 
 // ==================== 搜索引擎 ====================

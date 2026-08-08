@@ -17,7 +17,107 @@ const {
   installFromEdgeStore,
   setExtensionEnabled,
   uninstallExtension,
+  getExtensionActions,
+  setExtensionBadge,
+  findExtensionBackgroundWebContents,
+  triggerExtensionActionClicked,
+  triggerExtensionCommand,
 } = require('./extensions');
+const { sendVerifyCode, checkVerifyCode } = require('./verifyCode');
+const { registerExtensionBridgeIpc, ensureMv3Backgrounds } = require('./extensionBridge');
+
+// ==================== 书签导入/导出辅助 ====================
+
+/** HTML 实体解码 */
+function decodeHtmlEntities(str) {
+  return String(str || '')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/&#(\d+);/g, (m, code) => String.fromCharCode(parseInt(code, 10)));
+}
+
+/** HTML 属性转义 */
+function escapeHtmlAttr(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** 生成书签 ID */
+let bookmarkIdSeed = 0;
+function genBookmarkId() {
+  bookmarkIdSeed += 1;
+  return `bm_${Date.now()}_${bookmarkIdSeed}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * 解析 Netscape 书签 HTML 格式（浏览器导出的标准书签格式）
+ * @param {string} html
+ * @returns {Array<{type:'folder'|'bookmark', title:string, url?:string, children?:Array}>}
+ */
+function parseNetscapeBookmarks(html) {
+  const root = { type: 'folder', title: '根', children: [] };
+  const stack = [root];
+  const re = /<DT>\s*<A\s+[^>]*HREF\s*=\s*"([^"]*)"[^>]*>(.*?)<\/A>|<DT>\s*<H3[^>]*>(.*?)<\/H3>|<\/DL>/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const token = m[0].toLowerCase();
+    if (token.startsWith('<dt>') && token.includes('<a ')) {
+      const url = String(m[1] || '').trim();
+      if (url) {
+        stack[stack.length - 1].children.push({
+          type: 'bookmark',
+          title: decodeHtmlEntities(m[2]).trim() || url,
+          url,
+        });
+      }
+    } else if (token.startsWith('<dt>') && token.includes('<h3')) {
+      const folder = {
+        type: 'folder',
+        title: decodeHtmlEntities(m[3]).trim() || '未命名文件夹',
+        children: [],
+      };
+      stack[stack.length - 1].children.push(folder);
+      stack.push(folder);
+    } else if (token === '</dl>') {
+      if (stack.length > 1) stack.pop();
+    }
+  }
+  return root.children;
+}
+
+/** 生成 Netscape 书签 HTML */
+function buildNetscapeBookmarksHtml(data) {
+  const rootNames = { bookmark_bar: '书签栏', other: '其他书签', mobile: '移动设备书签' };
+  let html = '<!DOCTYPE NETSCAPE-Bookmark-file-1>\n'
+    + '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n'
+    + '<TITLE>书签</TITLE>\n<H1>书签</H1>\n<DL><p>\n';
+
+  const renderFolder = (folder, title) => {
+    html += `    <DT><H3>${escapeHtmlAttr(title)}</H3>\n    <DL><p>\n`;
+    for (const child of (folder.children || [])) {
+      if (child.type === 'folder') {
+        renderFolder(child, child.title || '未命名文件夹');
+      } else {
+        html += `        <DT><A HREF="${escapeHtmlAttr(child.url)}">${escapeHtmlAttr(child.title)}</A>\n`;
+      }
+    }
+    html += '    </DL><p>\n';
+  };
+
+  for (const key of Object.keys(data)) {
+    if (data[key] && data[key].type === 'folder') {
+      renderFolder(data[key], rootNames[key] || data[key].title || key);
+    }
+  }
+  html += '</DL><p>\n';
+  return html;
+}
 
 function compareVersions(a, b) {
   const pa = String(a || '').replace(/^v/i, '').split('.').map(Number);
@@ -79,6 +179,20 @@ function registerIpcHandlers() {
       wm.mainWindow.webContents.send(IPC_CHANNELS.MENU_EVENT, { action, ...data });
     }
   };
+  // 扩展安装/卸载/启停后通知主窗口刷新工具栏扩展图标
+  const broadcastExtensionsChanged = () => {
+    // 新装/启停的 MV3 扩展需要补建模拟后台
+    ensureMv3Backgrounds();
+    const wm = getWM();
+    if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+      wm.mainWindow.webContents.send(IPC_CHANNELS.EXTENSIONS_ACTION_CHANGED, { refresh: true });
+    }
+  };
+
+  // 注册扩展真实 API 桥接（webRequest/notifications/cookies/contextMenus）
+  registerExtensionBridgeIpc();
+  // 为已加载的 MV3 扩展创建模拟后台（参考 Edge ServiceWorkerTaskQueue）
+  ensureMv3Backgrounds();
 
   // 清理历史遗留的错位 favicon 和默认标题，保证图标只跟随真实页面 URL
   const bookmarksData = sanitizeBookmarks(getStore('bookmarks').getAll());
@@ -175,6 +289,12 @@ function registerIpcHandlers() {
   ipcMain.on(IPC_CHANNELS.PANEL_OVERLAY_SHOW, (event, payload) => {
     const wm = getWM();
     if (wm && wm.showPanelOverlay) wm.showPanelOverlay(payload || {});
+  });
+
+  // 覆盖层请求主窗口执行菜单事件（如收藏夹面板内添加书签/新建文件夹）
+  ipcMain.on(IPC_CHANNELS.MENU_EVENT_REQUEST, (event, payload) => {
+    if (!payload || !payload.action) return;
+    sendMenuEvent(payload.action, payload.data || {});
   });
 
   ipcMain.on(IPC_CHANNELS.PANEL_OVERLAY_HIDE, () => {
@@ -771,9 +891,76 @@ function registerIpcHandlers() {
       properties: ['openFile'],
       filters: [{ name: '书签文件', extensions: ['html', 'htm'] }],
     });
-    if (result.canceled) return { success: false, message: '用户取消' };
-    // TODO: 实现 HTML 书签导入
-    return { success: true, message: '书签导入功能开发中' };
+    if (result.canceled || !result.filePaths || !result.filePaths[0]) {
+      return { success: false, message: '用户取消' };
+    }
+    try {
+      const html = fs.readFileSync(result.filePaths[0], 'utf-8');
+      const imported = parseNetscapeBookmarks(html);
+      if (imported.length === 0) {
+        return { success: false, message: '未找到可导入的书签' };
+      }
+
+      const store = getStore('bookmarks');
+      const data = store.getAll();
+      const rootMap = { '书签栏': 'bookmark_bar', '其他书签': 'other', '移动设备书签': 'mobile' };
+      let added = 0;
+
+      const appendImported = (parentFolder, items) => {
+        if (!parentFolder.children) parentFolder.children = [];
+        for (const item of items) {
+          if (item.type === 'folder') {
+            const node = {
+              id: genBookmarkId(),
+              title: item.title || '未命名文件夹',
+              type: 'folder',
+              parentId: parentFolder.id,
+              dateAdded: Date.now(),
+              favicon: '',
+              children: [],
+            };
+            parentFolder.children.push(node);
+            added++;
+            appendImported(node, item.children || []);
+          } else if (item.url) {
+            parentFolder.children.push({
+              id: genBookmarkId(),
+              title: item.title || item.url,
+              type: 'bookmark',
+              url: item.url,
+              parentId: parentFolder.id,
+              dateAdded: Date.now(),
+              favicon: '',
+            });
+            added++;
+          }
+        }
+      };
+
+      // 顶层文件夹按名称合并到根分区，其余作为新文件夹/书签加入书签栏
+      for (const item of imported) {
+        if (item.type === 'folder' && rootMap[item.title]) {
+          const rootKey = rootMap[item.title];
+          if (!data[rootKey]) {
+            data[rootKey] = { id: rootKey, title: item.title, type: 'folder', children: [] };
+          }
+          appendImported(data[rootKey], item.children || []);
+        } else {
+          appendImported(data.bookmark_bar, [item]);
+        }
+      }
+
+      for (const key of Object.keys(data)) store.set(key, data[key]);
+
+      // 通知主窗口刷新书签栏
+      const wm = global.windowManager;
+      if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+        wm.mainWindow.webContents.send(IPC_CHANNELS.BOOKMARKS_REFRESH);
+      }
+      return { success: true, message: `已导入 ${added} 个收藏夹项`, added };
+    } catch (e) {
+      return { success: false, message: '导入失败: ' + ((e && e.message) || e) };
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.BOOKMARKS_EXPORT, async () => {
@@ -781,9 +968,68 @@ function registerIpcHandlers() {
       filters: [{ name: '书签文件', extensions: ['html'] }],
       defaultPath: 'bookmarks.html',
     });
-    if (result.canceled) return { success: false, message: '用户取消' };
-    // TODO: 实现 HTML 书签导出
-    return { success: true, message: '书签导出功能开发中' };
+    if (result.canceled || !result.filePath) {
+      return { success: false, message: '用户取消' };
+    }
+    try {
+      const data = getStore('bookmarks').getAll();
+      const html = buildNetscapeBookmarksHtml(data);
+      fs.writeFileSync(result.filePath, html, 'utf-8');
+      return { success: true, message: '已导出到 ' + result.filePath };
+    } catch (e) {
+      return { success: false, message: '导出失败: ' + ((e && e.message) || e) };
+    }
+  });
+
+  // 删除重复书签（按 URL 去重，保留首次出现的）
+  ipcMain.handle(IPC_CHANNELS.BOOKMARKS_REMOVE_DUPLICATES, () => {
+    const store = getStore('bookmarks');
+    const data = store.getAll();
+    const seen = new Set();
+    const duplicateIds = [];
+
+    const collect = (folder) => {
+      if (!folder || !folder.children) return;
+      for (const child of folder.children) {
+        if (child.type === 'bookmark') {
+          const url = String(child.url || '').trim();
+          if (url) {
+            if (seen.has(url)) {
+              duplicateIds.push(child.id);
+            } else {
+              seen.add(url);
+            }
+          }
+        } else if (child.type === 'folder') {
+          collect(child);
+        }
+      }
+    };
+
+    const remove = (folder) => {
+      if (!folder || !folder.children) return;
+      folder.children = folder.children.filter((child) => {
+        if (child.type === 'bookmark' && duplicateIds.includes(child.id)) return false;
+        return true;
+      });
+      for (const child of folder.children) {
+        if (child.type === 'folder') remove(child);
+      }
+    };
+
+    for (const key of Object.keys(data)) {
+      if (data[key] && data[key].type === 'folder') collect(data[key]);
+    }
+    for (const key of Object.keys(data)) {
+      if (data[key] && data[key].type === 'folder') remove(data[key]);
+    }
+    for (const key of Object.keys(data)) store.set(key, data[key]);
+
+    const wm = global.windowManager;
+    if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+      wm.mainWindow.webContents.send(IPC_CHANNELS.BOOKMARKS_REFRESH);
+    }
+    return { success: true, removed: duplicateIds.length };
   });
 
   // ==================== 历史记录 ====================
@@ -1049,6 +1295,15 @@ function registerIpcHandlers() {
     return getStore('settings').getAll();
   });
 
+  // ==================== 验证码（真实发送） ====================
+  ipcMain.handle(IPC_CHANNELS.VERIFY_CODE_SEND, async (event, account) => {
+    return sendVerifyCode(account);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.VERIFY_CODE_CHECK, (event, { account, code }) => {
+    return checkVerifyCode(account, code);
+  });
+
   // ==================== 主题 ====================
   ipcMain.handle(IPC_CHANNELS.THEME_GET, () => {
     return getStore('settings').get('theme', 'system');
@@ -1110,6 +1365,7 @@ function registerIpcHandlers() {
 
     try {
       const extension = await installExtensionFile(result.filePaths[0]);
+      broadcastExtensionsChanged();
       return { success: true, extension };
     } catch (e) {
       return { success: false, message: e.message };
@@ -1123,6 +1379,7 @@ function registerIpcHandlers() {
     }
     try {
       const extension = await installExtensionFile(filePath);
+      broadcastExtensionsChanged();
       return { success: true, extension };
     } catch (e) {
       return { success: false, message: e.message || '安装失败' };
@@ -1141,6 +1398,7 @@ function registerIpcHandlers() {
 
     try {
       const extension = await installUnpackedExtension(result.filePaths[0]);
+      broadcastExtensionsChanged();
       return { success: true, extension };
     } catch (e) {
       return { success: false, message: e.message };
@@ -1150,6 +1408,7 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.EXTENSIONS_INSTALL_FROM_EDGE, async (event, input) => {
     try {
       const extension = await installFromEdgeStore(input);
+      broadcastExtensionsChanged();
       return { success: true, extension };
     } catch (e) {
       return { success: false, message: e.message };
@@ -1162,6 +1421,7 @@ function registerIpcHandlers() {
 
     try {
       const updated = await setExtensionEnabled(id, !extension.enabled);
+      broadcastExtensionsChanged();
       return { success: true, extension: updated };
     } catch (e) {
       return { success: false, message: e.message };
@@ -1170,10 +1430,69 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.EXTENSIONS_UNINSTALL, async (event, { id }) => {
     try {
-      return await uninstallExtension(id);
+      const result = await uninstallExtension(id);
+      broadcastExtensionsChanged();
+      return result;
     } catch (e) {
       return { success: false, message: e.message };
     }
+  });
+
+  // 工具栏扩展动作（图标/徽章/Popup）
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_GET_ACTIONS, () => {
+    return getExtensionActions();
+  });
+
+  // 扩展后台通过 polyfill 设置徽章/标题 → 广播到主窗口工具栏
+  ipcMain.on(IPC_CHANNELS.EXTENSIONS_ACTION_BADGE, (event, { id, patch }) => {
+    if (!id || !patch) return;
+    const badge = setExtensionBadge(id, patch);
+    const wm = getWM();
+    if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+      wm.mainWindow.webContents.send(IPC_CHANNELS.EXTENSIONS_ACTION_CHANGED, badge);
+    }
+  });
+
+  // 点击工具栏扩展图标（无 Popup 时）→ 触发扩展后台 onClicked
+  ipcMain.on(IPC_CHANNELS.EXTENSIONS_ACTION_CLICKED, (event, { id }) => {
+    if (!id) return;
+    triggerExtensionActionClicked(id);
+  });
+
+  // 打开/关闭扩展 Popup 覆盖层
+  ipcMain.on(IPC_CHANNELS.EXTENSIONS_ACTION_OPEN_POPUP, (event, payload) => {
+    const wm = getWM();
+    if (wm && wm.openExtensionPopup) wm.openExtensionPopup(payload || {});
+  });
+  ipcMain.on(IPC_CHANNELS.EXTENSIONS_ACTION_HIDE_POPUP, () => {
+    const wm = getWM();
+    if (wm && wm.hideExtensionPopup) wm.hideExtensionPopup();
+  });
+
+  // 检查视图（打开扩展后台页/选项页 DevTools，对齐 Edge）
+  ipcMain.on(IPC_CHANNELS.EXTENSIONS_INSPECT_VIEW, (event, { id, url }) => {
+    if (!id) return;
+    const wm = getWM();
+    const { webContents } = require('electron');
+    let target = findExtensionBackgroundWebContents(id);
+    if (url) {
+      target = webContents.getAllWebContents().find((wc) => {
+        const u = wc.getURL();
+        return u.includes(`chrome-extension://${id}/`) && url && u.includes(url);
+      }) || target;
+    }
+    if (target && !target.isDestroyed()) {
+      target.openDevTools({ mode: 'detach' });
+      return;
+    }
+    // 未找到后台页：尝试通过窗口管理器打开选项页/默认页面检查
+    if (wm && wm.openExtensionInspectView) wm.openExtensionInspectView(id);
+  });
+
+  // 触发扩展命令（由快捷键监听调用）
+  ipcMain.on(IPC_CHANNELS.EXTENSIONS_COMMANDS, (event, { id, name }) => {
+    if (!id || !name) return;
+    triggerExtensionCommand(id, name);
   });
 }
 

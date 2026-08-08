@@ -678,6 +678,66 @@ body {
   white-space: nowrap;
 }
 
+/* ==================== 验证码服务配置 ==================== */
+.verify-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+  max-width: 720px;
+}
+
+.verify-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.verify-label {
+  font-size: 13px;
+  color: var(--settings-muted);
+}
+
+.verify-field .settings-control {
+  max-width: none;
+  height: 34px;
+  font-size: 13px;
+}
+
+#section-verify input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--settings-accent);
+  cursor: pointer;
+}
+
+/* 授权码获取引导（可折叠） */
+.verify-help {
+  margin-top: 14px;
+  max-width: 720px;
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: var(--settings-sidebar-bg);
+}
+.verify-help summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--settings-accent);
+  outline: none;
+}
+.verify-help ol {
+  margin: 10px 0 2px 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--settings-text);
+}
+.verify-help b {
+  color: var(--settings-accent);
+}
+
 .startup-site-row__remove {
   display: inline-flex;
   align-items: center;

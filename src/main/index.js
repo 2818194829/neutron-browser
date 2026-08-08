@@ -102,6 +102,10 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   console.log('[Main] 应用即将退出，清理资源...');
+  try {
+    const { destroyMv3Backgrounds } = require('./extensionBridge');
+    destroyMv3Backgrounds();
+  } catch (e) { /* 忽略 */ }
   if (windowManager) {
     windowManager.cleanup();
   }

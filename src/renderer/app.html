@@ -83,14 +83,22 @@
           </svg>
           <span class="tool-btn__badge" id="downloadBadge" hidden></span>
         </button>
+        <button class="tool-btn tool-btn--bookmarks" id="btnBookmarks" title="收藏夹" aria-label="收藏夹" aria-haspopup="dialog" aria-expanded="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </button>
         <button class="tool-btn" id="btnHistory" title="历史记录" aria-label="历史记录">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </button>
+        <div class="toolbar__extension-icons" id="extensionToolbarIcons" style="display:none;"></div>
         <button class="tool-btn" id="btnExtensions" title="扩展程序" aria-label="扩展程序">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 0 0-.289-.877l-1.568-1.568A2.402 2.402 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.23 8.77c.24-.24.581-.353.917-.303.515.077.877.528 1.073 1.01a2.5 2.5 0 1 0 3.259-3.259c-.482-.196-.933-.558-1.01-1.073-.05-.336.062-.676.303-.917l1.525-1.525A2.402 2.402 0 0 1 12 1.998c.617 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02Z"/></svg>
         </button>
         <button class="tool-btn" id="btnSettings" title="设置" aria-label="设置">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <!-- 账户头像入口（地址栏右侧、窗口控制按钮左侧） -->
+        <button class="account-avatar" id="btnAccount" type="button" title="账户" aria-label="账户" aria-haspopup="menu" aria-expanded="false">
+          <!-- 头像内容由 JS 渲染：已登录=首字，未登录=灰色人形图标 -->
         </button>
       </div>
     </div>
@@ -122,6 +130,193 @@
           </svg>
           <span>获取Microsoft Edge扩展</span>
         </button>
+      </div>
+    </div>
+
+    <!-- ==================== 账户下拉菜单 ==================== -->
+    <div id="accountMenu" class="account-menu" role="menu" aria-label="账户菜单" hidden>
+      <div class="account-menu__header">
+        <div class="account-menu__avatar-lg" id="accountMenuAvatarLg">俊</div>
+        <div class="account-menu__name" id="accountMenuName">俊文</div>
+        <div class="account-menu__email" id="accountMenuEmail">2818...@qq.com</div>
+      </div>
+      <!-- 新建配置文件输入区（点击「设置新配置文件」展开） -->
+      <div class="account-menu__new-profile" id="accountNewProfile" hidden>
+        <input type="text" id="accountNewProfileInput" placeholder="输入配置文件名称" maxlength="20" spellcheck="false">
+        <div class="account-menu__new-profile-actions">
+          <button type="button" id="accountNewProfileCancel">取消</button>
+          <button type="button" id="accountNewProfileOk">创建</button>
+        </div>
+      </div>
+      <button class="account-menu__item" type="button" role="menuitem" data-action="passwords">密码和自动填充</button>
+      <button class="account-menu__item" type="button" role="menuitem" data-action="profile">个人资料设置</button>
+      <button class="account-menu__item" type="button" role="menuitem" data-action="sync"><span id="accountMenuSyncText">同步已启用</span></button>
+      <div class="account-menu__divider"></div>
+      <button class="account-menu__item" type="button" role="menuitem" data-action="new-profile">设置新配置文件</button>
+      <button class="account-menu__item" type="button" role="menuitem" data-action="guest">以访客身份浏览</button>
+      <div class="account-menu__divider"></div>
+      <button class="account-menu__item account-menu__item--danger" type="button" role="menuitem" data-action="logout">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        <span>退出账号</span>
+      </button>
+    </div>
+
+    <!-- ==================== 登录界面（未登录时显示） ==================== -->
+    <div id="accountLoginView" class="account-view" role="dialog" aria-label="登录" hidden>
+      <div class="account-view__header">
+        <button type="button" class="account-view__close" id="accountLoginClose" aria-label="关闭">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div class="account-view__logo">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </div>
+        <div class="account-view__title">登录 Neutron Browser</div>
+        <div class="account-view__subtitle">登录后同步书签、历史记录和设置</div>
+      </div>
+      <div class="account-view__body">
+        <!-- 登录方式切换 -->
+        <div class="account-view__tabs" role="tablist">
+          <button type="button" class="account-view__tab active" id="accountLoginTabPwd" role="tab" aria-selected="true">密码登录</button>
+          <button type="button" class="account-view__tab" id="accountLoginTabCode" role="tab" aria-selected="false">验证码登录</button>
+        </div>
+
+        <!-- 密码登录 -->
+        <div id="accountLoginPwdArea">
+          <div class="account-field">
+            <label class="account-field__label" for="accountLoginUsername">账号</label>
+            <input class="account-field__input" type="text" id="accountLoginUsername" placeholder="邮箱或手机号" autocomplete="username" spellcheck="false">
+          </div>
+          <div class="account-field">
+            <label class="account-field__label" for="accountLoginPassword">密码</label>
+            <div class="account-field__wrap">
+              <input class="account-field__input" type="password" id="accountLoginPassword" placeholder="请输入密码" autocomplete="current-password">
+              <button type="button" class="account-field__eye" id="accountLoginTogglePwd" title="显示密码" aria-label="显示密码">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="account-view__error" id="accountLoginError" hidden></div>
+          <button type="button" class="account-view__submit" id="accountLoginSubmit">登录</button>
+        </div>
+
+        <!-- 验证码登录 -->
+        <div id="accountLoginCodeArea" hidden>
+          <div class="account-field">
+            <label class="account-field__label" for="accountLoginPhone">手机号或邮箱</label>
+            <div class="account-field__wrap account-field__wrap--code">
+              <input class="account-field__input" type="text" id="accountLoginPhone" placeholder="请输入手机号或邮箱" spellcheck="false">
+              <button type="button" class="account-field__code" id="accountLoginSendCode">获取验证码</button>
+            </div>
+          </div>
+          <div class="account-field">
+            <label class="account-field__label" for="accountLoginCode">验证码</label>
+            <input class="account-field__input" type="text" id="accountLoginCode" placeholder="请输入 6 位验证码" maxlength="6" inputmode="numeric" spellcheck="false">
+          </div>
+          <div class="account-view__error" id="accountLoginCodeError" hidden></div>
+          <button type="button" class="account-view__submit" id="accountLoginCodeSubmit">登录</button>
+          <div class="account-view__links">
+            <button type="button" class="account-view__link" id="accountLoginMockCode">收不到验证码？使用本地模拟验证码</button>
+          </div>
+        </div>
+
+        <div class="account-view__links">
+          <button type="button" class="account-view__link" id="accountLoginForgot">忘记密码？</button>
+        </div>
+        <div class="account-view__footer">
+          <span class="account-view__footer-text">还没有账号？</span>
+          <button type="button" class="account-view__link account-view__link--strong" id="accountLoginGoRegister">注册账号</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 注册界面 ==================== -->
+    <div id="accountRegisterView" class="account-view" role="dialog" aria-label="注册" hidden>
+      <div class="account-view__header">
+        <button type="button" class="account-view__close" id="accountRegisterClose" aria-label="关闭">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div class="account-view__logo">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="account-view__title">注册账号</div>
+        <div class="account-view__subtitle">创建一个新的 Neutron Browser 账号</div>
+      </div>
+      <div class="account-view__body">
+        <div class="account-field">
+          <label class="account-field__label" for="accountRegisterNickname">昵称</label>
+          <input class="account-field__input" type="text" id="accountRegisterNickname" placeholder="请输入昵称" maxlength="20" spellcheck="false">
+        </div>
+        <div class="account-field">
+          <label class="account-field__label" for="accountRegisterPhone">手机号或邮箱</label>
+          <div class="account-field__wrap account-field__wrap--code">
+            <input class="account-field__input" type="text" id="accountRegisterPhone" placeholder="请输入手机号或邮箱" spellcheck="false">
+            <button type="button" class="account-field__code" id="accountRegisterSendCode">获取验证码</button>
+          </div>
+        </div>
+        <div class="account-field">
+          <label class="account-field__label" for="accountRegisterCode">验证码</label>
+          <input class="account-field__input" type="text" id="accountRegisterCode" placeholder="请输入 6 位验证码" maxlength="6" inputmode="numeric" spellcheck="false">
+        </div>
+        <div class="account-field">
+          <label class="account-field__label" for="accountRegisterPassword">密码</label>
+          <input class="account-field__input" type="password" id="accountRegisterPassword" placeholder="至少 6 位" autocomplete="new-password">
+        </div>
+        <div class="account-field">
+          <label class="account-field__label" for="accountRegisterPassword2">确认密码</label>
+          <input class="account-field__input" type="password" id="accountRegisterPassword2" placeholder="再次输入密码" autocomplete="new-password">
+        </div>
+        <div class="account-view__error" id="accountRegisterError" hidden></div>
+        <button type="button" class="account-view__submit" id="accountRegisterSubmit">注册</button>
+        <div class="account-view__links">
+          <button type="button" class="account-view__link" id="accountRegisterMockCode">不想配置？使用本地模拟验证码</button>
+        </div>
+        <div class="account-view__footer">
+          <span class="account-view__footer-text">已有账号？</span>
+          <button type="button" class="account-view__link account-view__link--strong" id="accountRegisterGoLogin">返回登录</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 忘记密码界面 ==================== -->
+    <div id="accountForgotView" class="account-view" role="dialog" aria-label="忘记密码" hidden>
+      <div class="account-view__header">
+        <button type="button" class="account-view__close" id="accountForgotClose" aria-label="关闭">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div class="account-view__logo">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <div class="account-view__title">忘记密码</div>
+        <div class="account-view__subtitle">通过手机号或邮箱验证码重置密码</div>
+      </div>
+      <div class="account-view__body">
+        <div class="account-field">
+          <label class="account-field__label" for="accountForgotPhone">手机号或邮箱</label>
+          <div class="account-field__wrap account-field__wrap--code">
+            <input class="account-field__input" type="text" id="accountForgotPhone" placeholder="请输入手机号或邮箱" spellcheck="false">
+            <button type="button" class="account-field__code" id="accountForgotSendCode">获取验证码</button>
+          </div>
+        </div>
+        <div class="account-field">
+          <label class="account-field__label" for="accountForgotCode">验证码</label>
+          <input class="account-field__input" type="text" id="accountForgotCode" placeholder="请输入 6 位验证码" maxlength="6" inputmode="numeric" spellcheck="false">
+        </div>
+        <div class="account-field">
+          <label class="account-field__label" for="accountForgotPassword">新密码</label>
+          <input class="account-field__input" type="password" id="accountForgotPassword" placeholder="至少 6 位">
+        </div>
+        <div class="account-field">
+          <label class="account-field__label" for="accountForgotPassword2">确认新密码</label>
+          <input class="account-field__input" type="password" id="accountForgotPassword2" placeholder="再次输入新密码">
+        </div>
+        <div class="account-view__error" id="accountForgotError" hidden></div>
+        <button type="button" class="account-view__submit" id="accountForgotSubmit">重置密码</button>
+        <div class="account-view__links">
+          <button type="button" class="account-view__link" id="accountForgotMockCode">不想配置？使用本地模拟验证码</button>
+        </div>
+        <div class="account-view__footer">
+          <button type="button" class="account-view__link account-view__link--strong" id="accountForgotGoLogin">返回登录</button>
+        </div>
       </div>
     </div>
 
@@ -186,6 +381,58 @@
         <button class="history-panel__tab" type="button" data-tab="devices">来自其他设备的标签页</button>
       </div>
       <div class="history-panel__list" id="historyList"></div>
+    </div>
+
+    <!-- ==================== 收藏夹悬浮面板 ==================== -->
+    <div id="bookmarksPanel" class="bookmarks-panel" role="dialog" aria-label="收藏夹" hidden>
+      <div class="bookmarks-panel__header">
+        <span class="bookmarks-panel__title">收藏夹</span>
+        <button class="bookmarks-panel__tool" id="btnBookmarkAdd" title="添加当前页面到收藏夹" aria-label="添加收藏">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/><line x1="12" y1="7" x2="12" y2="17"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
+        </button>
+        <button class="bookmarks-panel__tool" id="btnBookmarkNewFolder" title="新建文件夹" aria-label="新建文件夹">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+        </button>
+        <button class="bookmarks-panel__tool" id="btnBookmarksSearch" title="搜索收藏夹" aria-label="搜索收藏夹">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <div class="bookmarks-panel__more-wrap">
+          <button class="bookmarks-panel__tool" id="btnBookmarksMore" title="更多选项" aria-label="更多选项">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+          </button>
+          <div class="bookmarks-more-menu" id="bookmarksMoreMenu" hidden>
+            <button type="button" class="bookmarks-menu__item" id="btnBookmarksOpenPage">打开收藏夹页面</button>
+            <div class="bookmarks-menu__separator"></div>
+            <button type="button" class="bookmarks-menu__item" id="btnBookmarksAddCurrent">将此页添加到收藏夹</button>
+            <button type="button" class="bookmarks-menu__item" id="btnBookmarksAddOpen">将打开的页面添加到收藏夹</button>
+            <button type="button" class="bookmarks-menu__item" id="btnBookmarksAddFolder">添加文件夹</button>
+            <div class="bookmarks-menu__separator"></div>
+            <button type="button" class="bookmarks-menu__item" id="btnBookmarksImport">导入收藏夹</button>
+            <button type="button" class="bookmarks-menu__item" id="btnBookmarksExport">导出收藏夹</button>
+            <button type="button" class="bookmarks-menu__item" id="btnBookmarksRemoveDuplicates">删除重复的收藏夹</button>
+            <div class="bookmarks-menu__separator"></div>
+            <div class="bookmarks-menu__item bookmarks-menu__item--submenu" id="bookmarksBarSubmenuWrap">
+              <button type="button" class="bookmarks-menu__item" id="btnBookmarksBarToggle">
+                <span>显示收藏夹栏</span>
+                <svg class="bookmarks-menu__caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+              </button>
+              <div class="bookmarks-menu__submenu" id="bookmarksBarSubmenu" hidden>
+                <button type="button" class="bookmarks-menu__item" data-bookmark-bar="true">始终显示</button>
+                <button type="button" class="bookmarks-menu__item" data-bookmark-bar="false">从不显示</button>
+              </div>
+            </div>
+            <div class="bookmarks-menu__separator"></div>
+            <button type="button" class="bookmarks-menu__item" id="btnBookmarksHideButton">在工具栏中隐藏收藏夹按钮</button>
+          </div>
+        </div>
+        <button class="bookmarks-panel__tool bookmarks-panel__tool--pin" id="btnBookmarksPin" title="固定面板" aria-label="固定面板">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>
+        </button>
+      </div>
+      <div class="bookmarks-panel__search" id="bookmarksSearchWrap" hidden>
+        <input type="search" id="bookmarksSearch" placeholder="搜索收藏夹" spellcheck="false">
+      </div>
+      <div class="bookmarks-panel__list" id="bookmarksList"></div>
     </div>
 
     <!-- ==================== 书签栏 ==================== -->

@@ -193,6 +193,16 @@
                     <option value="false">隐藏</option>
                   </select>
                 </div>
+                <div class="appearance-row">
+                  <div class="appearance-row__text">
+                    <div class="appearance-row__name">显示收藏夹按钮</div>
+                    <div class="appearance-row__desc">在工具栏显示收藏夹（书签）按钮</div>
+                  </div>
+                  <select class="settings-control" id="showBookmarksButton">
+                    <option value="true">显示</option>
+                    <option value="false">隐藏</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -479,6 +489,7 @@
 
       document.getElementById('theme').value = settings.theme || 'system';
       document.getElementById('showBookmarkBar').value = String(settings.showBookmarkBar ?? true);
+      document.getElementById('showBookmarksButton').value = String(settings.showBookmarksButton ?? true);
       document.getElementById('searchEngine').value = settings.searchEngine || 'google';
       document.getElementById('askDownloadPath').value = String(settings.askDownloadPath ?? true);
 
@@ -674,6 +685,10 @@
 
     document.getElementById('showBookmarkBar').addEventListener('change', function() {
       saveSetting('showBookmarkBar', this.value === 'true');
+    });
+
+    document.getElementById('showBookmarksButton').addEventListener('change', function() {
+      saveSetting('showBookmarksButton', this.value === 'true');
     });
 
     document.getElementById('searchEngine').addEventListener('change', function() {

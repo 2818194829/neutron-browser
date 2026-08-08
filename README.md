@@ -2,11 +2,11 @@
 
 Neutron Browser 是一款基于 Electron 的现代 PC 级浏览器，支持多标签页、书签管理、历史记录、下载管理、扩展安装，以及接近 Edge 的网页右键菜单体验。
 
-当前版本：**1.8.2**
+当前版本：**1.10.0**
 
 GitHub：[https://github.com/2818194829/neutron-browser](https://github.com/2818194829/neutron-browser)
 
-Release：[v1.8.2](https://github.com/2818194829/neutron-browser/releases/tag/v1.8.2)
+Release：[v1.10.0](https://github.com/2818194829/neutron-browser/releases/tag/v1.10.0)
 
 ## 功能特性
 
@@ -46,12 +46,14 @@ Release：[v1.8.2](https://github.com/2818194829/neutron-browser/releases/tag/v1
 - 启用 / 禁用扩展
 - 卸载扩展
 - 重启后自动加载已启用扩展
+- 工具栏扩展图标 + 徽章 + Popup（对齐 Edge）
+- webRequest 真实拦截（广告拦截）、通知、Cookie、右键菜单 API 桥接
 
-> 说明：Electron 对 Chrome/Edge 扩展 API 的支持不是 100%，简单扩展可以正常工作，复杂扩展可能无法完整运行。
+> 说明：基于 Chromium 150 内核，对 Chrome/Edge 扩展 API 提供深度桥接（工具栏动作、webRequest 拦截、通知、Cookie、右键菜单、快捷键、检查视图等），简单扩展可完整运行，复杂扩展（依赖 MV3 Service Worker 等）可能受限。
 
 ## 技术栈
 
-- **Electron** ≥ v28
+- **Electron** v43（Chromium 150）
 - **原生 JavaScript**（ES2022+）
 - **HTML5 / CSS3**：Flexbox、Grid、CSS Variables
 - **electron-builder**：Windows NSIS 安装包
@@ -226,9 +228,19 @@ npm run build:win
 - Electron 对扩展 API 支持有限，复杂扩展可能无法使用
 - 暂不支持账户同步、密码管理器、自动更新
 - 暂不支持无痕模式
-- 暂不支持完整 Manifest V3 后台 Service Worker 生态
+- MV3 扩展后台通过模拟 Service Worker 支持，复杂 MV3 扩展仍可能存在兼容问题
 
 ## 版本记录
+
+### 1.10.0
+
+- **全新 TabSpace 新标签页**：玻璃拟态设计、实时大时钟 + 问候语、多引擎搜索（含语音 / 图片 / 建议）、快捷方式网格（拖拽排序）、待办 / 资讯 / 系统状态小组件、4 种壁纸（渐变 / 动态 / 每日一图 / 自定义）、右侧设置抽屉、实时天气
+- **扩展系统全面对齐 Edge**：工具栏图标 + 徽章 + Popup、webRequest 真实拦截（uBlock / ABP 生效）、notifications / cookies / contextMenus / bookmarks / history / commands / tabs / windows / scripting 真实桥接、MV3 Service Worker 模拟后台、uBlock 与 ABP 兼容修复
+- **Chromium 150 内核升级**：Electron 28 → 43，修复 Edge 商店不兼容问题
+- **账户系统**：登录 / 注册 / 验证码（本地模拟 + 官网后端 SMTP / Twilio）
+- **收藏夹**：工具栏收藏夹面板、导入 / 导出书签、删除重复收藏夹
+- **悬浮面板体验升级**：不打断视频播放、点击外部关闭、书签文件夹拖拽管理
+- **修复**：皮肤下弹出层按钮不可见、扩展 Polyfill 注入失效、下载状态不切换、书签文件夹悬浮窗等问题
 
 ### 1.8.2
 
