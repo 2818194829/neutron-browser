@@ -696,7 +696,9 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "微软雅黑", sans-serif;
   font-size: 13px;
   color: var(--text-primary);
-  background: var(--bg-primary);
+  /* 透明背景：窗口为透明无边框，由 .app 提供不透明背景 + 圆角，
+     四角微圆角处露出桌面（Win10 无原生圆角，需透明方案） */
+  background: transparent;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -733,6 +735,25 @@ svg {
   height: 100vh;
   width: 100vw;
   background: var(--bg-primary);
+  /* 四角微圆角：窗口透明，圆角处露出桌面 */
+  border-radius: 10px;
+  overflow: hidden;
+  /* 透明窗口无原生阴影，用极淡边框勾勒窗口边缘 */
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .app {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* 最大化时窗口贴满屏幕：直角、无边框、不透明背景兜底 */
+html.window-maximized body {
+  background: var(--bg-primary);
+}
+
+html.window-maximized .app {
+  border-radius: 0;
+  border-width: 0;
 }
 
 /* ==================== 标题栏 ==================== */
@@ -3001,6 +3022,10 @@ html.overlay-mode body {
 
 html.overlay-mode .app {
   background: transparent !important;
+  /* 覆盖层是透明 BrowserView：重置主窗口的圆角/边框/裁剪，避免影响面板阴影与定位 */
+  border-radius: 0 !important;
+  border-width: 0 !important;
+  overflow: visible !important;
 }
 
 html.overlay-mode #titleBar,

@@ -49,5 +49,5 @@
 - 修复启动时可能多开一个标签页的问题
 
 ### 📦 下载
-- Windows 安装包：`Neutron-Browser-Setup-1.10.0.exe`（约 77 MB）
+- Windows 安装包：`Neutron-Browser-Setup-1.10.0.exe`（约 100 MB）
 - 支持自动更新（应用内「设置 → 关于 → 检查更新」）

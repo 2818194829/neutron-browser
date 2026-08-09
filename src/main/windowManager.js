@@ -168,8 +168,9 @@ class WindowManager {
       minWidth: 600,
       minHeight: 400,
       frame: false,                    // 无边框窗口
-      resizable: true,                 // 允许调整大小
-      backgroundColor: '#1a1a2e',      // 背景色
+      transparent: true,               // 透明背景，配合 app.css 的 border-radius 实现四角微圆角（Win10 无原生圆角，仅透明方案可行）
+      resizable: true,                 // 允许调整大小（Chromium 自定义 WM_NCHITTEST，透明窗口边缘拖拽缩放正常）
+      backgroundColor: '#00000000',    // 透明背景色（#AARRGGBB；最大化时主进程会临时切为不透明）
       icon: nativeImage.createFromPath(APP_ICON_PATH),  // 窗口图标
       show: false,                     // 先不显示，等 ready-to-show
       webPreferences: {
@@ -209,12 +210,16 @@ class WindowManager {
     // 监听窗口状态变化
     this.mainWindow.on('maximize', () => {
       this.isMaximized = true;
+      // 最大化时窗口贴满屏幕：切为不透明背景，防止透明边缘露出桌面（渲染层同步去掉圆角）
+      try { this.mainWindow.setBackgroundColor('#1a1a2e'); } catch (e) { /* 忽略 */ }
       this.sendToRenderer(IPC_CHANNELS.WINDOW_STATE_CHANGED, { maximized: true });
       this.layoutViews(); // 最大化时调整页面布局
     });
 
     this.mainWindow.on('unmaximize', () => {
       this.isMaximized = false;
+      // 还原时恢复透明背景，重新显示四角微圆角
+      try { this.mainWindow.setBackgroundColor('#00000000'); } catch (e) { /* 忽略 */ }
       this.sendToRenderer(IPC_CHANNELS.WINDOW_STATE_CHANGED, { maximized: false });
       this.layoutViews(); // 还原时调整页面布局
     });

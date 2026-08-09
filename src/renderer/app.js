@@ -553,10 +553,29 @@
   });
 
   // ==================== 窗口控制 ====================
+  // 最大化时窗口直角铺满屏幕（去掉圆角/边框），还原时恢复微圆角
+  function applyWindowMaximizedClass(maximized) {
+    document.documentElement.classList.toggle('window-maximized', !!maximized);
+  }
+
   function bindWindowControls() {
     dom.btnMinimize.addEventListener('click', () => api.minimizeWindow());
     dom.btnMaximize.addEventListener('click', () => api.maximizeWindow());
     dom.btnClose.addEventListener('click', () => api.closeWindow());
+
+    // 初始化窗口最大化状态（用于圆角/直角切换）
+    if (api.isMaximized) {
+      api.isMaximized().then((m) => applyWindowMaximizedClass(m));
+    }
+
+    // 透明窗口不支持系统原生双击标题栏最大化，手动实现（标签/按钮上双击除外）
+    const dragRegion = document.querySelector('.title-bar__drag-region');
+    if (dragRegion) {
+      dragRegion.addEventListener('dblclick', (e) => {
+        if (e.target.closest('button, .tab, input, a, [role="tab"]')) return;
+        api.maximizeWindow();
+      });
+    }
 
     // 窗口置顶（图钉按钮）
     if (api.isAlwaysOnTop) {
@@ -4721,6 +4740,7 @@
     // 窗口状态更新
     const unsub3 = api.onWindowStateChanged((data) => {
       state.isMaximized = data.maximized;
+      applyWindowMaximizedClass(data.maximized);
       if (data.maximized) {
         dom.maximizeIcon.innerHTML = '<rect x="2" y="2" width="8" height="8" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="1" y="4" width="8" height="8" stroke="currentColor" stroke-width="1.5" fill="none"/>';
         dom.btnMaximize.title = '还原';

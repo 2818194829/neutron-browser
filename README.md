@@ -2,11 +2,11 @@
 
 Neutron Browser 是一款基于 Electron 的现代 PC 级浏览器，支持多标签页、书签管理、历史记录、下载管理、扩展安装，以及接近 Edge 的网页右键菜单体验。
 
-当前版本：**1.10.0**
+当前版本：**1.10.1**
 
 GitHub：[https://github.com/2818194829/neutron-browser](https://github.com/2818194829/neutron-browser)
 
-Release：[v1.10.0](https://github.com/2818194829/neutron-browser/releases/tag/v1.10.0)
+Release：[v1.10.1](https://github.com/2818194829/neutron-browser/releases/tag/v1.10.1)
 
 ## 功能特性
 
@@ -19,6 +19,7 @@ Release：[v1.10.0](https://github.com/2818194829/neutron-browser/releases/tag/v
 - **书签栏网站图标**：自动读取网站 favicon，失败时自动回退
 - **书签栏右键菜单**：打开、后台打开、编辑、删除、复制链接
 - **无边框窗口**：自定义标题栏、窗口控制按钮和窗口状态记忆
+- **窗口微圆角**：无边框窗口四角微圆角，最大化自动直角铺满屏幕
 - **Edge 风格主题系统**：7 种强调色 × 12 套主题皮肤（含花纹 / 动漫氛围）× 明暗模式，设置页可视化选择
 - **完整快捷键**：Chrome 风格快捷键
 - **窗口置顶**：标题栏图钉按钮，一键置顶 / 取消，状态持久化
@@ -104,7 +105,7 @@ npm run build:installer
 生成位置：
 
 ```text
-build\Neutron Browser Setup 1.8.2.exe
+build\Neutron Browser Setup 1.10.1.exe
 ```
 
 安装包支持：
@@ -231,6 +232,13 @@ npm run build:win
 - MV3 扩展后台通过模拟 Service Worker 支持，复杂 MV3 扩展仍可能存在兼容问题
 
 ## 版本记录
+
+### 1.10.1
+
+- **窗口四角微圆角**：无边框窗口四个直角改为微圆角，视觉效果更现代
+- **最大化自动直角**：窗口最大化时自动铺满屏幕并去除圆角，还原后恢复圆角
+- **双击标题栏最大化**：支持双击标题栏空白区域最大化 / 还原窗口
+- **细节优化**：透明窗口下用极淡描边勾勒窗口边缘，亮暗主题自适应
 
 ### 1.10.0
 
