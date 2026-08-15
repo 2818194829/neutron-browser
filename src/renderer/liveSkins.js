@@ -46,6 +46,11 @@ window.NeutronLiveSkins = function (opts) {
     ripple: createRipple,
     ember: createEmber,
     pixelrain: createPixelRain,
+    snow: createSnow,
+    rain: createRain,
+    fireflies: createFireflies,
+    clouds: createClouds,
+    comet: createComet,
   };
 
   function isLive(name) {
@@ -314,6 +319,225 @@ window.NeutronLiveSkins = function (opts) {
           grad.addColorStop(1, `hsla(${d.hue}, 95%, 74%, 0.95)`);
           ctx.fillStyle = grad;
           ctx.fillRect(x, endY - lenPx, cellW * 0.72, lenPx);
+        }
+        paintTopScrim();
+      },
+    };
+  }
+
+  // ---- 飘雪 ----
+  function createSnow() {
+    const N = Math.min(120, Math.max(50, Math.floor((width * height) / 12000)));
+    const flakes = [];
+    for (let i = 0; i < N; i++) {
+      flakes.push({
+        x: Math.random(),
+        y: Math.random(),
+        vy: 0.01 + Math.random() * 0.03,
+        drift: 0.004 + Math.random() * 0.012,
+        phase: Math.random() * Math.PI * 2,
+        r: 1 + Math.random() * 2.2,
+      });
+    }
+    return {
+      resize() {},
+      frame(t, dt) {
+        paintBase(theme === 'dark' ? '#0e1626' : '#1c2b45', theme === 'dark' ? '#0a101c' : '#141f36');
+        for (const f of flakes) {
+          f.y += f.vy * dt;
+          f.x += Math.sin(t * 0.8 + f.phase) * f.drift * dt;
+          if (f.y > 1.02) { f.y = -0.02; f.x = Math.random(); }
+          ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 1.5 + f.phase);
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(f.x * width, f.y * height, f.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        paintTopScrim();
+      },
+    };
+  }
+
+  // ---- 雨幕 ----
+  function createRain() {
+    const N = Math.min(140, Math.max(60, Math.floor(width / 8)));
+    const drops = [];
+    for (let i = 0; i < N; i++) {
+      drops.push({
+        x: Math.random(),
+        y: Math.random(),
+        len: 0.02 + Math.random() * 0.03,
+        speed: 0.5 + Math.random() * 0.5,
+        slant: (Math.random() - 0.5) * 0.02,
+      });
+    }
+    return {
+      resize() {},
+      frame(t, dt) {
+        paintBase(theme === 'dark' ? '#0a1118' : '#14222e', theme === 'dark' ? '#060b10' : '#0d161f');
+        ctx.lineWidth = 1;
+        for (const d of drops) {
+          d.y += d.speed * dt;
+          d.x += d.slant * dt;
+          if (d.y > 1.05) { d.y = -0.02; d.x = Math.random(); }
+          ctx.globalAlpha = 0.3 + 0.45 * Math.abs(Math.sin(t * 2 + d.x * 40));
+          ctx.strokeStyle = 'rgba(190, 210, 235, 0.6)';
+          ctx.beginPath();
+          ctx.moveTo(d.x * width, d.y * height);
+          ctx.lineTo(d.x * width - d.slant * 9, d.y * height - d.len * height);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        paintTopScrim();
+      },
+    };
+  }
+
+  // ---- 萤火虫 ----
+  function createFireflies() {
+    const N = Math.min(40, Math.max(20, Math.floor((width * height) / 30000)));
+    const flies = [];
+    for (let i = 0; i < N; i++) {
+      flies.push({
+        x: Math.random(),
+        y: 0.3 + Math.random() * 0.6,
+        vx: (Math.random() - 0.5) * 0.012,
+        vy: (Math.random() - 0.5) * 0.012,
+        r: 1 + Math.random() * 1.6,
+        hue: 50 + Math.random() * 40,
+        phase: Math.random() * Math.PI * 2,
+        tw: 0.5 + Math.random() * 0.5,
+      });
+    }
+    return {
+      resize() {},
+      frame(t, dt) {
+        paintBase(theme === 'dark' ? '#0b1526' : '#122038', theme === 'dark' ? '#050b16' : '#0a1224');
+        for (const f of flies) {
+          f.x += f.vx * dt;
+          f.y += f.vy * dt;
+          if (f.x < 0) f.x = 1; if (f.x > 1) f.x = 0;
+          if (f.y < 0) f.y = 1; if (f.y > 1) f.y = 0;
+          const glow = 0.5 + 0.5 * Math.sin(t * f.tw * 2 + f.phase);
+          const px = f.x * width;
+          const py = f.y * height;
+          const g = ctx.createRadialGradient(px, py, 0, px, py, f.r * 12);
+          g.addColorStop(0, `hsla(${f.hue}, 100%, 70%, ${0.5 * glow})`);
+          g.addColorStop(1, 'hsla(60, 100%, 60%, 0)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(px, py, f.r * 12, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = `hsla(${f.hue}, 100%, 85%, ${glow})`;
+          ctx.beginPath();
+          ctx.arc(px, py, f.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        paintTopScrim();
+      },
+    };
+  }
+
+  // ---- 云海 ----
+  function createClouds() {
+    const layers = [];
+    for (let i = 0; i < 4; i++) {
+      layers.push({
+        index: i,
+        speed: 0.02 + i * 0.012,
+        offset: Math.random() * 2,
+        alpha: 0.06 + i * 0.025,
+        hue: 205 + i * 18,
+      });
+    }
+    return {
+      resize() {},
+      frame(t) {
+        const h = height;
+        paintBase(theme === 'dark' ? '#0a0f1f' : '#16213a', theme === 'dark' ? '#131a2e' : '#26365c');
+        // 地平线暖光
+        const fg = ctx.createLinearGradient(0, h * 0.7, 0, h);
+        fg.addColorStop(0, 'rgba(255, 150, 80, 0)');
+        fg.addColorStop(1, theme === 'dark' ? 'rgba(255, 120, 60, 0.18)' : 'rgba(255, 140, 70, 0.22)');
+        ctx.fillStyle = fg;
+        ctx.fillRect(0, 0, width, h);
+        for (const L of layers) {
+          const y = h * (0.6 + L.index * 0.11);
+          const wave = (x) => (
+            y
+            + Math.sin(x * 0.006 * 8 * L.speed + t * L.speed + L.offset) * 14
+            + Math.sin(x * 0.013 - t * L.speed * 0.6 + L.offset) * 8
+          );
+          ctx.beginPath();
+          for (let x = 0; x <= width; x += 8) ctx.lineTo(x, wave(x));
+          ctx.strokeStyle = `hsla(${L.hue}, 60%, 70%, ${L.alpha})`;
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(0, h);
+          for (let x = 0; x <= width; x += 8) ctx.lineTo(x, wave(x));
+          ctx.lineTo(width, h);
+          ctx.closePath();
+          ctx.fillStyle = `hsla(${L.hue}, 50%, 60%, ${L.alpha * 0.4})`;
+          ctx.fill();
+        }
+        paintTopScrim();
+      },
+    };
+  }
+
+  // ---- 流星雨 ----
+  function createComet() {
+    const N = Math.min(160, Math.max(60, Math.floor((width * height) / 12000)));
+    const stars = [];
+    for (let i = 0; i < N; i++) {
+      stars.push({ x: Math.random(), y: Math.random(), r: 0.4 + Math.random() * 1.2, tw: Math.random() * Math.PI * 2 });
+    }
+    const comets = [];
+    let next = 1 + Math.random() * 4;
+    return {
+      resize() {},
+      frame(t, dt) {
+        paintBase(theme === 'dark' ? '#05060f' : '#0b0f22', theme === 'dark' ? '#0a0c18' : '#111530');
+        for (const s of stars) {
+          ctx.globalAlpha = 0.3 + 0.7 * Math.abs(Math.sin(t * 0.8 + s.tw));
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(s.x * width, s.y * height, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        next -= dt;
+        if (next <= 0 && comets.length < 2) {
+          comets.push({
+            x: Math.random() * 0.8,
+            y: Math.random() * 0.2,
+            vx: 0.25 + Math.random() * 0.2,
+            vy: 0.12 + Math.random() * 0.1,
+            life: 2,
+          });
+          next = 3 + Math.random() * 5;
+        }
+        for (let i = comets.length - 1; i >= 0; i--) {
+          const c = comets[i];
+          c.x += c.vx * dt;
+          c.y += c.vy * dt;
+          c.life -= dt;
+          if (c.life <= 0 || c.x > 1.2 || c.y > 0.9) { comets.splice(i, 1); continue; }
+          const px = c.x * width;
+          const py = c.y * height;
+          const tail = 0.12;
+          const g = ctx.createLinearGradient(px, py, px - c.vx * width * tail, py - c.vy * height * tail);
+          g.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+          g.addColorStop(0.3, 'rgba(180, 200, 255, 0.5)');
+          g.addColorStop(1, 'rgba(180, 200, 255, 0)');
+          ctx.strokeStyle = g;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(px - c.vx * width * tail, py - c.vy * height * tail);
+          ctx.stroke();
         }
         paintTopScrim();
       },

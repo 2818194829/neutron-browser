@@ -75,6 +75,11 @@
   --window-control-hover: rgba(0, 0, 0, 0.08);
   --window-control-close-hover: #ea4335;
 
+  /* chrome 图标前景：工具栏按钮/地址栏图标/窗口控件默认与 hover 颜色
+     （皮肤会覆盖 --text-*，若按钮直接引用 --text-* 会在部分皮肤下不可见） */
+  --chrome-fg: var(--text-secondary);
+  --chrome-fg-hover: var(--text-primary);
+
   /* 强调色聚焦光环（默认蓝色） */
   --accent-ring: rgba(26, 115, 232, 0.15);
 
@@ -136,6 +141,9 @@
   --modal-backdrop: rgba(0, 0, 0, 0.6);
 
   --window-control-hover: rgba(255, 255, 255, 0.1);
+
+  --chrome-fg: var(--text-secondary);
+  --chrome-fg-hover: var(--text-primary);
 
   --accent-ring: rgba(138, 180, 248, 0.25);
 
@@ -694,7 +702,12 @@
 [data-skin="nebula"],
 [data-skin="ripple"],
 [data-skin="ember"],
-[data-skin="pixelrain"] {
+[data-skin="pixelrain"],
+[data-skin="snow"],
+[data-skin="rain"],
+[data-skin="fireflies"],
+[data-skin="clouds"],
+[data-skin="comet"] {
   --titlebar-bg: transparent;
   --toolbar-bg: transparent;
   --bookmark-bar-bg: transparent;
@@ -727,6 +740,11 @@
 }
 html.skin-live .skin-canvas {
   display: block;
+}
+
+/* 所有非默认皮肤：chrome 图标按钮 hover 统一白色，保证在彩色/深色色带上始终清晰 */
+[data-skin]:not([data-skin="default"]) {
+  --chrome-fg-hover: #ffffff;
 }
 
 /* ==================== 全局重置 ==================== */
@@ -848,13 +866,13 @@ html.window-maximized .app {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
+  color: var(--chrome-fg);
   transition: background 0.15s, color 0.15s;
 }
 
 .window-control:hover {
   background: var(--window-control-hover);
-  color: var(--text-primary);
+  color: var(--chrome-fg-hover);
 }
 
 .window-control--close:hover {
@@ -1269,13 +1287,13 @@ html.window-maximized .app {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
+  color: var(--chrome-fg);
   transition: background 0.15s, color 0.15s;
 }
 
 .nav-btn:hover:not(:disabled) {
   background: var(--bg-hover);
-  color: var(--text-primary);
+  color: var(--chrome-fg-hover);
 }
 
 .nav-btn:disabled {
@@ -1315,7 +1333,7 @@ html.window-maximized .app {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--text-secondary);
+  color: var(--chrome-fg);
 }
 
 .address-bar__security--secure {
@@ -1379,7 +1397,7 @@ html.window-maximized .app {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--text-secondary);
+  color: var(--chrome-fg);
   transition: background 0.15s, color 0.15s;
 }
 
@@ -1407,17 +1425,17 @@ html.window-maximized .app {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
+  color: var(--chrome-fg);
   transition: background 0.15s, color 0.15s;
 }
 
 .tool-btn:hover {
   background: var(--bg-hover);
-  color: var(--text-primary);
+  color: var(--chrome-fg-hover);
 }
 
 .tool-btn--active {
-  background: var(--bg-hover);
+  background: var(--bg-active);
   color: var(--accent-primary);
 }
 
