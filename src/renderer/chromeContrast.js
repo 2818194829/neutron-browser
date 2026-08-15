@@ -155,11 +155,13 @@ window.NeutronChromeContrast = function (opts) {
     // 精确判断动态皮肤：只有整个值恰为 transparent（花纹皮肤的渐变里含 transparent 关键字，勿误判）
     const isLive = toolbarBg === 'transparent' && titlebarBg === 'transparent';
     if (isLive) {
-      // 动态皮肤：chrome 栏有固定暗色压暗层 + 按钮暗色玻璃衬底，前景固定白色即可。
-      // 不再像素采样——动画高亮局部（极光加色混合/萤火辉光/流星拖尾）会误导平均值，
-      // 且采样有 1.5s 周期延迟，刚切换时按钮颜色滞后。
-      document.documentElement.style.setProperty('--chrome-fg', '#ffffff');
-      document.documentElement.style.setProperty('--chrome-fg-hover', '#ffffff');
+      // 动态皮肤按钮前景跟随明暗主题：深色主题用浅色按钮，浅色主题用深色按钮。
+      // 不按动画像素采样，避免高亮局部误导平均值和 1.5s 切换延迟。
+      const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark';
+      const fg = isDarkTheme ? '#ffffff' : '#202124';
+      document.documentElement.style.setProperty('--chrome-fg', fg);
+      document.documentElement.style.setProperty('--chrome-fg-hover', fg);
+      // 标签标题/地址栏/状态栏仍保持白色文字，动态画布本身仍是深色底。
       document.documentElement.style.setProperty('--chrome-text', '#ffffff');
       document.documentElement.style.setProperty('--statusbar-fg', 'rgba(255, 255, 255, 0.8)');
       document.documentElement.style.setProperty('--address-bar-fg', '#ffffff');

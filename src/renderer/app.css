@@ -87,10 +87,10 @@
   /* 状态栏文字：chromeContrast.js 按状态栏背景自适应 */
   --statusbar-fg: var(--text-tertiary);
 
-  /* chrome 图标按钮衬底：默认透明；动态皮肤下为暗色玻璃芯片——
-     图标始终坐在衬底上，动画高亮局部（极光/萤火/流星）不会吞掉图标 */
-  --chrome-btn-bg: transparent;
-  --chrome-btn-hover-bg: var(--bg-hover, rgba(0, 0, 0, 0.08));
+  /* chrome 图标按钮圆形浅白底纹：所有按钮统一白色玻璃圆底——
+     浅色主题配深色图标，深色主题配浅色图标（暗色主题另有覆盖），均清晰可见 */
+  --chrome-btn-bg: rgba(255, 255, 255, 0.68);
+  --chrome-btn-hover-bg: rgba(255, 255, 255, 0.94);
 
   /* 强调色聚焦光环（默认蓝色） */
   --accent-ring: rgba(26, 115, 232, 0.15);
@@ -153,6 +153,10 @@
   --modal-backdrop: rgba(0, 0, 0, 0.6);
 
   --window-control-hover: rgba(255, 255, 255, 0.1);
+
+  /* 深色主题：按钮浅白底纹用低透明度，白色/浅灰图标依然清晰 */
+  --chrome-btn-bg: rgba(255, 255, 255, 0.14);
+  --chrome-btn-hover-bg: rgba(255, 255, 255, 0.26);
 
   --chrome-fg: var(--text-secondary);
   --chrome-fg-hover: var(--text-primary);
@@ -742,11 +746,6 @@
   --bg-hover: rgba(255, 255, 255, 0.16);
   --bg-active: rgba(255, 255, 255, 0.26);
   --border-color: rgba(255, 255, 255, 0.2);
-
-  /* 按钮常驻暗色玻璃芯片：图标永不直接坐在动画上，任何亮度都清晰
-     （白色图标 × 暗色衬底 = 高对比；hover 时芯片加深） */
-  --chrome-btn-bg: rgba(0, 0, 0, 0.34);
-  --chrome-btn-hover-bg: rgba(0, 0, 0, 0.58);
 }
 
 /* 动态皮肤画布：位于 chrome 栏之下（z-index 0），不拦截鼠标 */
@@ -763,9 +762,25 @@ html.skin-live .skin-canvas {
   display: block;
 }
 
-/* 所有非默认皮肤：chrome 图标按钮 hover 统一白色，保证在彩色/深色色带上始终清晰 */
+/* 所有非默认皮肤：chrome 图标按钮 hover 默认白色；浅色主题会在下方覆盖为深色按钮 */
 [data-skin]:not([data-skin="default"]) {
   --chrome-fg-hover: #ffffff;
+}
+
+/* 动态皮肤跟随明暗主题：深色主题用浅色按钮，浅色主题用深色按钮
+   （按钮圆形浅白底纹由主题变量提供：浅色主题近白圆底，深色主题半透明白圆底） */
+[data-theme="light"][data-skin="aurora"],
+[data-theme="light"][data-skin="nebula"],
+[data-theme="light"][data-skin="ripple"],
+[data-theme="light"][data-skin="ember"],
+[data-theme="light"][data-skin="pixelrain"],
+[data-theme="light"][data-skin="snow"],
+[data-theme="light"][data-skin="rain"],
+[data-theme="light"][data-skin="fireflies"],
+[data-theme="light"][data-skin="clouds"],
+[data-theme="light"][data-skin="comet"] {
+  --chrome-fg: #202124;
+  --chrome-fg-hover: #202124;
 }
 
 /* ==================== 全局重置 ==================== */

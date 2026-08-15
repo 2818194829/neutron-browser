@@ -70,7 +70,7 @@ window.NeutronLiveSkins = function (opts) {
   function paintTopScrim() {
     // 顶部：覆盖标题栏 + 工具栏 + 书签栏
     const g = ctx.createLinearGradient(0, 0, 0, height * 0.45);
-    g.addColorStop(0, 'rgba(0, 0, 0, 0.48)');
+    g.addColorStop(0, 'rgba(0, 0, 0, 0.55)');
     g.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, width, height * 0.45);
