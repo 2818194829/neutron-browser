@@ -155,11 +155,15 @@ window.NeutronChromeContrast = function (opts) {
     // 精确判断动态皮肤：只有整个值恰为 transparent（花纹皮肤的渐变里含 transparent 关键字，勿误判）
     const isLive = toolbarBg === 'transparent' && titlebarBg === 'transparent';
     if (isLive) {
-      chromeRgb = sampleCanvas();
-      if (!chromeRgb) {
-        // 画布尚未绘制第一帧：保持 CSS 默认（动态皮肤为白色前景），不强行覆盖
-        return;
-      }
+      // 动态皮肤：chrome 栏有固定暗色压暗层 + 按钮暗色玻璃衬底，前景固定白色即可。
+      // 不再像素采样——动画高亮局部（极光加色混合/萤火辉光/流星拖尾）会误导平均值，
+      // 且采样有 1.5s 周期延迟，刚切换时按钮颜色滞后。
+      document.documentElement.style.setProperty('--chrome-fg', '#ffffff');
+      document.documentElement.style.setProperty('--chrome-fg-hover', '#ffffff');
+      document.documentElement.style.setProperty('--chrome-text', '#ffffff');
+      document.documentElement.style.setProperty('--statusbar-fg', 'rgba(255, 255, 255, 0.8)');
+      document.documentElement.style.setProperty('--address-bar-fg', '#ffffff');
+      return;
     } else {
       // 工具栏与标题栏代表色取平均：单看其一会在边界色（如薄荷）上误判
       const repT = representativeColor(toolbarBg);

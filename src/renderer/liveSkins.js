@@ -66,13 +66,21 @@ window.NeutronLiveSkins = function (opts) {
     ctx.fillRect(0, 0, width, height);
   }
 
-  /** 顶部压暗：保证 chrome 文字在动画上可读 */
+  /** 顶部 + 底部压暗：保证 chrome 栏文字/图标在动画上可读 */
   function paintTopScrim() {
+    // 顶部：覆盖标题栏 + 工具栏 + 书签栏
     const g = ctx.createLinearGradient(0, 0, 0, height * 0.45);
-    g.addColorStop(0, 'rgba(0, 0, 0, 0.42)');
+    g.addColorStop(0, 'rgba(0, 0, 0, 0.48)');
     g.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, width, height * 0.45);
+    // 底部：覆盖状态栏（余烬火光等亮元素常在底部）
+    const bandH = Math.min(height * 0.09, 52);
+    const b = ctx.createLinearGradient(0, height - bandH, 0, height);
+    b.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    b.addColorStop(1, 'rgba(0, 0, 0, 0.42)');
+    ctx.fillStyle = b;
+    ctx.fillRect(0, height - bandH, width, bandH);
   }
 
   // ---- 极光 ----

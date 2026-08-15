@@ -87,6 +87,11 @@
   /* 状态栏文字：chromeContrast.js 按状态栏背景自适应 */
   --statusbar-fg: var(--text-tertiary);
 
+  /* chrome 图标按钮衬底：默认透明；动态皮肤下为暗色玻璃芯片——
+     图标始终坐在衬底上，动画高亮局部（极光/萤火/流星）不会吞掉图标 */
+  --chrome-btn-bg: transparent;
+  --chrome-btn-hover-bg: var(--bg-hover, rgba(0, 0, 0, 0.08));
+
   /* 强调色聚焦光环（默认蓝色） */
   --accent-ring: rgba(26, 115, 232, 0.15);
 
@@ -737,6 +742,11 @@
   --bg-hover: rgba(255, 255, 255, 0.16);
   --bg-active: rgba(255, 255, 255, 0.26);
   --border-color: rgba(255, 255, 255, 0.2);
+
+  /* 按钮常驻暗色玻璃芯片：图标永不直接坐在动画上，任何亮度都清晰
+     （白色图标 × 暗色衬底 = 高对比；hover 时芯片加深） */
+  --chrome-btn-bg: rgba(0, 0, 0, 0.34);
+  --chrome-btn-hover-bg: rgba(0, 0, 0, 0.58);
 }
 
 /* 动态皮肤画布：位于 chrome 栏之下（z-index 0），不拦截鼠标 */
@@ -878,11 +888,12 @@ html.window-maximized .app {
   align-items: center;
   justify-content: center;
   color: var(--chrome-fg);
+  background: var(--chrome-btn-bg);
   transition: background 0.15s, color 0.15s;
 }
 
 .window-control:hover {
-  background: var(--window-control-hover);
+  background: var(--chrome-btn-hover-bg);
   color: var(--chrome-fg-hover);
 }
 
@@ -1035,6 +1046,7 @@ html.window-maximized .app {
   font-size: 12px;
   line-height: 1;
   color: var(--chrome-fg);
+  background: var(--chrome-btn-bg);
 }
 
 .tab:hover .tab__close,
@@ -1043,7 +1055,7 @@ html.window-maximized .app {
 }
 
 .tab__close:hover {
-  background: var(--bg-active);
+  background: var(--chrome-btn-hover-bg);
   color: var(--chrome-fg-hover);
 }
 
@@ -1058,13 +1070,14 @@ html.window-maximized .app {
   cursor: pointer;
   flex-shrink: 0;
   color: var(--chrome-fg);
+  background: var(--chrome-btn-bg);
   transition: background 0.15s;
   -webkit-app-region: no-drag;
   margin-left: 4px;
 }
 
 .tab-new:hover {
-  background: var(--bg-hover);
+  background: var(--chrome-btn-hover-bg);
   color: var(--chrome-fg-hover);
 }
 
@@ -1300,11 +1313,12 @@ html.window-maximized .app {
   align-items: center;
   justify-content: center;
   color: var(--chrome-fg);
+  background: var(--chrome-btn-bg);
   transition: background 0.15s, color 0.15s;
 }
 
 .nav-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
+  background: var(--chrome-btn-hover-bg);
   color: var(--chrome-fg-hover);
 }
 
@@ -1438,11 +1452,12 @@ html.window-maximized .app {
   align-items: center;
   justify-content: center;
   color: var(--chrome-fg);
+  background: var(--chrome-btn-bg);
   transition: background 0.15s, color 0.15s;
 }
 
 .tool-btn:hover {
-  background: var(--bg-hover);
+  background: var(--chrome-btn-hover-bg);
   color: var(--chrome-fg-hover);
 }
 
@@ -1469,7 +1484,7 @@ html.window-maximized .app {
   height: 28px;
   border: 0;
   border-radius: 50%;
-  background: transparent;
+  background: var(--chrome-btn-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1479,7 +1494,7 @@ html.window-maximized .app {
 }
 
 .ext-tool-btn:hover {
-  background: var(--bg-hover);
+  background: var(--chrome-btn-hover-bg);
 }
 
 .ext-tool-btn__icon {
