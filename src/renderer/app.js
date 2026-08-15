@@ -590,6 +590,11 @@
       liveSkinsApi.setSkin(state.themeSkin || 'default');
       liveSkinsApi.setTheme(resolveTheme(state.theme));
     }
+    // chrome 按钮前景自适应：按背景亮度自动选黑/白（浅色花纹皮肤下白按钮不可见的老问题）
+    if (chromeContrastApi) {
+      chromeContrastApi.setLive(!!(liveSkinsApi && liveSkinsApi.isLive(state.themeSkin || 'default')));
+      chromeContrastApi.refresh();
+    }
   }
 
   // 监听系统主题变化
@@ -2193,6 +2198,15 @@
     liveSkinsApi.init();
     liveSkinsApi.setSkin(state.themeSkin || 'default');
     liveSkinsApi.setTheme(resolveTheme(state.theme));
+  }
+
+  // ==================== chrome 按钮前景自适应（已抽离到 chromeContrast.js） ====================
+  // 按 chrome 背景亮度自动计算黑/白按钮前景，解决浅色皮肤下白按钮不可见问题
+  const chromeContrastApi = !IS_OVERLAY && window.NeutronChromeContrast
+    ? window.NeutronChromeContrast({ canvas: dom.skinCanvas })
+    : null;
+  if (chromeContrastApi) {
+    chromeContrastApi.refresh();
   }
 
   // ==================== 启动 ====================

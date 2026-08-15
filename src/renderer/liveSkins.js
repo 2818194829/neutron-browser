@@ -652,5 +652,5 @@ window.NeutronLiveSkins = function (opts) {
     window.removeEventListener('mouseleave', onMouseLeave);
   }
 
-  return { init, setSkin, setTheme, destroy };
+  return { init, setSkin, setTheme, destroy, isLive };
 };

@@ -75,10 +75,13 @@
   --window-control-hover: rgba(0, 0, 0, 0.08);
   --window-control-close-hover: #ea4335;
 
-  /* chrome 图标前景：工具栏按钮/地址栏图标/窗口控件默认与 hover 颜色
-     （皮肤会覆盖 --text-*，若按钮直接引用 --text-* 会在部分皮肤下不可见） */
+  /* chrome 图标前景：工具栏按钮/窗口控件默认与 hover 颜色
+     （chromeContrast.js 会根据背景亮度自适应覆盖为黑/白） */
   --chrome-fg: var(--text-secondary);
   --chrome-fg-hover: var(--text-primary);
+  /* 地址栏内部图标前景：默认与 chrome 图标一致，
+     chromeContrast.js 按地址栏自身背景自适应覆盖 */
+  --address-bar-fg: var(--chrome-fg);
 
   /* 强调色聚焦光环（默认蓝色） */
   --accent-ring: rgba(26, 115, 232, 0.15);
@@ -144,6 +147,7 @@
 
   --chrome-fg: var(--text-secondary);
   --chrome-fg-hover: var(--text-primary);
+  --address-bar-fg: var(--chrome-fg);
 
   --accent-ring: rgba(138, 180, 248, 0.25);
 
@@ -1335,7 +1339,7 @@ html.window-maximized .app {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--chrome-fg);
+  color: var(--address-bar-fg);
 }
 
 .address-bar__security--secure {
@@ -1399,7 +1403,7 @@ html.window-maximized .app {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--chrome-fg);
+  color: var(--address-bar-fg);
   transition: background 0.15s, color 0.15s;
 }
 
