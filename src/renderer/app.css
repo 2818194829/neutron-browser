@@ -683,6 +683,52 @@
   --text-primary: #ffffff;
 }
 
+/* ============================================================
+   沉浸式动态皮肤（Live Skins，data-skin 扩展）
+   由 liveSkins.js 的 Canvas 实时绘制动画背景：
+   - chrome 栏（标题栏/工具栏/书签栏/状态栏）背景透明，透出下方画布
+   - 所有动态皮肤均为深色底 + 白色文字，保证可读性
+   - 内容区被原生 BrowserView 覆盖，画布仅在 chrome 区域可见
+   ============================================================ */
+[data-skin="aurora"],
+[data-skin="nebula"],
+[data-skin="ripple"],
+[data-skin="ember"],
+[data-skin="pixelrain"] {
+  --titlebar-bg: transparent;
+  --toolbar-bg: transparent;
+  --bookmark-bar-bg: transparent;
+  --statusbar-bg: transparent;
+  --bookmark-folder-color: rgba(255, 255, 255, 0.95);
+  --tab-bg: rgba(0, 0, 0, 0.26);
+  --tab-hover-bg: rgba(255, 255, 255, 0.16);
+  --tab-active-bg: rgba(255, 255, 255, 0.26);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.92);
+  --text-tertiary: rgba(255, 255, 255, 0.74);
+  --address-bar-bg: rgba(0, 0, 0, 0.4);
+  --address-bar-focus-bg: rgba(0, 0, 0, 0.6);
+  --address-bar-focus-border: var(--accent-primary);
+  --window-control-hover: rgba(255, 255, 255, 0.16);
+  --bg-hover: rgba(255, 255, 255, 0.16);
+  --bg-active: rgba(255, 255, 255, 0.26);
+  --border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* 动态皮肤画布：位于 chrome 栏之下（z-index 0），不拦截鼠标 */
+.skin-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  display: none;
+}
+html.skin-live .skin-canvas {
+  display: block;
+}
+
 /* ==================== 全局重置 ==================== */
 *, *::before, *::after {
   margin: 0;
@@ -735,6 +781,8 @@ svg {
   flex-direction: column;
   height: 100vh;
   width: 100vw;
+  /* 作为动态皮肤画布等绝对定位子元素的包含块（画布需被圆角裁剪） */
+  position: relative;
   background: var(--bg-primary);
   /* 四角微圆角：窗口透明，圆角处露出桌面 */
   border-radius: 10px;

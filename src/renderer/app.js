@@ -65,6 +65,7 @@
     btnExtensions: $('#btnExtensions'),
     extensionToolbarIcons: $('#extensionToolbarIcons'),
     extensionPopup: $('#extensionPopup'),
+    skinCanvas: $('#skinCanvas'),
     extensionSiteLabel: $('#extensionSiteLabel'),
     extensionSiteToggle: $('#extensionSiteToggle'),
     extensionList: $('#extensionList'),
@@ -584,12 +585,18 @@
     document.documentElement.setAttribute('data-theme', resolveTheme(state.theme));
     document.documentElement.setAttribute('data-accent', state.accentColor || 'blue');
     document.documentElement.setAttribute('data-skin', state.themeSkin || 'default');
+    // 沉浸式动态皮肤：跟随皮肤/主题切换动画
+    if (liveSkinsApi) {
+      liveSkinsApi.setSkin(state.themeSkin || 'default');
+      liveSkinsApi.setTheme(resolveTheme(state.theme));
+    }
   }
 
   // 监听系统主题变化
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
     if (state.theme === 'system') {
       document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+      if (liveSkinsApi) liveSkinsApi.setTheme(e.matches ? 'dark' : 'light');
     }
   });
 
@@ -2176,6 +2183,17 @@
     closeBookmarkFolderPopup,
   });
   function handleMenuEvent(data) { return menuEventsApi.handleMenuEvent(data); }
+
+  // ==================== 沉浸式动态皮肤（已抽离到 liveSkins.js） ====================
+  // 仅主窗口启用（覆盖层内无需动画）；皮肤/主题变化由 applyAppearance 驱动
+  const liveSkinsApi = !IS_OVERLAY && window.NeutronLiveSkins
+    ? window.NeutronLiveSkins({ canvas: dom.skinCanvas })
+    : null;
+  if (liveSkinsApi) {
+    liveSkinsApi.init();
+    liveSkinsApi.setSkin(state.themeSkin || 'default');
+    liveSkinsApi.setTheme(resolveTheme(state.theme));
+  }
 
   // ==================== 启动 ====================
   document.addEventListener('DOMContentLoaded', init);

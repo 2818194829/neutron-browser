@@ -418,6 +418,54 @@ body {
     linear-gradient(160deg, #ff9a9e, #ffd1a1 45%, #a18cd1);
 }
 
+/* 沉浸式动态皮肤（Live Skins）预览：静态近似色，实际效果为 Canvas 实时动画 */
+.skin-card__preview--aurora {
+  background-image:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.35), transparent 60%),
+    linear-gradient(115deg, #00e5a0 0%, #4fc3f7 35%, #9575cd 75%, #0e1a3a 100%);
+}
+
+.skin-card__preview--nebula {
+  background-image:
+    radial-gradient(2px 2px at 20% 30%, rgba(255, 255, 255, 0.95) 50%, transparent 51%),
+    radial-gradient(2px 2px at 45% 65%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
+    radial-gradient(2px 2px at 70% 35%, rgba(255, 255, 255, 0.85) 50%, transparent 51%),
+    radial-gradient(ellipse 60% 55% at 30% 40%, rgba(120, 140, 255, 0.4) 0%, transparent 70%),
+    linear-gradient(160deg, #151d3d, #070a18);
+}
+
+.skin-card__preview--ripple {
+  background-image:
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0 2px, transparent 2px 9px),
+    linear-gradient(160deg, #0d3a52, #061722);
+}
+
+.skin-card__preview--ember {
+  background-image:
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(255, 120, 30, 0.6) 0%, transparent 70%),
+    linear-gradient(160deg, #241008, #33160a);
+}
+
+.skin-card__preview--pixelrain {
+  background-image:
+    repeating-linear-gradient(90deg, transparent 0 8px, rgba(0, 255, 170, 0.35) 8px 10px),
+    repeating-linear-gradient(0deg, transparent 0 6px, rgba(0, 200, 150, 0.3) 6px 8px),
+    linear-gradient(160deg, #07271a, #020a06);
+}
+
+/* 动态皮肤「动态」角标 */
+.skin-card__live {
+  font-style: normal;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--settings-accent, #1a73e8);
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 3px;
+  margin-left: 4px;
+  vertical-align: 1px;
+}
+
 .skin-card__name {
   font-size: 12px;
   line-height: 16px;

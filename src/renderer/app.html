@@ -13,6 +13,9 @@
   <!-- ==================== 主容器 ==================== -->
   <div id="app" class="app">
 
+    <!-- 沉浸式动态皮肤画布（Live Skins）：位于 chrome 栏之下，开启动态皮肤时显示 -->
+    <canvas id="skinCanvas" class="skin-canvas" aria-hidden="true"></canvas>
+
     <!-- ==================== 标题栏 ==================== -->
     <div id="titleBar" class="title-bar">
       <div class="title-bar__drag-region">
@@ -591,6 +594,7 @@
   <script src="ipcListeners.js"></script>
   <script src="historyPanel.js"></script>
   <script src="downloadPanel.js"></script>
+  <script src="liveSkins.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
