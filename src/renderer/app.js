@@ -602,6 +602,14 @@
     if (state.theme === 'system') {
       document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
       if (liveSkinsApi) liveSkinsApi.setTheme(e.matches ? 'dark' : 'light');
+      // ⚠️ 自适应前景也必须刷新：chromeContrast 用内联变量覆盖颜色，
+      // 优先级高于样式表——不刷新的话系统切暗色后按钮仍是旧深色（规则失效的根因）
+      if (chromeContrastApi) {
+        chromeContrastApi.refresh();
+        // 动态皮肤画布需一帧按新主题重绘，延迟再采样一次
+        const isLive = !!(liveSkinsApi && liveSkinsApi.isLive(state.themeSkin || 'default'));
+        if (isLive) setTimeout(() => chromeContrastApi.refresh(), 200);
+      }
     }
   });
 
