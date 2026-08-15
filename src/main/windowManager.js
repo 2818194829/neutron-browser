@@ -19,6 +19,12 @@ const EXT_POPUP_SIZE = { width: 380, height: 500 };
 const EXT_POPUP_HIDDEN_X = -2000;
 const EXT_POPUP_HIDDEN_Y = -2000;
 
+// 悬浮面板覆盖层（下载/历史/收藏夹/扩展列表/账户等）隐藏位置：
+// 与扩展 Popup 同理——视图常驻附加，隐藏时移到屏幕外保持尺寸，
+// 避免 add/removeBrowserView 与尺寸跳变导致的整窗重合成频闪
+const PANEL_HIDDEN_X = -3000;
+const PANEL_HIDDEN_Y = -3000;
+
 // ==================== Edge 商店兼容性（动态生成，与真实内核版本一致） ====================
 // 写死旧版本号会导致商店判定"与你的浏览器不兼容"：
 // 1) UA/客户端提示版本过旧；2) 与 Chromium 自动发送的真实 Sec-CH-UA-Full-Version-List 不一致。
@@ -1353,7 +1359,14 @@ class WindowManager {
    * @returns {Electron.BrowserView}
    */
   ensurePanelOverlayView() {
-    if (this.panelOverlayView) return this.panelOverlayView;
+    // 视图可能已销毁（webContents 崩溃后引用残留）→ 清理引用并重建
+    if (this.panelOverlayView) {
+      if (this.panelOverlayView.webContents && !this.panelOverlayView.webContents.isDestroyed()) {
+        return this.panelOverlayView;
+      }
+      try { this.mainWindow.removeBrowserView(this.panelOverlayView); } catch (e) { /* 忽略 */ }
+      this.panelOverlayView = null;
+    }
     const overlay = new BrowserView({
       webPreferences: {
         preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
@@ -1368,6 +1381,12 @@ class WindowManager {
       overlay.setBackgroundColor('#00000000');
     } catch (e) { /* 忽略 */ }
     this.panelOverlayView = overlay;
+    // 视图常驻附加：add 一次后不再 remove（避免每次开/关面板整窗重合成频闪），
+    // 初始移到屏幕外保持隐藏
+    try {
+      this.mainWindow.addBrowserView(overlay);
+      overlay.setBounds({ x: PANEL_HIDDEN_X, y: PANEL_HIDDEN_Y, width: 1, height: 1 });
+    } catch (e) { /* 忽略 */ }
     overlay.webContents.on('did-finish-load', () => {
       this.sendPanelOverlayAnchor();
     });
@@ -1435,17 +1454,33 @@ class WindowManager {
     // 面板与扩展 Popup 互斥
     this.hideExtensionPopup();
     const overlay = this.ensurePanelOverlayView();
+    if (!overlay || overlay.webContents.isDestroyed()) return;
     this.panelOverlayType = type;
     this.panelOverlayAnchor = (payload && payload.anchor) || null;
 
-    this.mainWindow.addBrowserView(overlay);
-    this.mainWindow.setTopBrowserView(overlay);
-    this.layoutPanelOverlay();
+    // 先把视图移到屏幕外（保持尺寸），在屏幕外完成加载，最后同尺寸平移到目标位置。
+    // 视图常驻附加，不 add/removeBrowserView、无尺寸跳变 → 消除整窗重合成频闪
+    try {
+      const b = overlay.getBounds();
+      overlay.setBounds({
+        x: PANEL_HIDDEN_X,
+        y: PANEL_HIDDEN_Y,
+        width: b.width > 0 ? b.width : 380,
+        height: b.height > 0 ? b.height : 420,
+      });
+    } catch (e) { /* 忽略 */ }
 
     const targetUrl = 'file:///' + path.join(__dirname, '..', 'renderer', 'app.html').replace(/\\/g, '/')
       + `?overlay=1&panel=${encodeURIComponent(type)}`;
     if (overlay.webContents.getURL() !== targetUrl) {
       await overlay.webContents.loadURL(targetUrl).catch(() => {});
+    }
+
+    // 定位到目标位置（同尺寸移动）+ 仅当不在顶层时才置顶
+    this.layoutPanelOverlay();
+    const views = this.mainWindow.getBrowserViews();
+    if (views[views.length - 1] !== overlay) {
+      this.mainWindow.setTopBrowserView(overlay);
     }
     this.sendPanelOverlayAnchor();
 
@@ -1458,10 +1493,25 @@ class WindowManager {
    */
   hidePanelOverlay() {
     if (!this.panelOverlayView) return;
+    // 视图已销毁：仅清理引用，不再操作
+    if (!this.panelOverlayView.webContents || this.panelOverlayView.webContents.isDestroyed()) {
+      this.panelOverlayView = null;
+      this.panelOverlayType = null;
+      this.panelOverlayAnchor = null;
+      this._bookmarkFolderData = null;
+      return;
+    }
     // 清除页面注入的点击监听器
     this._removePanelClickCloser();
     try {
-      this.mainWindow.removeBrowserView(this.panelOverlayView);
+      // 移到屏幕外保持附加（不 removeBrowserView）：避免整窗重合成频闪
+      const b = this.panelOverlayView.getBounds();
+      this.panelOverlayView.setBounds({
+        x: PANEL_HIDDEN_X,
+        y: PANEL_HIDDEN_Y,
+        width: b.width > 0 ? b.width : 380,
+        height: b.height > 0 ? b.height : 420,
+      });
     } catch (e) { /* 忽略 */ }
     this.panelOverlayType = null;
     this.panelOverlayAnchor = null;
@@ -1586,6 +1636,8 @@ class WindowManager {
    */
   layoutPanelOverlay() {
     if (!this.mainWindow || !this.panelOverlayView) return;
+    // 面板未打开：保持隐藏（屏幕外），避免 layoutViews 把它放回屏幕
+    if (!this.panelOverlayType) return;
     const contentBounds = this.mainWindow.getContentBounds();
     const size = this._getPanelSize(this.panelOverlayType || 'downloads');
     const anchor = this.panelOverlayAnchor || { left: 100, top: 0, right: 140, bottom: 36, width: 40, height: 36 };
