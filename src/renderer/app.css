@@ -3336,24 +3336,30 @@ html.overlay-mode[data-overlay-panel="extensionDrop"] .drop-overlay {
   backdrop-filter: blur(2px);
 }
 
-/* 面板充满覆盖层视口，圆角 + 自身不透明背景 */
+/* 面板充满覆盖层视口，圆角 + 自身不透明背景。
+   ⚠️ 覆盖层 BrowserView 尺寸=面板大小，面板必须四周留 margin，
+   否则 box-shadow 在视图边界外被裁剪 → 看不到阴影（用户反馈无区分度）。
+   margin 区域透明，露出下方页面，同时容纳阴影 */
 html.overlay-mode .download-panel:not([hidden]),
 html.overlay-mode .history-panel:not([hidden]),
 html.overlay-mode .extension-popup:not([hidden]),
 html.overlay-mode .bookmarks-panel:not([hidden]),
 html.overlay-mode .account-menu:not([hidden]),
-html.overlay-mode .account-view:not([hidden]) {
+html.overlay-mode .account-view:not([hidden]),
+html.overlay-mode .bookmark-folder-popup:not([hidden]) {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  width: 100%;
+  width: auto;                 /* 覆盖基础宽度，由 left/right/margin 计算 */
+  min-width: 0;                /* 覆盖基础 min-width（书签文件夹 260px） */
   max-width: none;
+  margin: 12px;                /* 阴影空间（透明区露出页面） */
   border: none;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 /* 覆盖层内列表占满剩余高度 */

@@ -555,8 +555,10 @@
         dom.bookmarkFolderPopup.style.display = 'block';
         dom.bookmarkFolderPopup.style.left = '0';
         dom.bookmarkFolderPopup.style.top = '0';
+        dom.bookmarkFolderPopup.style.right = '0';
+        dom.bookmarkFolderPopup.style.bottom = '0';
+        dom.bookmarkFolderPopup.style.width = 'auto';
         dom.bookmarkFolderPopup.style.maxHeight = '100%';
-        dom.bookmarkFolderPopup.style.width = '100%';
         dom.bookmarkFolderPopup.style.borderRadius = '12px';
         dom.bookmarkFolderPopup.style.overflow = 'hidden';
       } else if (OVERLAY_PANEL === 'account') {
