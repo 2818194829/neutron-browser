@@ -82,6 +82,10 @@
   /* 地址栏内部图标前景：默认与 chrome 图标一致，
      chromeContrast.js 按地址栏自身背景自适应覆盖 */
   --address-bar-fg: var(--chrome-fg);
+  /* chrome 文字（标签标题/分组头/书签文字）：chromeContrast.js 按背景亮度自适应为黑/白 */
+  --chrome-text: var(--text-secondary);
+  /* 状态栏文字：chromeContrast.js 按状态栏背景自适应 */
+  --statusbar-fg: var(--text-tertiary);
 
   /* 强调色聚焦光环（默认蓝色） */
   --accent-ring: rgba(26, 115, 232, 0.15);
@@ -148,6 +152,8 @@
   --chrome-fg: var(--text-secondary);
   --chrome-fg-hover: var(--text-primary);
   --address-bar-fg: var(--chrome-fg);
+  --chrome-text: var(--text-secondary);
+  --statusbar-fg: var(--text-tertiary);
 
   --accent-ring: rgba(138, 180, 248, 0.25);
 
@@ -1000,7 +1006,7 @@ html.window-maximized .app {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--chrome-text);
   min-width: 0;
 }
 
@@ -1207,7 +1213,7 @@ html.window-maximized .app {
   padding: 0 8px;
   margin-top: 4px;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--chrome-text);
   cursor: pointer;
   user-select: none;
   border-left: 3px solid var(--group-color, #4285f4);
@@ -1568,7 +1574,7 @@ html.window-maximized .app {
   padding: 3px 8px;
   border-radius: 16px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--chrome-text);
   white-space: nowrap;
   cursor: pointer;
   transition: background 0.15s;
@@ -1579,7 +1585,7 @@ html.window-maximized .app {
 
 .bookmark-item:hover {
   background: var(--bg-hover);
-  color: var(--text-primary);
+  color: var(--chrome-fg-hover);
 }
 
 .bookmark-item--folder {
@@ -1690,7 +1696,7 @@ html.window-maximized .app {
   background: var(--statusbar-bg);
   border-top: 1px solid var(--border-color);
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--statusbar-fg);
   flex-shrink: 0;
 }
 

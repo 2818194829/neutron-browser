@@ -49,9 +49,9 @@ window.NeutronChromeContrast = function (opts) {
     ];
   }
 
-  /** 解析 CSS 颜色字符串，按书写顺序 alpha 混合，返回代表色 [r,g,b] */
-  function parseAndComposite(text) {
-    let base = null;
+  /** 提取文本中所有颜色为 {r,g,b,a}（hex/rgb(a)/hsl(a)） */
+  function extractColors(text) {
+    const out = [];
     const re = /#([0-9a-f]{3,8})\b|rgba?\(([^)]+)\)|hsla?\(([^)]+)\)/gi;
     let m;
     while ((m = re.exec(text))) {
@@ -73,16 +73,35 @@ window.NeutronChromeContrast = function (opts) {
         if (parts.length >= 4) a = parts[3];
         if (parts.length >= 3) c = hslToRgb(parts[0], parts[1], parts[2]);
       }
-      if (!c) continue;
-      a = Math.max(0, Math.min(1, a));
-      if (a === 0) continue;
-      if (base === null) {
-        base = c.map((v) => v * a);
-      } else {
-        for (let i = 0; i < 3; i++) base[i] = base[i] * (1 - a) + c[i] * a;
-      }
+      if (c) out.push({ r: c[0], g: c[1], b: c[2], a: Math.max(0, Math.min(1, a)) });
     }
-    return base;
+    return out;
+  }
+
+  /**
+   * 取背景代表色：
+   * - 多层背景（逗号分隔）只取最底层（基色层），图案点阵等装饰层不参与
+   * - 渐变取首尾两色平均（近似整体色调）
+   */
+  function representativeColor(text) {
+    if (!text) return null;
+    let layer = text;
+    let depth = 0;
+    let lastComma = -1;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '(') depth++;
+      else if (ch === ')') depth--;
+      else if (ch === ',' && depth === 0) lastComma = i;
+    }
+    if (lastComma >= 0) layer = text.slice(lastComma + 1);
+    const colors = extractColors(layer);
+    if (!colors.length) return null;
+    // 平均该层全部色标（多色标渐变如黄昏的浅橙中间色不能被首尾平均漏掉）
+    let r = 0, g = 0, b = 0, a = 0;
+    for (const c of colors) { r += c.r; g += c.g; b += c.b; a += c.a; }
+    const n = colors.length;
+    return { r: r / n, g: g / n, b: b / n, a: a / n };
   }
 
   /** WCAG 相对亮度 */
@@ -94,11 +113,9 @@ window.NeutronChromeContrast = function (opts) {
     return 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
   }
 
-  /** 白/深前景取对比度更高者 */
+  /** 前景选择：背景偏浅（L>0.36）用深色，背景偏深用白色——「深底浅字、浅底深字」 */
   function bestForeground(L) {
-    const ratioWhite = 1.05 / (L + 0.05);
-    const ratioDark = (L + 0.05) / 0.05;
-    return ratioWhite >= ratioDark ? '#ffffff' : '#202124';
+    return L > 0.36 ? '#202124' : '#ffffff';
   }
 
   /** 从动态皮肤画布采样 chrome 区域实际像素（含顶部压暗效果） */
@@ -144,29 +161,57 @@ window.NeutronChromeContrast = function (opts) {
         return;
       }
     } else {
-      chromeRgb = parseAndComposite(toolbarBg + ' ' + titlebarBg);
-      if (!chromeRgb) chromeRgb = parseAndComposite(rootStyle.getPropertyValue('--bg-primary').trim());
+      // 工具栏与标题栏代表色取平均：单看其一会在边界色（如薄荷）上误判
+      const repT = representativeColor(toolbarBg);
+      const repB = representativeColor(titlebarBg);
+      let rep = null;
+      if (repT && repB) {
+        rep = { r: (repT.r + repB.r) / 2, g: (repT.g + repB.g) / 2, b: (repT.b + repB.b) / 2 };
+      } else {
+        rep = repT || repB;
+      }
+      if (rep) chromeRgb = [rep.r, rep.g, rep.b];
+      if (!chromeRgb) {
+        const bgRep = representativeColor(rootStyle.getPropertyValue('--bg-primary').trim());
+        if (bgRep) chromeRgb = [bgRep.r, bgRep.g, bgRep.b];
+      }
     }
 
     if (chromeRgb) {
       const fg = bestForeground(luminance(chromeRgb));
+      const soft = fg === '#ffffff' ? 'rgba(255, 255, 255, 0.78)' : 'rgba(32, 33, 36, 0.78)';
       document.documentElement.style.setProperty('--chrome-fg', fg);
       document.documentElement.style.setProperty('--chrome-fg-hover', fg);
+      // chrome 文字（标签标题/分组头/书签文字）：与按钮前景同规则——深底浅字、浅底深字
+      document.documentElement.style.setProperty('--chrome-text', fg);
+      document.documentElement.style.setProperty('--statusbar-fg', soft);
+    }
+
+    // 状态栏：有独立背景色时按自身背景自适应（透明/动态皮肤沿用 chrome 前景）
+    const statusBg = rootStyle.getPropertyValue('--statusbar-bg').trim();
+    if (statusBg && statusBg !== 'transparent') {
+      const rep = representativeColor(statusBg);
+      if (rep) {
+        const sf = bestForeground(luminance([rep.r, rep.g, rep.b]));
+        document.documentElement.style.setProperty(
+          '--statusbar-fg',
+          sf === '#ffffff' ? 'rgba(255, 255, 255, 0.78)' : 'rgba(32, 33, 36, 0.78)'
+        );
+      }
     }
 
     // 2) 地址栏前景（相对地址栏自身背景：半透明则叠在 chrome 背景上）
-    let addrRgb = parseAndComposite(addressBg);
-    if (addrRgb && chromeRgb && /rgba?\(/.test(addressBg)) {
-      // 地址栏半透明：与 chrome 背景混合（近似，取工具栏代表色）
-      const aMatch = addressBg.match(/rgba?\(([^)]+)\)/);
-      if (aMatch) {
-        const parts = aMatch[1].split(/[\s,]+/).filter(Boolean).map(parseFloat);
-        const a = parts.length >= 4 ? Math.max(0, Math.min(1, parts[3])) : 1;
-        for (let i = 0; i < 3; i++) addrRgb[i] = addrRgb[i] * a + chromeRgb[i] * (1 - a);
+    const addrRep = representativeColor(addressBg);
+    if (addrRep) {
+      let r = addrRep.r;
+      let g = addrRep.g;
+      let b = addrRep.b;
+      if (addrRep.a < 1 && chromeRgb) {
+        r = r * addrRep.a + chromeRgb[0] * (1 - addrRep.a);
+        g = g * addrRep.a + chromeRgb[1] * (1 - addrRep.a);
+        b = b * addrRep.a + chromeRgb[2] * (1 - addrRep.a);
       }
-    }
-    if (addrRgb) {
-      document.documentElement.style.setProperty('--address-bar-fg', bestForeground(luminance(addrRgb)));
+      document.documentElement.style.setProperty('--address-bar-fg', bestForeground(luminance([r, g, b])));
     }
   }
 
