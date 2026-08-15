@@ -41,17 +41,20 @@ function parseArchiveBuffer(buffer) {
       const pubkeyLen = buffer.readUInt32LE(8);
       const sigLen = buffer.readUInt32LE(12);
       zipStart = 16 + pubkeyLen + sigLen;
+      if (zipStart >= buffer.length) {
+        throw new Error('CRX 文件头无效');
+      }
     } else if (version >= 3) {
       // CRX3：魔数(4) + 版本(4) + 头长度(4)，zip 内容在 12 + headerSize 处
       const headerSize = buffer.readUInt32LE(8);
       zipStart = 12 + headerSize;
+      if (headerSize === 0 || zipStart >= buffer.length) {
+        throw new Error('CRX 文件头无效');
+      }
     } else {
       throw new Error(`不支持的 CRX 版本: ${version}`);
     }
 
-    if (zipStart >= buffer.length) {
-      throw new Error('CRX 文件头无效');
-    }
     return buffer.subarray(zipStart);
   }
 
@@ -244,11 +247,14 @@ async function registerExtension(extRoot, installSource) {
   const existingIndex = installed.findIndex(ext => ext.id === loaded.id);
   if (existingIndex !== -1) {
     const existing = installed[existingIndex];
-    try {
-      await session.defaultSession.removeExtension(loaded.id);
-    } catch (e) { /* 忽略未加载状态 */ }
+    // 同 ID 重装：若路径不同，先卸载旧实例、删除旧目录，再重新加载新路径
+    // （首个 loadExtension 可能返回缓存的旧实例，需重新加载新文件才能生效）
     if (existing.path && existing.path !== extRoot) {
+      try {
+        await session.defaultSession.removeExtension(loaded.id);
+      } catch (e) { /* 忽略未加载状态 */ }
       removeInstalledDirectory(existing.path);
+      loaded = await session.defaultSession.loadExtension(extRoot);
     }
     installed.splice(existingIndex, 1);
   }
@@ -447,6 +453,20 @@ async function setExtensionEnabled(id, enabled) {
     try {
       await session.defaultSession.removeExtension(ext.id);
     } catch (e) { /* 忽略未加载状态 */ }
+    // 禁用后清理：模拟后台、徽章状态、右键菜单注册（避免残留继续运行/显示）
+    try {
+      const { destroyMv3Background, contextMenuUnregisterAll, clearAlarmsForExt } = require('./extensionBridge');
+      const { clearDnrForExt } = require('./declarativeNetRequest');
+      destroyMv3Background(id);
+      contextMenuUnregisterAll(id);
+      clearAlarmsForExt(id);
+      clearDnrForExt(id);
+    } catch (e) { /* 忽略 */ }
+    const states = getBadgeStates();
+    if (states[id]) {
+      delete states[id];
+      saveBadgeStates(states);
+    }
   }
 
   ext.enabled = enabled;
@@ -461,6 +481,15 @@ async function uninstallExtension(id) {
   try {
     await session.defaultSession.removeExtension(id);
   } catch (e) { /* 忽略未加载状态 */ }
+
+  // 卸载后销毁 MV3 模拟后台（否则后台脚本继续运行）
+  try {
+    const { destroyMv3Background, clearAlarmsForExt } = require('./extensionBridge');
+    const { clearDnrForExt } = require('./declarativeNetRequest');
+    destroyMv3Background(id);
+    clearAlarmsForExt(id);
+    clearDnrForExt(id);
+  } catch (e) { /* 忽略 */ }
 
   const installed = getInstalledExtensions().filter(item => item.id !== id);
   saveInstalledExtensions(installed);
@@ -578,7 +607,11 @@ function collectExtensionCommands() {
       const manifest = JSON.parse(fs.readFileSync(path.join(ext.path, 'manifest.json'), 'utf8'));
       const commands = manifest.commands || {};
       for (const [name, cmd] of Object.entries(commands)) {
-        const accel = (cmd.suggested_key && cmd.suggested_key.default) || '';
+        // 优先平台特定键位（windows/mac/linux），缺省回退 default
+        const sk = cmd.suggested_key || {};
+        const platformKey = process.platform === 'darwin' ? 'mac'
+          : (process.platform === 'win32' ? 'windows' : 'linux');
+        const accel = sk[platformKey] || sk.default || '';
         if (!accel) continue;
         result.push({
           extId: ext.id,

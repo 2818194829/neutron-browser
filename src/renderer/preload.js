@@ -33,6 +33,27 @@ try {
   `, true);
 } catch (e) { /* 忽略：某些页面上下文可能无法注入 */ }
 
+// ==================== 特权 API 拆分（安全） ====================
+// 完整浏览器控制 API 只暴露给可信 UI（app.html 的 file:// 与内置 neutron:// 页面）。
+// 普通网页（http/https 等）仅暴露运行所必需的最小集，防止任意站点窃取书签/历史/剪贴板、
+// 关闭窗口、篡改设置或安装扩展。
+const isTrustedUi = location.protocol === 'file:' || location.protocol === 'neutron:';
+const isEdgeStoreHost = ['microsoftedge.microsoft.com', 'edge.microsoft.com'].includes(location.hostname);
+
+if (!isTrustedUi) {
+  contextBridge.exposeInMainWorld('NeutronBrowser', {
+    // HTML5 全屏前保存窗口状态（preload 末尾主世界 hook 调用）
+    saveFullscreenState: () => {
+      try { ipcRenderer.sendSync(IPC_CHANNELS.WINDOW_SAVE_FULLSCREEN_STATE); } catch (e) { /* 忽略 */ }
+    },
+    // 点击网页任意位置关闭悬浮面板（主进程注入脚本调用）
+    notifyPanelClickOutside: () => ipcRenderer.send(IPC_CHANNELS.PANEL_OVERLAY_CLICK_OUTSIDE),
+    // 仅 Edge 商店页需要：点击“获取”走商店安装链路
+    ...(isEdgeStoreHost ? {
+      installFromEdgeStore: (input) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_INSTALL_FROM_EDGE, input),
+    } : {}),
+  });
+} else {
 // 暴露安全的 API 到渲染进程的 window.NeutronBrowser 对象
 contextBridge.exposeInMainWorld('NeutronBrowser', {
   // ==================== 窗口控制 ====================
@@ -40,6 +61,10 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   maximizeWindow: () => ipcRenderer.send(IPC_CHANNELS.WINDOW_MAXIMIZE),
   closeWindow: () => ipcRenderer.send(IPC_CHANNELS.WINDOW_CLOSE),
   isMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
+  // 页面发起 requestFullscreen 前同步保存窗口状态（见文件末尾的主世界 hook）
+  saveFullscreenState: () => {
+    try { ipcRenderer.sendSync(IPC_CHANNELS.WINDOW_SAVE_FULLSCREEN_STATE); } catch (e) { /* 忽略 */ }
+  },
   setAlwaysOnTop: (flag) => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_SET_ALWAYS_ON_TOP, flag),
   isAlwaysOnTop: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_ALWAYS_ON_TOP),
   onAlwaysOnTopChanged: (callback) => {
@@ -285,4 +310,53 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
     ipcRenderer.on(IPC_CHANNELS.NAV_LOADING_PROGRESS, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.NAV_LOADING_PROGRESS, handler);
   },
-});
+  });
+}
+
+// ==================== 主世界拦截 requestFullscreen（保存窗口状态） ====================
+// contextIsolation 开启时本 preload 运行在隔离世界，直接改 Element.prototype 不影响
+// 页面主世界。因此用 executeJavaScript 在主世界挂载 hook：页面发起 requestFullscreen
+// 的瞬间（窗口尚未被 Electron 自动改成全屏）同步通知主进程保存窗口状态，
+// 退出全屏时主进程据此还原窗口。此为 Windows 上 HTML5 全屏退出后窗口
+// 尺寸被全屏覆盖 / 变成最大化的关键修复。
+try {
+  webFrame.executeJavaScript(`
+    (function () {
+      try {
+        // iframe 内 requestFullscreen 的转发：iframe 已由主进程注入 hook，
+        // 全屏前 postMessage 到这里，由主 frame 同步保存窗口状态。
+        window.addEventListener('message', function (e) {
+          try {
+            if (e.data && e.data.__neutronSaveFs === 1) {
+              if (window.NeutronBrowser && window.NeutronBrowser.saveFullscreenState) {
+                window.NeutronBrowser.saveFullscreenState();
+              }
+            }
+          } catch (err) {}
+        });
+        if (window.__neutronFullscreenHook) return;
+        window.__neutronFullscreenHook = true;
+        var save = function () {
+          try {
+            if (window.NeutronBrowser && window.NeutronBrowser.saveFullscreenState) {
+              window.NeutronBrowser.saveFullscreenState();
+            }
+          } catch (e) { /* 忽略 */ }
+        };
+        // 标准 + 旧前缀（webkit）全屏 API 都要拦截：老式播放器常用 webkitRequestFullscreen
+        var names = ['requestFullscreen', 'webkitRequestFullscreen'];
+        for (var i = 0; i < names.length; i++) {
+          (function (name) {
+            var orig = Element.prototype[name];
+            if (typeof orig === 'function') {
+              Element.prototype[name] = function (options) {
+                save();
+                return orig.call(this, options);
+              };
+            }
+          })(names[i]);
+        }
+      } catch (e) { /* 忽略 */ }
+    })();
+  `, true);
+} catch (e) { /* 忽略：某些页面上下文可能无法注入 */ }

@@ -10,7 +10,7 @@ publish:
   repo: neutron-browser
   releaseType: release
 files:
-  - src/**/*
+  - dist/**/*
   - assets/**/*
   - icon/**/*
   - package.json

@@ -7,7 +7,7 @@ const path = require('path');
 const WindowManager = require('./windowManager');
 const { createAppMenu } = require('./menu');
 const { registerIpcHandlers } = require('./ipcHandlers');
-const { initStorage } = require('./storage');
+const { initStorage, closeStorage } = require('./storage');
 const { initExtensions } = require('./extensions');
 const { initUpdater } = require('./updater');
 const { setupExtensionPolyfills } = require('./extensionPolyfills');
@@ -109,6 +109,9 @@ app.on('before-quit', () => {
   if (windowManager) {
     windowManager.cleanup();
   }
+  try {
+    closeStorage();
+  } catch (e) { /* 忽略 */ }
 });
 
 // ==================== 注册内部协议 ====================

@@ -1,6 +1,14 @@
-(function (global) {
-  'use strict';
-
+/**
+ * 站点元数据工具：hostname/注册域识别、favicon 可信度校验、历史/书签清洗
+ *
+ * ⚠️ 此文件必须是「脚本」而非「模块」（无顶层 import/export），
+ * 因为渲染层 app.html 通过 <script src="../shared/siteMeta.js"> 直接加载它，
+ * 而主进程通过 require('../shared/siteMeta') 加载它。
+ * 脚本形式不会被 tsc 包裹成 CommonJS exports，从而同时支持：
+ *   - Node：module.exports = api
+ *   - 浏览器：window.SiteMeta = api
+ */
+(function () {
   const GENERIC_TITLES = new Set([
     '',
     '新标签页',
@@ -11,6 +19,7 @@
     '书签管理器',
     '扩展程序',
   ]);
+
   const PUBLIC_SUFFIXES = [
     'com.cn',
     'net.cn',
@@ -27,25 +36,7 @@
     'tv',
   ];
 
-  function getHostname(value) {
-    try {
-      return new URL(value).hostname.toLowerCase();
-    } catch (e) {
-      return '';
-    }
-  }
-
-  function getSiteKey(hostname) {
-    const host = String(hostname || '').toLowerCase().replace(/^www\./, '');
-    for (const suffix of PUBLIC_SUFFIXES) {
-      if (host.endsWith('.' + suffix)) {
-        return host.slice(0, host.length - suffix.length - 1).split('.').pop() + '.' + suffix;
-      }
-    }
-    return host;
-  }
-
-  const FAVICON_CDN_HOSTS = {
+  const FAVICON_CDN_HOSTS: Record<string, string[]> = {
     'bilibili.com': ['hdslb.com'],
     'douyin.com': ['douyinstatic.com', 'byteimg.com'],
     'youku.com': ['alicdn.com', 'ykimg.com'],
@@ -56,7 +47,25 @@
     'doubao.com': ['doubaoimg.com', 'byteimg.com', 'bytedance.com'],
   };
 
-  function isFaviconTrusted(faviconUrl, pageUrl) {
+  function getHostname(value: string): string {
+    try {
+      return new URL(value).hostname.toLowerCase();
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function getSiteKey(hostname: string): string {
+    const host = String(hostname || '').toLowerCase().replace(/^www\./, '');
+    for (const suffix of PUBLIC_SUFFIXES) {
+      if (host.endsWith('.' + suffix)) {
+        return host.slice(0, host.length - suffix.length - 1).split('.').pop() + '.' + suffix;
+      }
+    }
+    return host;
+  }
+
+  function isFaviconTrusted(faviconUrl: string, pageUrl: string): boolean {
     try {
       const icon = new URL(faviconUrl);
       const page = new URL(pageUrl);
@@ -78,12 +87,12 @@
     }
   }
 
-  function sanitizeFavicon(faviconUrl, pageUrl) {
+  function sanitizeFavicon(faviconUrl: string, pageUrl: string): string {
     if (!faviconUrl || !pageUrl) return '';
     return isFaviconTrusted(faviconUrl, pageUrl) ? faviconUrl : '';
   }
 
-  function normalizeHistoryTitle(title, url) {
+  function normalizeHistoryTitle(title: string | undefined, url: string): string {
     const value = String(title || '').trim();
     if (value && !GENERIC_TITLES.has(value)) return value;
 
@@ -92,19 +101,18 @@
     return value || String(url || '未知页面');
   }
 
-  function sanitizeBookmarks(bookmarks) {
-    const cleanFolder = (folder) => {
-      if (!folder || !Array.isArray(folder.children)) return folder;
-      folder.children.forEach((child) => {
+  function sanitizeBookmarks(bookmarks: Record<string, any>): Record<string, any> {
+    const cleanFolder = (folder: any): void => {
+      if (!folder || !Array.isArray(folder.children)) return;
+      folder.children.forEach((child: any) => {
         if (child.type === 'folder') {
           cleanFolder(child);
           return;
         }
-        if (child.favicon && !isFaviconTrusted(child.favicon, child.url)) {
+        if (child.favicon && !isFaviconTrusted(child.favicon, child.url || '')) {
           child.favicon = '';
         }
       });
-      return folder;
     };
 
     Object.keys(bookmarks || {}).forEach((key) => {
@@ -113,7 +121,7 @@
     return bookmarks;
   }
 
-  function sanitizeHistory(visits) {
+  function sanitizeHistory(visits: any[]): any[] {
     return (visits || [])
       .filter((item) => /^https?:/i.test(item.url || ''))
       .map((item) => {
@@ -135,9 +143,10 @@
     sanitizeHistory,
   };
 
+  // 双环境导出：Node（require）走 module.exports，浏览器（<script>）走全局 SiteMeta
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   } else {
-    global.SiteMeta = api;
+    (globalThis as any).SiteMeta = api;
   }
-})(typeof globalThis !== 'undefined' ? globalThis : this);
+})();

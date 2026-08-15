@@ -191,6 +191,10 @@ class WindowManager {
     this.modalOperationId = 0;
     this.sharedSessionHandlersReady = false;
     this.htmlFullScreenTabId = null;
+    /** @type {{wasMaximized:boolean, bounds:Electron.Rectangle}|null} 进入 HTML5 全屏前的窗口状态（退出后恢复） */
+    this.htmlFullScreenPrev = null;
+    /** @type {{wasMaximized:boolean, bounds:Electron.Rectangle}|null} 窗口级全屏（F11/菜单）进入前状态 */
+    this.fsWindowPrev = null;
 
     /** @type {Map<string, DownloadItem>} 活动下载项（用于暂停/继续/取消） */
     this.downloadItems = new Map();
@@ -299,6 +303,12 @@ class WindowManager {
       // 根据启动行为创建初始标签页
       this.openStartupPages();
 
+      // 扩展 chrome.windows.onCreated 事件
+      try {
+        const { notifyWindowCreated } = require('./extensionBridge');
+        notifyWindowCreated();
+      } catch (e) { /* 忽略 */ }
+
       // 恢复窗口置顶状态
       if (settings.get('windowAlwaysOnTop')) {
         this.mainWindow.setAlwaysOnTop(true);
@@ -308,6 +318,11 @@ class WindowManager {
     // 监听窗口状态变化
     this.mainWindow.on('maximize', () => {
       this.isMaximized = true;
+      // 记录最大化前的「还原边界」。getNormalBounds() 在最大化后仍返回还原边界，
+      // 供 HTML 全屏退出后恢复还原状态使用。不能依赖 resize 事件维护——最大化时
+      // 的 resize 可能早于 maximize 事件（isMaximized 尚未置位），会把工作区尺寸
+      // 误写入镜像。
+      try { this.windowBounds = this.mainWindow.getNormalBounds(); } catch (e) { /* 忽略 */ }
       // 最大化时窗口贴满屏幕：切为不透明背景，防止透明边缘露出桌面（渲染层同步去掉圆角）
       try { this.mainWindow.setBackgroundColor('#1a1a2e'); } catch (e) { /* 忽略 */ }
       this.sendToRenderer(IPC_CHANNELS.WINDOW_STATE_CHANGED, { maximized: true });
@@ -316,6 +331,8 @@ class WindowManager {
 
     this.mainWindow.on('unmaximize', () => {
       this.isMaximized = false;
+      // 还原后同步镜像为当前边界
+      try { this.windowBounds = this.mainWindow.getBounds(); } catch (e) { /* 忽略 */ }
       // 还原时恢复透明背景，重新显示四角微圆角
       try { this.mainWindow.setBackgroundColor('#00000000'); } catch (e) { /* 忽略 */ }
       this.sendToRenderer(IPC_CHANNELS.WINDOW_STATE_CHANGED, { maximized: false });
@@ -323,27 +340,105 @@ class WindowManager {
     });
 
     this.mainWindow.on('enter-full-screen', () => {
-      if (this.htmlFullScreenTabId) this.layoutViews();
+      if (this.htmlFullScreenTabId) {
+        this.layoutViews();
+        return;
+      }
+      // 窗口级全屏（F11 / 菜单「全屏」togglefullscreen）：不走 HTML5 全屏路径，
+      // 保存进入前状态供退出时恢复（最大化窗口的全屏会把「还原」边界污染成全屏尺寸）
+      if (!this.fsWindowPrev) {
+        this.fsWindowPrev = { wasMaximized: this.isMaximized, bounds: this.windowBounds };
+      }
+      // 全屏切不透明背景（透明窗口合成开销大）
+      try { this.mainWindow.setBackgroundColor('#1a1a2e'); } catch (e) { /* 忽略 */ }
+      this.layoutViews();
     });
 
     this.mainWindow.on('leave-full-screen', () => {
-      if (!this.htmlFullScreenTabId) this.layoutViews();
+      if (this.htmlFullScreenTabId) {
+        this.layoutViews();
+        this.scheduleFullscreenSelfHeal();
+        return;
+      }
+      // 窗口级全屏（F11/菜单）退出：恢复进入前状态（普通窗口原始大小）。
+      // ⚠️ leave-full-screen 触发时窗口可能仍处于全屏尺寸，立即 setBounds 无效
+      // 会被随后的 Windows 还原（→最大化）覆盖 → 立即尝试 + 短延迟兜底。
+      // setBounds 对最大化/全屏窗口一步生效（自动取消最大化并设置尺寸），
+      // 避免「先最大化再退回原始大小」的跳变并修正被污染的还原边界。
+      if (this.fsWindowPrev) {
+        const prev = this.fsWindowPrev;
+        this.fsWindowPrev = null;
+        const apply = () => {
+          try {
+            if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+            this.mainWindow.setBounds(prev.bounds);
+            if (!prev.wasMaximized) {
+              try { this.mainWindow.setBackgroundColor('#00000000'); } catch (e) { /* 忽略 */ }
+            }
+            this.layoutViews();
+          } catch (e) { /* 忽略 */ }
+        };
+        apply();               // 立即尝试
+        setTimeout(apply, 80); // 兜底：窗口真正退出全屏后 setBounds 生效
+      }
+      // 终极兜底：无论以何种方式退出全屏（含 enter/leave-html-full-screen 事件
+      // 未触发的极端情况），窗口离开全屏后都检查尺寸并强制恢复。
+      this.scheduleFullscreenSelfHeal();
     });
 
     this.mainWindow.on('resize', () => {
-      if (!this.isMaximized) {
+      if (!this.isMaximized && !this.htmlFullScreenTabId) {
         const bounds = this.mainWindow.getBounds();
-        this.windowBounds = bounds;
+        // 防止 HTML 全屏化（窗口被 Electron 自动改成屏幕大小）污染 windowBounds 镜像：
+        // 当窗口尺寸与某个显示器完全重合时视为全屏化，不更新镜像。
+        // 该镜像用于退出全屏时兜底恢复（即使页面 hook 失效也能还原窗口尺寸）。
+        let coversScreen = false;
+        try {
+          const display = screen.getDisplayMatching(bounds);
+          coversScreen = Math.abs(bounds.x - display.bounds.x) <= 1 &&
+            Math.abs(bounds.y - display.bounds.y) <= 1 &&
+            Math.abs(bounds.width - display.bounds.width) <= 1 &&
+            Math.abs(bounds.height - display.bounds.height) <= 1;
+        } catch (e) { /* 忽略 */ }
+        if (!coversScreen) {
+          this.windowBounds = bounds;
+        }
       }
       this.layoutViews(); // 窗口大小变化时实时调整页面布局
     });
 
     this.mainWindow.on('move', () => {
-      if (!this.isMaximized) {
+      if (!this.isMaximized && !this.htmlFullScreenTabId) {
         const bounds = this.mainWindow.getBounds();
-        this.windowBounds = bounds;
+        // 与 resize 相同：全屏化（窗口移动到 0,0 并占满显示器）不更新镜像
+        let coversScreen = false;
+        try {
+          const display = screen.getDisplayMatching(bounds);
+          coversScreen = Math.abs(bounds.x - display.bounds.x) <= 1 &&
+            Math.abs(bounds.y - display.bounds.y) <= 1 &&
+            Math.abs(bounds.width - display.bounds.width) <= 1 &&
+            Math.abs(bounds.height - display.bounds.height) <= 1;
+        } catch (e) { /* 忽略 */ }
+        if (!coversScreen) {
+          this.windowBounds = bounds;
+        }
       }
     });
+
+    // 扩展 chrome.windows 事件（focus/bounds）
+    this.mainWindow.on('focus', () => {
+      try { const { notifyWindowFocused } = require('./extensionBridge'); notifyWindowFocused(); } catch (e) { /* 忽略 */ }
+    });
+    let boundsNotifyTimer = null;
+    const scheduleBoundsNotify = () => {
+      if (boundsNotifyTimer) clearTimeout(boundsNotifyTimer);
+      boundsNotifyTimer = setTimeout(() => {
+        boundsNotifyTimer = null;
+        try { const { notifyWindowBoundsChanged } = require('./extensionBridge'); notifyWindowBoundsChanged(); } catch (e) { /* 忽略 */ }
+      }, 200);
+    };
+    this.mainWindow.on('resize', scheduleBoundsNotify);
+    this.mainWindow.on('move', scheduleBoundsNotify);
 
     // 关闭前保存窗口状态
     this.mainWindow.on('close', () => {
@@ -354,6 +449,7 @@ class WindowManager {
     });
 
     this.mainWindow.on('closed', () => {
+      try { const { notifyWindowRemoved } = require('./extensionBridge'); notifyWindowRemoved(); } catch (e) { /* 忽略 */ }
       this.mainWindow = null;
     });
 
@@ -369,6 +465,7 @@ class WindowManager {
       if (this.extensionDragDepth > 0) {
         this.hideExtensionDropOverlay();
       }
+      try { const { notifyWindowFocused } = require('./extensionBridge'); notifyWindowFocused(); } catch (e) { /* 忽略 */ }
     });
   }
 
@@ -460,6 +557,12 @@ class WindowManager {
     // 通知渲染进程更新标签栏
     this.syncTabsToRenderer();
 
+    // 扩展 chrome.tabs.onCreated 事件
+    try {
+      const { notifyTabCreated } = require('./extensionBridge');
+      notifyTabCreated(tab);
+    } catch (e) { /* 忽略 */ }
+
     return tabId;
   }
 
@@ -514,8 +617,7 @@ class WindowManager {
     this.hideExtensionPopup();
 
     if (this.htmlFullScreenTabId && this.htmlFullScreenTabId !== tabId) {
-      this.htmlFullScreenTabId = null;
-      this.mainWindow.setFullScreen(false);
+      this.exitHtmlFullScreen();
     }
 
     // 隐藏之前活动的标签页（缩小为 1x1 而非移除视图，保持其画面持续渲染，
@@ -531,6 +633,12 @@ class WindowManager {
     this.activeTabId = tabId;
     this.mainWindow.addBrowserView(targetTab.view);
     this.layoutViews();
+
+    // 扩展 chrome.tabs.onActivated 事件
+    try {
+      const { notifyTabActivated } = require('./extensionBridge');
+      notifyTabActivated(tabId);
+    } catch (e) { /* 忽略 */ }
 
     // 通知渲染进程
     this.syncTabsToRenderer();
@@ -571,9 +679,7 @@ class WindowManager {
     this.tabs.splice(tabIndex, 1);
 
     if (this.htmlFullScreenTabId === tabId) {
-      this.htmlFullScreenTabId = null;
-      this.mainWindow.setFullScreen(false);
-      this.layoutViews();
+      this.exitHtmlFullScreen();
     }
 
     // 如果关闭的是活动标签页，切换到相邻标签页
@@ -586,6 +692,12 @@ class WindowManager {
         this.createTab(INTERNAL_PAGES.NEW_TAB);
       }
     }
+
+    // 扩展 chrome.tabs.onRemoved 事件
+    try {
+      const { notifyTabRemoved } = require('./extensionBridge');
+      notifyTabRemoved(tabId, false);
+    } catch (e) { /* 忽略 */ }
 
     this.syncTabsToRenderer();
   }
@@ -611,6 +723,19 @@ class WindowManager {
   }
 
   /**
+   * 判断边界是否等同于某个显示器尺寸（即「全屏污染值」）
+   * @param {Electron.Rectangle} bounds
+   */
+  isFullscreenLikeBounds(bounds) {
+    if (!bounds || typeof bounds.width !== 'number' || bounds.width <= 0) return true;
+    try {
+      const display = screen.getDisplayMatching(bounds);
+      return bounds.width >= display.bounds.width - 2 &&
+        bounds.height >= display.bounds.height - 2;
+    } catch (e) { return false; }
+  }
+
+  /**
    * 处理网页 HTML5 全屏
    * @param {string} tabId
    * @param {boolean} entering
@@ -621,15 +746,107 @@ class WindowManager {
 
     if (entering) {
       this.htmlFullScreenTabId = tabId;
+      // ⚠️ Windows 坑：最大化窗口进入全屏后，「还原」状态的边界会被覆盖成全屏尺寸。
+      // 且 Electron 对 HTML5 全屏会先自动改窗口为全屏再触发本事件，此时读取的
+      // bounds 已是全屏尺寸。
+      // 进入前状态（三层保障，不依赖页面 hook）：
+      //   1) preload 在页面 requestFullscreen 时提前保存的 htmlFullScreenPrev；
+      //   2) 若缺失或为全屏污染值，用主进程镜像 windowBounds/isMaximized
+      //      （由 resize/move/maximize/unmaximize 事件持续维护，全屏化 resize/move 不更新）。
+      if (!this.htmlFullScreenPrev || this.isFullscreenLikeBounds(this.htmlFullScreenPrev.bounds)) {
+        this.htmlFullScreenPrev = {
+          wasMaximized: this.isMaximized,
+          bounds: this.windowBounds,
+        };
+      }
+      // ⭐ 关键：若窗口当前是最大化，先取消最大化再进全屏——让 Electron 记录
+      // 「普通」作为退出还原目标。否则退出全屏时 Electron 会先把窗口还原成
+      // 最大化、再被我们的 setBounds 修正，造成「先最大化再退回原始大小」的
+      // 两步跳变。用户期望退出后直接回到原始窗口大小。
+      if (this.mainWindow.isMaximized()) {
+        try { this.mainWindow.unmaximize(); } catch (e) { /* 忽略 */ }
+      }
+      // 全屏时切不透明背景：本窗口是透明窗口（四角圆角），Windows 对透明窗口的
+      // 全屏切换合成开销大（卡顿主因）。全屏无圆角需求，直接切不透明减少重合成。
+      try { this.mainWindow.setBackgroundColor('#1a1a2e'); } catch (e) { /* 忽略 */ }
       this.mainWindow.setFullScreen(true);
       this.layoutViews();
       return;
     }
 
     if (this.htmlFullScreenTabId !== tabId) return;
+    this.exitHtmlFullScreen();
+  }
+
+  /**
+   * 延时检查窗口是否仍异常保持全屏尺寸（自愈兜底）
+   * 最大化/正常全屏属正常状态跳过；普通窗口若退出全屏后仍停在全屏尺寸则强制恢复。
+   */
+  scheduleFullscreenSelfHeal() {
+    setTimeout(() => {
+      try {
+        if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+        if (this.htmlFullScreenTabId) return;               // 又进入了全屏
+        if (this.mainWindow.isMaximized() || this.mainWindow.isFullScreen()) return;
+        const b = this.mainWindow.getBounds();
+        if (this.isFullscreenLikeBounds(b)) {
+          this.mainWindow.setBounds(this.windowBounds);
+        }
+      } catch (e) { /* 忽略 */ }
+    }, 400);
+  }
+
+  /**
+   * 退出网页 HTML5 全屏并恢复窗口状态
+   * （Windows 坑：最大化窗口进出全屏后，还原尺寸会被全屏尺寸覆盖，需手动恢复）
+   */
+  exitHtmlFullScreen() {
+    if (!this.htmlFullScreenTabId) return;
     this.htmlFullScreenTabId = null;
+    const prev = this.htmlFullScreenPrev;
+    this.htmlFullScreenPrev = null;
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
     this.mainWindow.setFullScreen(false);
+
+    // 退出全屏后恢复窗口背景：非最大化才恢复透明（透明用于四角圆角，最大化时
+    // 由 maximize 切不透明、unmaximize 恢复透明，这里不重复处理）
+    if (!this.isMaximized) {
+      try { this.mainWindow.setBackgroundColor('#00000000'); } catch (e) { /* 忽略 */ }
+    }
+
+    // 确定要恢复的「进入全屏前状态」：
+    // 1) preload hook 保存的 prev —— 但需排除被污染的（等于全屏尺寸）值
+    //    （hook 可能未拦截到页面调用的 API，如 webkitRequestFullscreen）
+    // 2) 若 prev 无效，用主进程 windowBounds 镜像兜底（resize 时全屏化不更新，保持正确）
+    let restore = null;
+    if (prev) {
+      try {
+        const display = screen.getDisplayMatching(prev.bounds);
+        const looksFullscreen = prev.bounds.width >= display.bounds.width - 2 &&
+          prev.bounds.height >= display.bounds.height - 2;
+        if (!looksFullscreen) restore = prev;
+      } catch (e) { restore = prev; }
+    }
+    if (!restore) {
+      restore = { wasMaximized: this.isMaximized, bounds: this.windowBounds };
+    }
+    try {
+      if (restore.wasMaximized) {
+        // 用户期望：退出全屏直接回到「原始窗口大小」（普通窗口），不经过最大化。
+        // setBounds 对全屏/最大化窗口一步生效（自动取消最大化并设置尺寸），
+        // 窗口从全屏直接到原始尺寸，无「先最大化再还原」的中间跳变。
+        this.mainWindow.setBounds(restore.bounds);
+      } else {
+        // 普通窗口：确保不被最大化，直接恢复到原始边界
+        if (this.mainWindow.isMaximized()) this.mainWindow.unmaximize();
+        this.mainWindow.setBounds(restore.bounds);
+      }
+    } catch (e) { /* 忽略 */ }
     this.layoutViews();
+
+    // 最终自愈：延时检查窗口是否仍异常保持全屏尺寸（极端情况下 setFullScreen(false)
+    // 未还原、且镜像恢复被异步覆盖），强制用镜像恢复。
+    this.scheduleFullscreenSelfHeal();
   }
 
   /**
@@ -658,12 +875,13 @@ class WindowManager {
       const fullScreenTab = this.tabs.find(t => t.id === this.htmlFullScreenTabId);
       if (fullScreenTab && fullScreenTab.view) {
         const display = screen.getDisplayMatching(this.mainWindow.getBounds());
-        fullScreenTab.view.setBounds({
-          x: 0,
-          y: 0,
-          width: display.bounds.width,
-          height: display.bounds.height,
-        });
+        // setBounds 去重：全屏过渡期间 resize/enter-full-screen 等事件密集触发
+        // layoutViews，bounds 未变化时不重复设置，避免无谓重绘卡顿
+        const nb = { x: 0, y: 0, width: display.bounds.width, height: display.bounds.height };
+        const cb = fullScreenTab.view.getBounds();
+        if (cb.x !== nb.x || cb.y !== nb.y || cb.width !== nb.width || cb.height !== nb.height) {
+          fullScreenTab.view.setBounds(nb);
+        }
       }
       return;
     }
@@ -683,12 +901,16 @@ class WindowManager {
     const activeTab = this.tabs.find(t => t.id === this.activeTabId);
     if (activeTab && activeTab.view) {
       // BrowserView 放在 UI 元素下方，留出标题栏、工具栏、书签栏、状态栏空间
-      activeTab.view.setBounds({
+      const nb = {
         x: 0,
         y: topOffset,
         width: contentBounds.width,
         height: contentBounds.height - topOffset - statusBarHeight,
-      });
+      };
+      const cb = activeTab.view.getBounds();
+      if (cb.x !== nb.x || cb.y !== nb.y || cb.width !== nb.width || cb.height !== nb.height) {
+        activeTab.view.setBounds(nb);
+      }
     }
 
     // 悬浮面板覆盖层跟随内容区布局
@@ -1114,7 +1336,17 @@ class WindowManager {
 
   /** 创建/获取扩展 Popup 覆盖层视图（非透明白底 BrowserView，加载 chrome-extension:// 的 popup.html） */
   ensureExtensionPopupView() {
-    if (this.extensionPopupView) return this.extensionPopupView;
+    // ⚠️ 视图可能已销毁（webContents 崩溃/cleanup 异常后引用残留），复用会报
+    // 「Can't add a destroyed child view to a parent view」（setTopBrowserView 抛错）
+    // → 检测到已销毁则清理引用并重建。
+    if (this.extensionPopupView) {
+      // ⚠️ BrowserView 销毁后 .webContents 可能返回 undefined，需防御
+      if (this.extensionPopupView.webContents && !this.extensionPopupView.webContents.isDestroyed()) {
+        return this.extensionPopupView;
+      }
+      try { this.mainWindow.removeBrowserView(this.extensionPopupView); } catch (e) { /* 忽略 */ }
+      this.extensionPopupView = null;
+    }
     const overlay = new BrowserView({
       webPreferences: {
         preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
@@ -1166,6 +1398,9 @@ class WindowManager {
     this.hideExtensionPopup();
 
     const view = this.ensureExtensionPopupView();
+    if (!view || view.webContents.isDestroyed()) {
+      return { ok: false, reason: 'no-view' };
+    }
     this.extensionPopupId = id;
     this.mainWindow.addBrowserView(view); // 幂等（视图常驻，首次才真正添加）
     this.mainWindow.setTopBrowserView(view);
@@ -1206,6 +1441,11 @@ class WindowManager {
   /** 关闭扩展 Popup（缩小为 1x1 保持附加：不 add/remove BrowserView，避免网页频闪） */
   hideExtensionPopup() {
     if (!this.extensionPopupView) return;
+    // 视图已销毁（webContents 为 undefined 或 isDestroyed）：仅清理引用，不再操作
+    if (!this.extensionPopupView.webContents || this.extensionPopupView.webContents.isDestroyed()) {
+      this.extensionPopupView = null;
+      return;
+    }
     this._removePanelClickCloser();
     try {
       this.hideViewInvisible(this.extensionPopupView);
@@ -1281,12 +1521,19 @@ class WindowManager {
     this._extensionCommands = collectExtensionCommands() || [];
     if (this._extensionCommands.length === 0 || !this.mainWindow) return;
 
+    // chrome UI（地址栏/工具栏）聚焦时
     this.mainWindow.webContents.on('before-input-event', (event, input) => {
-      const cmd = this._extensionCommands.find((c) => this.matchAccelerator(c.accelerator, input));
-      if (!cmd) return;
-      event.preventDefault();
-      triggerExtensionCommand(cmd.extId, cmd.name);
+      this.handleExtensionCommandInput(event, input);
     });
+  }
+
+  /** 统一的扩展命令快捷键处理（chrome UI 与网页标签页共用） */
+  handleExtensionCommandInput(event, input) {
+    if (!this._extensionCommands || this._extensionCommands.length === 0) return;
+    const cmd = this._extensionCommands.find((c) => this.matchAccelerator(c.accelerator, input));
+    if (!cmd) return;
+    event.preventDefault();
+    triggerExtensionCommand(cmd.extId, cmd.name);
   }
 
   /** 匹配加速键字符串与键盘输入（支持 Ctrl/Alt/Shift/Cmd/CommandOrControl/功能键） */
@@ -1377,8 +1624,58 @@ class WindowManager {
   setupViewEvents(view, tabId) {
     const wc = view.webContents;
 
+    // ===== 拦截 iframe 内的 HTML5 全屏（视频站内嵌播放器，如 B 站/爱奇艺） =====
+    // iframe 有独立的 JS 上下文（realm），主 frame 的 requestFullscreen hook 拦截不到。
+    // 因此主进程在每个子 frame 创建/加载完成时注入 hook：iframe 请求全屏前通过
+    // postMessage 通知主 frame（preload 已监听），主 frame 再同步保存窗口状态。
+    const IFRAME_FS_HOOK = `(function () {
+      try {
+        if (window.__neutronFsHook) return;
+        var save = function () {
+          try { window.top.postMessage({ __neutronSaveFs: 1 }, '*'); } catch (e) {}
+        };
+        var names = ['requestFullscreen', 'webkitRequestFullscreen'];
+        for (var i = 0; i < names.length; i++) {
+          (function (name) {
+            var orig = Element.prototype[name];
+            if (typeof orig === 'function') {
+              Element.prototype[name] = function (options) {
+                save();
+                return orig.call(this, options);
+              };
+            }
+          })(names[i]);
+        }
+        window.__neutronFsHook = true;
+      } catch (e) {}
+    })();`;
+
+    const injectIframeFsHook = (frame) => {
+      try {
+        frame.executeJavaScript(IFRAME_FS_HOOK).catch(() => {});
+      } catch (e) { /* 忽略 */ }
+    };
+
+    wc.on('frame-created', (event, details) => {
+      const frame = details && details.frame;
+      if (frame && frame !== wc.mainFrame) injectIframeFsHook(frame);
+    });
+
+    // 兜底：frame-created 时 JS 环境可能未就绪导致注入失败，加载完成后重试
+    wc.on('did-frame-finish-load', () => {
+      try {
+        const frames = wc.mainFrame ? wc.mainFrame.frames : [];
+        for (const f of frames) injectIframeFsHook(f);
+      } catch (e) { /* 忽略 */ }
+    });
+
     // 网页右键菜单，参考 Edge 的常用操作
     this.setupWebContentsContextMenu(wc);
+
+    // 扩展命令快捷键：网页聚焦时也要生效（mainWindow.webContents 只覆盖 chrome UI）
+    wc.on('before-input-event', (event, input) => {
+      this.handleExtensionCommandInput(event, input);
+    });
 
     // 拖放 .crx/.zip 扩展包到网页区域：Electron 默认会把文件导航到 file://，
     // 在此拦截并转交渲染层安装扩展
@@ -1399,10 +1696,13 @@ class WindowManager {
         this.syncTabsToRenderer();
         this.syncNavState(tab);
         this.recordHistoryEntry(tab, 'meta');
+        this.notifyTabUpdatedForExt(tab, { title });
       }
     });
 
     wc.on('enter-html-full-screen', () => {
+      // 注意：Electron 会先自动把窗口改成全屏再触发本事件（无法 preventDefault），
+      // 进入前的窗口状态由 preload 的 requestFullscreen 拦截提前保存。
       this.handleHtmlFullScreen(tabId, true);
     });
 
@@ -1418,6 +1718,7 @@ class WindowManager {
         this.syncTabsToRenderer();
         this.syncNavState(tab);
         this.recordHistoryEntry(tab, 'meta');
+        this.notifyTabUpdatedForExt(tab, { favIconUrl: favicons[0] });
       }
     });
 
@@ -1431,6 +1732,7 @@ class WindowManager {
         this.syncTabsToRenderer();
         this.syncNavState(tab);
         this.recordHistoryEntry(tab, 'navigation');
+        this.notifyTabUpdatedForExt(tab, { url, status: 'complete' });
         // 真实导航成功：清理导航前的标题备份
         delete tab._prevTitle;
         delete tab._prevFavicon;
@@ -1444,6 +1746,7 @@ class WindowManager {
         this.syncTabsToRenderer();
         this.syncNavState(tab);
         this.recordHistoryEntry(tab, 'navigation');
+        this.notifyTabUpdatedForExt(tab, { url });
       }
     });
 
@@ -1741,6 +2044,14 @@ class WindowManager {
       isLoading: tab.isLoading,
       loadingProgress: tab.loadingProgress,
     });
+  }
+
+  /** 扩展 chrome.tabs.onUpdated 事件（标题/URL/favicon/状态变化时派发） */
+  notifyTabUpdatedForExt(tab, changeInfo) {
+    try {
+      const { notifyTabUpdated } = require('./extensionBridge');
+      notifyTabUpdated(tab, changeInfo || {});
+    } catch (e) { /* 忽略 */ }
   }
 
   /**

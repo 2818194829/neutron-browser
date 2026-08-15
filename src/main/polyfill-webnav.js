@@ -20,6 +20,7 @@ const IPC_CHANNELS = {
   EXT_WEBREQUEST_REGISTER: 'ext:webRequestRegister',
   EXT_WEBREQUEST_UNREGISTER: 'ext:webRequestUnregister',
   EXT_NOTIFICATIONS_CREATE: 'ext:notificationsCreate',
+  EXT_NOTIFICATIONS_CLEAR: 'ext:notificationsClear',
   EXT_COOKIES_GET: 'ext:cookiesGet',
   EXT_COOKIES_GET_ALL: 'ext:cookiesGetAll',
   EXT_COOKIES_SET: 'ext:cookiesSet',
@@ -32,6 +33,21 @@ const IPC_CHANNELS = {
   EXT_TABS: 'ext:tabs',
   EXT_WINDOWS: 'ext:windows',
   EXT_SCRIPTING: 'ext:scripting',
+  EXT_STORAGE: 'ext:storage',
+  EXT_I18N: 'ext:i18n',
+  EXT_I18N_SYNC: 'ext:i18nSync',
+  EXT_DNR: 'ext:dnr',
+  EXT_SESSIONS: 'ext:sessions',
+  EXT_MANAGEMENT: 'ext:management',
+  EXT_BROWSING_DATA: 'ext:browsingData',
+  EXT_RUNTIME_SEND_MESSAGE: 'ext:runtimeSendMessage',
+  EXT_TABS_SEND_MESSAGE: 'ext:tabsSendMessage',
+  EXT_CS_SEND_MESSAGE: 'ext:csSendMessage',
+  EXT_ALARMS: 'ext:alarms',
+  EXT_DOWNLOADS: 'ext:downloads',
+  EXT_TOPSITES: 'ext:topSites',
+  EXT_IDLE: 'ext:idle',
+  EXT_PERMISSIONS: 'ext:permissions',
 };
 
 if (location.protocol === 'chrome-extension:') {
@@ -47,13 +63,15 @@ if (location.protocol === 'chrome-extension:') {
     setTitle: (title) =>
       ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_ACTION_BADGE, { id: extId, patch: { title: title || '' } }),
     // webRequest（真实拦截）
-    webRequestRegister: (evt, hasListener) =>
-      ipcRenderer.send(IPC_CHANNELS.EXT_WEBREQUEST_REGISTER, { id: extId, evt, hasListener }),
+    webRequestRegister: (evt, hasListener, filter) =>
+      ipcRenderer.send(IPC_CHANNELS.EXT_WEBREQUEST_REGISTER, { id: extId, evt, hasListener, filter }),
     webRequestUnregister: (evt) =>
       ipcRenderer.send(IPC_CHANNELS.EXT_WEBREQUEST_UNREGISTER, { id: extId, evt }),
     // notifications（真实通知）
     notificationsCreate: (options) =>
       ipcRenderer.invoke(IPC_CHANNELS.EXT_NOTIFICATIONS_CREATE, { id: extId, options }),
+    notificationsClear: (notificationId) =>
+      ipcRenderer.send(IPC_CHANNELS.EXT_NOTIFICATIONS_CLEAR, { id: extId, notificationId }),
     // cookies（真实读写）
     cookiesGet: (url, name) =>
       ipcRenderer.invoke(IPC_CHANNELS.EXT_COOKIES_GET, { url, name }),
@@ -92,6 +110,33 @@ if (location.protocol === 'chrome-extension:') {
       ipcRenderer.invoke(IPC_CHANNELS.EXT_STORAGE, { method: 'remove', id: extId, area, args: { keys } }),
     storageClear: (area) =>
       ipcRenderer.invoke(IPC_CHANNELS.EXT_STORAGE, { method: 'clear', id: extId, area, args: {} }),
+    // i18n / alarms / downloads / topSites / idle / permissions
+    i18nInvoke: (method, args) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_I18N, { id: extId, method, args }),
+    alarmsInvoke: (method, args) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_ALARMS, { id: extId, method, args }),
+    downloadsInvoke: (method, args) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_DOWNLOADS, { id: extId, method, args }),
+    topSitesGet: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_TOPSITES),
+    idleInvoke: (method, args) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_IDLE, { id: extId, method, args }),
+    permissionsInvoke: (method, args) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_PERMISSIONS, { id: extId, method, args }),
+    dnrInvoke: (method, args) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_DNR, { id: extId, method, args }),
+    sessionsInvoke: (method, args) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_SESSIONS, { id: extId, method, args }),
+    managementInvoke: (method, args) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_MANAGEMENT, { id: extId, method, args }),
+    browsingDataInvoke: (method, args) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_BROWSING_DATA, { id: extId, method, args }),
+    runtimeSendMessage: (message, targetExtId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_RUNTIME_SEND_MESSAGE, { extId, message, targetExtId }),
+    tabsSendMessage: (tabId, message) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_TABS_SEND_MESSAGE, { extId, tabId, message }),
+    csSendMessage: (message) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXT_CS_SEND_MESSAGE, { extId, message }),
   };
   // Electron 原生扩展页面（MV2 后台页等）contextIsolation 关闭，contextBridge 会静默失效：
   // 此时 preload 与主世界共享 window，直接赋值即可被扩展脚本看到。
@@ -118,7 +163,7 @@ if (location.protocol === 'chrome-extension:') {
             addListener: function (h) { if (handlers.indexOf(h) === -1) handlers.push(h); },
             removeListener: function (h) { var i = handlers.indexOf(h); if (i >= 0) handlers.splice(i, 1); },
             hasListener: function (h) { return handlers.indexOf(h) >= 0; },
-            trigger: function (args) { handlers.slice().forEach(function (h) { try { h(args); } catch (e) {} }); },
+            trigger: function () { var a = arguments; handlers.slice().forEach(function (h) { try { h.apply(null, a); } catch (e) {} }); },
           };
         }
         function ensure(obj, name, fn) {
@@ -147,6 +192,78 @@ if (location.protocol === 'chrome-extension:') {
         }
 
         var c = window.chrome || (window.chrome = {});
+
+        /* ---------- chrome.i18n（真实：同步取 _locales 消息） ---------- */
+        var _i18nCache = null;
+        function _loadI18n() {
+          if (_i18nCache !== null) return _i18nCache;
+          try {
+            _i18nCache = ipcRenderer.sendSync(IPC_CHANNELS.EXT_I18N_SYNC, { id: extId }) || {};
+          } catch (e) {
+            _i18nCache = { uiLanguage: 'en_US', messages: {} };
+          }
+          return _i18nCache;
+        }
+        var i18nApi = c.i18n || (c.i18n = {});
+        ensure(i18nApi, 'getMessage', function (name, subs) {
+          var messages = _loadI18n().messages || {};
+          var entry = messages[String(name || '')];
+          if (!entry || entry.message === undefined) return '';
+          var text = String(entry.message);
+          var arr = subs || [];
+          if (Array.isArray(arr) && arr.length > 0) {
+            text = text.replace(/\$\$/g, '\u0000').replace(/\$(\d)/g, function (m, n) {
+              var i = Number(n) - 1;
+              return i < arr.length ? String(arr[i]) : '';
+            }).replace(/\u0000/g, '$');
+          }
+          return text;
+        });
+        ensure(i18nApi, 'getUILanguage', function () { return _loadI18n().uiLanguage || 'en_US'; });
+        ensure(i18nApi, 'getAcceptLanguages', function () {
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.i18nInvoke('getAcceptLanguages', []) : Promise.resolve([_loadI18n().uiLanguage || 'en-US']);
+          return p;
+        });
+
+        /* ---------- chrome.runtime 消息桥接（sendMessage / onMessage） ---------- */
+        function makeRespondingListener() {
+          var handlers = [];
+          var obj = {
+            addListener: function (h) { if (handlers.indexOf(h) === -1) handlers.push(h); },
+            removeListener: function (h) { var i = handlers.indexOf(h); if (i >= 0) handlers.splice(i, 1); },
+            hasListener: function (h) { return handlers.indexOf(h) >= 0; },
+            dispatch: function (message, sender) {
+              var results = [];
+              handlers.slice().forEach(function (h) {
+                try {
+                  var r = h(message, sender || {}, function (resp) { results.push(resp); });
+                  if (r && typeof r.then === 'function') results.push(r);
+                  else if (r !== undefined) results.push(r);
+                } catch (e) {}
+              });
+              var hasPromise = results.some(function (x) { return x && typeof x.then === 'function'; });
+              if (!hasPromise) return results.length > 0 ? results[0] : undefined;
+              return Promise.all(results.map(function (x) { return x && typeof x.then === 'function' ? x : Promise.resolve(x); }))
+                .then(function (arr) { return arr.length > 0 ? arr[0] : undefined; });
+            }
+          };
+          return obj;
+        }
+        var rt = c.runtime || (c.runtime = {});
+        rt.onMessage = makeRespondingListener();
+        rt.sendMessage = function (extensionId, message, options, callback) {
+          // 兼容多种签名：sendMessage(message, cb) / sendMessage(extId, message, cb)
+          if (typeof extensionId !== 'string') { callback = options; options = message; message = extensionId; extensionId = undefined; }
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.runtimeSendMessage(message, extensionId) : Promise.resolve(undefined);
+          if (typeof callback === 'function') { p.then(function (r) { callback(r); }); return; }
+          return p;
+        };
+        // 主进程派发入口（content script / 扩展页面 → 后台）
+        window.__neutronFireRuntimeMessage = function (message, sender) {
+          return rt.onMessage.dispatch(message, sender);
+        };
 
         /* ---------- chrome.storage 兜底（Electron 原生 storage 可能异步就绪，早期不可用） ---------- */
         // 提供基于主进程 IPC 的真实 storage 实现；仅当原生 storage 区域缺失时接管。
@@ -195,6 +312,8 @@ if (location.protocol === 'chrome-extension:') {
               area.QUOTA_BYTES = stQuotas2[k];
             }
           });
+          // storage.onChanged（数据变化广播）
+          if (!c.storage.onChanged) c.storage.onChanged = makeListener();
         } catch (e) { /* 忽略：storage 不可用时 */ }
 
         /* ---------- chrome.webNavigation（Electron 不支持） ---------- */
@@ -248,7 +367,10 @@ if (location.protocol === 'chrome-extension:') {
                 if (!wrNotified[evt]) {
                   wrNotified[evt] = true;
                   var bridge = window.__neutronExtBridge;
-                  if (bridge) bridge.webRequestRegister(evt, true);
+                  if (bridge) bridge.webRequestRegister(evt, true, {
+                    urls: filter && filter.urls ? filter.urls : null,
+                    types: filter && filter.types ? filter.types : null,
+                  });
                 }
               },
               removeListener: function (listener) {
@@ -297,9 +419,13 @@ if (location.protocol === 'chrome-extension:') {
               else if (fnName === 'setTitle') bridge.setTitle(details.title || '');
               else if (fnName === 'setBadgeBackgroundColor') {
                 var color = details.color;
-                if (Array.isArray(details.colorArray)) {
-                  var a = details.colorArray;
-                  color = 'rgba(' + a[0] + ',' + a[1] + ',' + a[2] + ',' + (a[3] / 255 || 1) + ')';
+                // 兼容 Chrome 的 color 字符串与 [r,g,b,a] 数组两种形式（alpha 0-255 正确换算）
+                var arr = Array.isArray(details.color) ? details.color
+                  : (Array.isArray(details.colorArray) ? details.colorArray : null);
+                if (arr) {
+                  var a = arr;
+                  var alpha = a.length > 3 ? (Number(a[3]) / 255) : 1;
+                  color = 'rgba(' + a[0] + ',' + a[1] + ',' + a[2] + ',' + alpha + ')';
                 }
                 bridge.setBadgeBackgroundColor(color || '#666666');
               }
@@ -337,6 +463,9 @@ if (location.protocol === 'chrome-extension:') {
             title: props.title || '',
             contexts: props.contexts || ['all'],
             enabled: props.enabled !== false,
+            parentId: props.parentId,
+            type: props.type,
+            checked: props.checked,
           });
           if (cb) { cb(id); return; }
           return Promise.resolve(id);
@@ -348,11 +477,16 @@ if (location.protocol === 'chrome-extension:') {
           var props = args[1] || {};
           if (props.onclick) menuClickHandlers[id] = props.onclick;
           var bridge = window.__neutronExtBridge;
-          if (bridge && (props.title !== undefined || props.enabled !== undefined)) {
+          if (bridge && (props.title !== undefined || props.enabled !== undefined ||
+              props.checked !== undefined || props.type !== undefined ||
+              props.parentId !== undefined || props.contexts !== undefined)) {
             bridge.contextMenuRegister(id, {
               title: props.title !== undefined ? props.title : '',
               contexts: props.contexts || ['all'],
               enabled: props.enabled !== false,
+              parentId: props.parentId,
+              type: props.type,
+              checked: props.checked,
             });
           }
           if (cb) { cb(); return; }
@@ -451,6 +585,9 @@ if (location.protocol === 'chrome-extension:') {
         ensure(ntf, 'clear', function () {
           var args = Array.prototype.slice.call(arguments);
           var cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          var nid = typeof args[0] === 'string' ? args[0] : '';
+          var bridge = window.__neutronExtBridge;
+          if (bridge && bridge.notificationsClear) bridge.notificationsClear(nid);
           if (cb) { cb(true); return; }
           return Promise.resolve(true);
         });
@@ -506,8 +643,37 @@ if (location.protocol === 'chrome-extension:') {
         ensure(bm, 'remove', function (id, cb) { return bmCall('remove', id, cb); });
         ensure(bm, 'removeTree', function (id, cb) { return bmCall('removeTree', id, cb); });
 
+        /* ---------- chrome.downloads（真实：本浏览器下载） ---------- */
+        var dls = c.downloads || (c.downloads = {});
+        function dlCall(method) {
+          var args = Array.prototype.slice.call(arguments, 1);
+          var cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.downloadsInvoke(method, args) : Promise.resolve(undefined);
+          if (cb) { p.then(function (r) { cb(r); }); return; }
+          return p;
+        }
+        addListeners(dls, ['onCreated','onChanged','onErased','onDeterminingFilename']);
+        ensure(dls, 'download', function (opts, cb) { return dlCall('download', opts, cb); });
+        ensure(dls, 'search', function (query, cb) { return dlCall('search', query, cb); });
+        ensure(dls, 'pause', function (id, cb) { return dlCall('pause', id, cb); });
+        ensure(dls, 'resume', function (id, cb) { return dlCall('resume', id, cb); });
+        ensure(dls, 'cancel', function (id, cb) { return dlCall('cancel', id, cb); });
+        ensure(dls, 'erase', function (query, cb) {
+          var id = query && (query.id !== undefined ? query.id : query);
+          return dlCall('erase', id, cb);
+        });
+        ensure(dls, 'removeFile', function (id, cb) { return dlCall('erase', id, cb); });
+        ensure(dls, 'open', emptyAction());
+        ensure(dls, 'show', emptyAction());
+        ensure(dls, 'showDefaultFolder', emptyAction());
+        ensure(dls, 'getFileIcon', emptyResult(''));
+        ensure(dls, 'acceptDanger', emptyAction());
+        ensure(dls, 'setShelfEnabled', emptyAction());
+
         /* ---------- chrome.tabs（真实：本浏览器标签页） ---------- */
-        var tabsApi = c.tabs = {};
+        // 保留 Electron 原生实现（若有），仅补充缺失方法，避免整体覆盖丢失原生能力
+        var tabsApi = c.tabs || (c.tabs = {});
         function tabCall(method) {
           var args = Array.prototype.slice.call(arguments, 1);
           var cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
@@ -526,9 +692,16 @@ if (location.protocol === 'chrome-extension:') {
         tabsApi.remove = function (id, cb) { return tabCall('remove', id, cb); };
         tabsApi.reload = function (id, opts, cb) { return tabCall('reload', id, cb); };
         tabsApi.duplicate = function (id, cb) { return tabCall('duplicate', id, cb); };
+        tabsApi.sendMessage = function (tabId, message, options, cb) {
+          if (typeof options === 'function') { cb = options; options = undefined; }
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.tabsSendMessage(tabId, message) : Promise.resolve(undefined);
+          if (typeof cb === 'function') { p.then(function (r) { cb(r); }); return; }
+          return p;
+        };
 
         /* ---------- chrome.windows（真实：本浏览器窗口） ---------- */
-        var wins = c.windows = {};
+        var wins = c.windows || (c.windows = {});
         function winCall(method) {
           var args = Array.prototype.slice.call(arguments, 1);
           var cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
@@ -560,17 +733,75 @@ if (location.protocol === 'chrome-extension:') {
         ensure(proxy.settings, 'onChange', makeListener());
         addListeners(proxy, ['onRequest','onError']);
 
-        /* ---------- chrome.topSites ---------- */
+        /* ---------- chrome.topSites（真实：历史高频站点） ---------- */
         var ts = c.topSites || (c.topSites = {});
-        ensure(ts, 'get', emptyResult([]));
-
-        /* ---------- chrome.browsingData ---------- */
-        var bd = c.browsingData || (c.browsingData = {});
-        ['remove','removeAppcache','removeCache','removeCookies','removeDownloads','removeFileSystems',
-         'removeFormData','removeHistory','removeIndexedDB','removeLocalStorage','removePasswords',
-         'removePluginData','removeWebSQL','removeServiceWorkers'].forEach(function (m) {
-          ensure(bd, m, emptyAction());
+        ensure(ts, 'get', function (cb) {
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.topSitesGet() : Promise.resolve([]);
+          if (cb) { p.then(function (r) { cb(r || []); }); return; }
+          return p;
         });
+
+        /* ---------- chrome.browsingData（真实：remove 清理历史/Cookie/缓存/下载） ---------- */
+        var bd = c.browsingData || (c.browsingData = {});
+        function bdCall(method) {
+          var args = Array.prototype.slice.call(arguments, 1);
+          var cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.browsingDataInvoke(method, args) : Promise.resolve();
+          if (cb) { p.then(function () { cb && cb(); }); return; }
+          return p;
+        }
+        ensure(bd, 'remove', function (dataTypes, options, cb) {
+          var args = Array.prototype.slice.call(arguments);
+          var cb2 = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          return bdCall('remove', args[0], args[1], cb2);
+        });
+        var bdMap = { removeCache: { cache: true }, removeCookies: { cookies: true },
+          removeDownloads: { downloads: true }, removeHistory: { history: true },
+          removeLocalStorage: { localStorage: true }, removePasswords: { passwords: true },
+          removeFormData: { formData: true }, removeIndexedDB: { indexedDB: true },
+          removeAppcache: { appcache: true }, removeWebSQL: { webSQL: true },
+          removePluginData: { pluginData: true }, removeFileSystems: { fileSystems: true },
+          removeServiceWorkers: { serviceWorkers: true } };
+        Object.keys(bdMap).forEach(function (m) {
+          ensure(bd, m, function (options, cb) {
+            var args = Array.prototype.slice.call(arguments);
+            var cb2 = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+            return bdCall('remove', bdMap[m], args[0], cb2);
+          });
+        });
+
+        /* ---------- chrome.declarativeNetRequest（真实：DNR 规则引擎） ---------- */
+        var dnrApi = c.declarativeNetRequest || (c.declarativeNetRequest = {});
+        function dnrCall(method) {
+          var args = Array.prototype.slice.call(arguments, 1);
+          var cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.dnrInvoke(method, args) : Promise.resolve(undefined);
+          if (cb) { p.then(function (r) { cb(r); }); return; }
+          return p;
+        }
+        ensure(dnrApi, 'updateDynamicRules', function (opts, cb) { return dnrCall('updateDynamicRules', opts, cb); });
+        ensure(dnrApi, 'getDynamicRules', function (cb) { return dnrCall('getDynamicRules', cb); });
+        ensure(dnrApi, 'updateSessionRules', function (opts, cb) { return dnrCall('updateSessionRules', opts, cb); });
+        ensure(dnrApi, 'getSessionRules', function (cb) { return dnrCall('getSessionRules', cb); });
+        ensure(dnrApi, 'getAvailableStaticRuleCount', function (cb) {
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.dnrInvoke('getAvailableStaticRuleCount', []) : Promise.resolve(0);
+          if (cb) { p.then(function (r) { cb(r); }); return; }
+          return p;
+        });
+        ensure(dnrApi, 'getEnabledRulesets', function (cb) {
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.dnrInvoke('getEnabledRulesets', []) : Promise.resolve([]);
+          if (cb) { p.then(function (r) { cb(r); }); return; }
+          return p;
+        });
+        ensure(dnrApi, 'updateEnabledRulesets', function (opts, cb) { return dnrCall('updateEnabledRulesets', opts, cb); });
+        ensure(dnrApi, 'setExtensionActionOptions', emptyAction());
+        ensure(dnrApi, 'getMatchedRules', emptyResult([]));
+        ensure(dnrApi, 'onRuleMatchedDebug', makeListener());
 
         /* ---------- chrome.scripting（真实：动态脚本注入） ---------- */
         var scr = c.scripting || (c.scripting = {});
@@ -594,21 +825,50 @@ if (location.protocol === 'chrome-extension:') {
         ensure(scr, 'getRegisteredContentScripts', emptyResult([]));
         ensure(scr, 'updateContentScripts', emptyAction());
 
-        /* ---------- chrome.alarms ---------- */
+        /* ---------- chrome.alarms（真实：主进程定时器） ---------- */
         var al = c.alarms || (c.alarms = {});
-        ensure(al, 'create', emptyAction());
-        ensure(al, 'get', emptyResult(null));
-        ensure(al, 'getAll', emptyResult([]));
-        ensure(al, 'clear', emptyResult(false));
-        ensure(al, 'clearAll', emptyResult(false));
+        function alarmCall(method) {
+          var args = Array.prototype.slice.call(arguments, 1);
+          var cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.alarmsInvoke(method, args) : Promise.resolve(undefined);
+          if (cb) { p.then(function (r) { cb(r); }); return; }
+          return p;
+        }
+        ensure(al, 'create', function (name, info, cb) {
+          var args = Array.prototype.slice.call(arguments);
+          var cb2 = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.alarmsInvoke('create', [args[0], args[1] || {}]) : Promise.resolve();
+          if (cb2) { p.then(function () { cb2 && cb2(); }); return; }
+          return p;
+        });
+        ensure(al, 'get', function (name, cb) { return alarmCall('get', name, cb); });
+        ensure(al, 'getAll', function (cb) { return alarmCall('getAll', cb); });
+        ensure(al, 'clear', function (name, cb) { return alarmCall('clear', name, cb); });
+        ensure(al, 'clearAll', function (cb) { return alarmCall('clearAll', cb); });
         ensure(al, 'onAlarm', makeListener());
 
-        /* ---------- chrome.idle ---------- */
+        /* ---------- chrome.idle（真实：powerMonitor） ---------- */
         var idle = c.idle || (c.idle = {});
+        function idleCall(method) {
+          var args = Array.prototype.slice.call(arguments, 1);
+          var cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.idleInvoke(method, args) : Promise.resolve(undefined);
+          if (cb) { p.then(function (r) { cb(r); }); return; }
+          return p;
+        }
         ensure(idle, 'queryState', function (t, cb) {
-          if (typeof cb === 'function') cb('active'); else return Promise.resolve('active');
+          var args = Array.prototype.slice.call(arguments);
+          var cb2 = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          return idleCall('queryState', args[0], cb2);
         });
-        ensure(idle, 'setDetectionInterval', emptyAction());
+        ensure(idle, 'setDetectionInterval', function (t, cb) {
+          var args = Array.prototype.slice.call(arguments);
+          var cb2 = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          return idleCall('setDetectionInterval', args[0], cb2);
+        });
         ensure(idle, 'onStateChanged', makeListener());
 
         /* ---------- chrome.privacy（补齐 setting 对象，如 networkPredictionEnabled） ---------- */
@@ -641,25 +901,49 @@ if (location.protocol === 'chrome-extension:') {
           ensure(priv[sec], 'onChange', makeListener());
         });
 
-        /* ---------- chrome.sessions ---------- */
+        /* ---------- chrome.sessions（真实：最近关闭标签页） ---------- */
         var sess = c.sessions || (c.sessions = {});
-        ensure(sess, 'getRecentlyClosed', emptyResult([]));
-        ensure(sess, 'restore', emptyResult(null));
+        function sessCall(method) {
+          var args = Array.prototype.slice.call(arguments, 1);
+          var cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.sessionsInvoke(method, args) : Promise.resolve(null);
+          if (cb) { p.then(function (r) { cb(r); }); return; }
+          return p;
+        }
+        ensure(sess, 'getRecentlyClosed', function (filter, cb) { return sessCall('getRecentlyClosed', filter, cb); });
+        ensure(sess, 'restore', function (sessionId, cb) { return sessCall('restore', sessionId, cb); });
         ensure(sess, 'getDevices', emptyResult([]));
         ensure(sess, 'onChanged', makeListener());
 
-        /* ---------- chrome.permissions ---------- */
+        /* ---------- chrome.permissions（真实：清单 + 已授予权限） ---------- */
         var perm = c.permissions || (c.permissions = {});
-        ensure(perm, 'contains', emptyResult(false));
-        ensure(perm, 'request', emptyResult(false));
-        ensure(perm, 'remove', emptyResult(false));
-        ensure(perm, 'getAll', emptyResult({ permissions: [], origins: [] }));
+        function permCall(method) {
+          var args = Array.prototype.slice.call(arguments, 1);
+          var cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.permissionsInvoke(method, args) : Promise.resolve(undefined);
+          if (cb) { p.then(function (r) { cb(r); }); return; }
+          return p;
+        }
+        ensure(perm, 'contains', function (perms, cb) { return permCall('contains', perms, cb); });
+        ensure(perm, 'request', function (perms, cb) { return permCall('request', perms, cb); });
+        ensure(perm, 'remove', function (perms, cb) { return permCall('remove', perms, cb); });
+        ensure(perm, 'getAll', function (cb) { return permCall('getAll', cb); });
         addListeners(perm, ['onAdded','onRemoved']);
 
-        /* ---------- chrome.management 补齐（getSelf 已有，补 getAll/get） ---------- */
+        /* ---------- chrome.management（真实：已安装扩展列表） ---------- */
         var mgmt = c.management || (c.management = {});
-        ensure(mgmt, 'getAll', emptyResult([]));
-        ensure(mgmt, 'get', emptyResult(null));
+        function mgmtCall(method) {
+          var args = Array.prototype.slice.call(arguments, 1);
+          var cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+          var bridge = window.__neutronExtBridge;
+          var p = bridge ? bridge.managementInvoke(method, args) : Promise.resolve(null);
+          if (cb) { p.then(function (r) { cb(r); }); return; }
+          return p;
+        }
+        ensure(mgmt, 'getAll', function (cb) { return mgmtCall('getAll', cb); });
+        ensure(mgmt, 'get', function (id, cb) { return mgmtCall('get', id, cb); });
 
         /* ---------- 主进程触发入口（executeJavaScript 调用） ---------- */
         // 工具栏图标被点击（无 Popup）→ 触发 browserAction/action onClicked
@@ -677,6 +961,33 @@ if (location.protocol === 'chrome-extension:') {
           if (c2.commands && c2.commands.onCommand && c2.commands.onCommand.trigger) {
             c2.commands.onCommand.trigger(name);
           }
+        };
+        // 标签页/窗口生命周期事件派发（主进程 broadcast 调用）
+        window.__neutronFireTabEvent = function (eventName, argsArray) {
+          var c2 = window.chrome || {};
+          var evt = c2.tabs && c2.tabs[eventName];
+          if (evt && evt.trigger) evt.trigger.apply(null, argsArray || []);
+        };
+        window.__neutronFireWindowEvent = function (eventName, argsArray) {
+          var c2 = window.chrome || {};
+          var evt = c2.windows && c2.windows[eventName];
+          if (evt && evt.trigger) evt.trigger.apply(null, argsArray || []);
+        };
+        // 书签/历史/Cookie/storage/idle 事件派发
+        function fireNsEvent(ns, eventName, argsArray) {
+          var c2 = window.chrome || {};
+          var evt = c2[ns] && c2[ns][eventName];
+          if (evt && evt.trigger) evt.trigger.apply(null, argsArray || []);
+        }
+        window.__neutronFireBookmarkEvent = function (eventName, argsArray) { fireNsEvent('bookmarks', eventName, argsArray); };
+        window.__neutronFireHistoryEvent = function (eventName, argsArray) { fireNsEvent('history', eventName, argsArray); };
+        window.__neutronFireCookieEvent = function (eventName, argsArray) { fireNsEvent('cookies', eventName, argsArray); };
+        window.__neutronFireStorageEvent = function (eventName, argsArray) { fireNsEvent('storage', eventName, argsArray); };
+        window.__neutronFireIdleEvent = function (eventName, argsArray) { fireNsEvent('idle', eventName, argsArray); };
+        // 闹钟触发 → chrome.alarms.onAlarm
+        window.__neutronFireAlarm = function (alarm) {
+          var c2 = window.chrome || {};
+          if (c2.alarms && c2.alarms.onAlarm && c2.alarms.onAlarm.trigger) c2.alarms.onAlarm.trigger(alarm);
         };
 
         window.__extPolyfilled = true;
@@ -770,4 +1081,24 @@ if (location.protocol === 'chrome-extension:') {
       ipcRenderer.send('extensions:dragDrop', { path: filePath });
     }, true);
   })();
+
+  // ==================== 内容脚本 → 后台 消息中继 ====================
+  // scripting.executeScript 注入的隔离世界（999）通过 window.postMessage 送达本 preload，
+  // 由这里经 ipcRenderer 转发到主进程 → 扩展后台；响应原路 postMessage 返回。
+  window.addEventListener('message', (e) => {
+    try {
+      const d = e.data;
+      if (!d || !d.__neutronCsMsg) return;
+      const msg = d.__neutronCsMsg;
+      if (msg && msg.type === 'sendMessage') {
+        ipcRenderer.invoke('ext:csSendMessage', { extId: msg.extId, message: msg.message })
+          .then((result) => {
+            try { window.postMessage({ __neutronCsResp: { id: msg.id, result } }, '*'); } catch (err) {}
+          })
+          .catch((err) => {
+            try { window.postMessage({ __neutronCsResp: { id: msg.id, error: String((err && err.message) || err) } }, '*'); } catch (e2) {}
+          });
+      }
+    } catch (err) { /* 忽略 */ }
+  });
 }

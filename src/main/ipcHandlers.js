@@ -271,6 +271,29 @@ function registerIpcHandlers() {
     return wm ? wm.mainWindow?.isMaximized() ?? false : false;
   });
 
+  // 页面发起 requestFullscreen 时（preload 同步调用），在窗口被 Electron 自动
+  // 改成全屏尺寸之前保存窗口状态，供退出全屏后恢复。
+  ipcMain.on(IPC_CHANNELS.WINDOW_SAVE_FULLSCREEN_STATE, (event) => {
+    const wm = getWM();
+    if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+      wm.htmlFullScreenPrev = {
+        wasMaximized: wm.mainWindow.isMaximized(),
+        bounds: wm.mainWindow.isMaximized()
+          ? wm.mainWindow.getNormalBounds()
+          : wm.mainWindow.getBounds(),
+      };
+      // ⭐ 关键：若窗口当前是最大化，先取消最大化再让页面进入全屏——让 Electron
+      // 记录「普通」作为退出还原目标。否则退出全屏时 Electron 会先把窗口还原成
+      // 最大化、再被主进程 setBounds 修正，造成「先最大化再退回原始大小」的
+      // 两步跳变。用户期望退出后直接回到原始窗口大小（此时窗口尚未全屏，
+      // unmaximize 有效；handleHtmlFullScreen 触发时窗口已全屏则无效）。
+      if (wm.mainWindow.isMaximized()) {
+        try { wm.mainWindow.unmaximize(); } catch (e) { /* 忽略 */ }
+      }
+    }
+    event.returnValue = true;
+  });
+
   ipcMain.handle(IPC_CHANNELS.WINDOW_SET_ALWAYS_ON_TOP, (event, flag) => {
     const wm = getWM();
     if (wm && wm.setAlwaysOnTop) return wm.setAlwaysOnTop(flag);
@@ -348,6 +371,13 @@ function registerIpcHandlers() {
       const [moved] = wm.tabs.splice(fromIndex, 1);
       wm.tabs.splice(toIndex, 0, moved);
       wm.syncTabsToRenderer();
+      // 扩展 chrome.tabs.onMoved 事件
+      if (moved) {
+        try {
+          const { notifyTabMoved } = require('./extensionBridge');
+          notifyTabMoved(moved.id, fromIndex, toIndex);
+        } catch (e) { /* 忽略 */ }
+      }
     }
   });
 

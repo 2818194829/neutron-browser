@@ -2,9 +2,10 @@
  * 共享常量定义
  * 用于主进程与渲染进程之间的 IPC 通道名称和通用常量
  */
+import type { Settings, BookmarkData } from './types';
 
 // ==================== IPC 通道名称 ====================
-const IPC_CHANNELS = {
+export const IPC_CHANNELS = {
   // 窗口控制
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',
@@ -14,6 +15,7 @@ const IPC_CHANNELS = {
   WINDOW_SET_ALWAYS_ON_TOP: 'window:setAlwaysOnTop',
   WINDOW_IS_ALWAYS_ON_TOP: 'window:isAlwaysOnTop',
   WINDOW_ALWAYS_ON_TOP_CHANGED: 'window:alwaysOnTopChanged',
+  WINDOW_SAVE_FULLSCREEN_STATE: 'window:saveFullscreenState',
   UI_MODAL_CHANGED: 'ui:modalChanged',
   UI_MODAL_SNAPSHOT: 'ui:modalSnapshot',
   UI_MODAL_SNAPSHOT_READY: 'ui:modalSnapshotReady',
@@ -138,11 +140,9 @@ const IPC_CHANNELS = {
   EXTENSIONS_INSTALL_FILE: 'extensions:installFile',
   EXTENSIONS_DROP_FILE: 'extensions:dropFile',
   // 扩展包拖拽安装（Edge 式全窗口拦截）：
-  // enter/leave 通知主进程显示/隐藏全窗拖放覆盖层，drop 携带文件路径统一走主进程转发
   EXTENSIONS_DRAG_ENTER: 'extensions:dragEnter',
   EXTENSIONS_DRAG_LEAVE: 'extensions:dragLeave',
   EXTENSIONS_DRAG_DROP: 'extensions:dragDrop',
-  // 拖放诊断：渲染层上报事件 -> 主进程写日志并回传提示（用于排查真实拖放问题）
   EXTENSIONS_DRAG_DEBUG: 'extensions:dragDebug',
   EXTENSIONS_DRAG_DEBUG_EVENT: 'extensions:dragDebugEvent',
   EXTENSIONS_TOGGLE: 'extensions:toggle',
@@ -184,6 +184,22 @@ const IPC_CHANNELS = {
   EXT_SCRIPTING: 'ext:scripting',
   // 扩展 storage 兜底桥接（Electron 原生 storage 可能异步就绪，扩展脚本早期不可用）
   EXT_STORAGE: 'ext:storage',
+  // 扩展 API 补齐桥接（i18n/alarms/downloads/topSites/idle/permissions）
+  EXT_I18N: 'ext:i18n',
+  EXT_I18N_SYNC: 'ext:i18nSync',
+  EXT_DNR: 'ext:dnr',
+  EXT_SESSIONS: 'ext:sessions',
+  EXT_MANAGEMENT: 'ext:management',
+  EXT_BROWSING_DATA: 'ext:browsingData',
+  EXT_ALARMS: 'ext:alarms',
+  EXT_DOWNLOADS: 'ext:downloads',
+  EXT_TOPSITES: 'ext:topSites',
+  EXT_IDLE: 'ext:idle',
+  EXT_PERMISSIONS: 'ext:permissions',
+  // chrome.runtime 消息桥接（content script ↔ 后台 ↔ 扩展页面）
+  EXT_RUNTIME_SEND_MESSAGE: 'ext:runtimeSendMessage',
+  EXT_TABS_SEND_MESSAGE: 'ext:tabsSendMessage',
+  EXT_CS_SEND_MESSAGE: 'ext:csSendMessage',
 
   // 悬浮面板覆盖层（面板叠加在实时页面之上显示）
   PANEL_OVERLAY_SHOW: 'panelOverlay:show',
@@ -196,10 +212,10 @@ const IPC_CHANNELS = {
   // 验证码（真实发送）
   VERIFY_CODE_SEND: 'verify:codeSend',
   VERIFY_CODE_CHECK: 'verify:codeCheck',
-};
+} as const;
 
 // ==================== 默认设置 ====================
-const DEFAULT_SETTINGS = {
+export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',           // 'light' | 'dark' | 'system'
   accentColor: 'blue',       // 强调色: 'blue' | 'red' | 'green' | 'purple' | 'orange' | 'pink' | 'teal'
   themeSkin: 'default',      // 主题皮肤: 'default' | 'ocean' | 'forest' | 'sunset' | 'midnight' | 'rose'
@@ -235,7 +251,7 @@ const DEFAULT_SETTINGS = {
 };
 
 // ==================== 搜索引擎 ====================
-const SEARCH_ENGINES = {
+export const SEARCH_ENGINES: Record<string, { name: string; url: string }> = {
   google: { name: 'Google', url: 'https://www.google.com/search?q=%s' },
   bing: { name: 'Bing', url: 'https://www.bing.com/search?q=%s' },
   duckduckgo: { name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=%s' },
@@ -243,17 +259,17 @@ const SEARCH_ENGINES = {
 };
 
 // ==================== 内置页面 URL ====================
-const INTERNAL_PAGES = {
+export const INTERNAL_PAGES = {
   NEW_TAB: 'neutron://newtab',
   SETTINGS: 'neutron://settings',
   HISTORY: 'neutron://history',
   BOOKMARKS: 'neutron://bookmarks',
   DOWNLOADS: 'neutron://downloads',
   EXTENSIONS: 'neutron://extensions',
-};
+} as const;
 
 // ==================== 内置页面标题映射 ====================
-const INTERNAL_PAGE_TITLES = {
+export const INTERNAL_PAGE_TITLES: Record<string, string> = {
   'neutron://newtab': '新标签页',
   'neutron://settings': '设置',
   'neutron://history': '历史记录',
@@ -263,7 +279,7 @@ const INTERNAL_PAGE_TITLES = {
 };
 
 // ==================== 书签默认结构 ====================
-const DEFAULT_BOOKMARKS = {
+export const DEFAULT_BOOKMARKS: BookmarkData = {
   'bookmark_bar': {
     id: 'bookmark_bar',
     title: '书签栏',
@@ -282,13 +298,4 @@ const DEFAULT_BOOKMARKS = {
     type: 'folder',
     children: [],
   },
-};
-
-module.exports = {
-  IPC_CHANNELS,
-  DEFAULT_SETTINGS,
-  SEARCH_ENGINES,
-  INTERNAL_PAGES,
-  INTERNAL_PAGE_TITLES,
-  DEFAULT_BOOKMARKS,
 };

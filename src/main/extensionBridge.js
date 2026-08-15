@@ -10,7 +10,7 @@
  *
  * 扩展后台页通过 polyfill-webnav.js 的 __neutronExtBridge 调用这里注册的 IPC。
  */
-const { session, Notification, ipcMain, BrowserView } = require('electron');
+const { session, Notification, ipcMain, BrowserView, powerMonitor, app, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { IPC_CHANNELS } = require('../shared/constants');
@@ -33,20 +33,52 @@ const WEBREQUEST_EVENTS = [
   'onErrorOccurred',
 ];
 
+/** Electron 请求头对象 → Chrome 数组 [{name, value}] */
+function headersToChromeArray(headers) {
+  if (!headers) return undefined;
+  if (Array.isArray(headers)) return headers;
+  return Object.keys(headers).map((name) => ({ name, value: String(headers[name]) }));
+}
+
+/** Chrome 请求头数组 [{name, value}] → Electron 对象 {name: value} */
+function headersFromChromeArray(headers) {
+  if (!headers) return undefined;
+  if (!Array.isArray(headers)) return headers;
+  const out = {};
+  for (const h of headers) {
+    if (h && h.name !== undefined) out[h.name] = h.value;
+  }
+  return out;
+}
+
+/** 根据 webContentsId 反查真实标签页 id（chrome.tabs 风格整数 id） */
+function resolveTabIdForRequest(details) {
+  try {
+    const wm = global.windowManager;
+    if (wm && details && details.webContentsId) {
+      const tab = wm.tabs && wm.tabs.find((t) =>
+        t.view && t.view.webContents && t.view.webContents.id === details.webContentsId
+      );
+      if (tab) return Number(String(tab.id).replace(/^tab_/, '')) || -1;
+    }
+  } catch (e) { /* 忽略 */ }
+  return -1;
+}
+
 /** 将 Electron details 转换为接近 Chrome 的 webRequest details */
 function toChromeWebRequestDetails(details) {
   return {
     url: details.url || '',
     method: details.method || 'GET',
-    frameId: details.frame && details.frame !== -1 ? 0 : 0,
+    frameId: 0,
     parentFrameId: -1,
     requestId: String(details.id || details.webContentsId || ''),
     timeStamp: Date.now(),
     type: details.resourceType || 'other',
-    tabId: -1,
+    tabId: resolveTabIdForRequest(details),
     initiator: details.referrer || '',
-    requestHeaders: details.requestHeaders || undefined,
-    responseHeaders: details.responseHeaders || undefined,
+    requestHeaders: headersToChromeArray(details.requestHeaders),
+    responseHeaders: headersToChromeArray(details.responseHeaders),
     statusCode: details.statusCode || 0,
     fromCache: !!details.fromCache,
     error: details.error || undefined,
@@ -69,18 +101,65 @@ function ensureWebRequestInit() {
   }
 }
 
+/** 将 Chrome match pattern 转换为 RegExp（支持 * 通配符与 <all_urls>） */
+function matchPatternToRegExp(pattern) {
+  if (pattern === '<all_urls>') return /^(https?|file|ftp|ws|wss):\/\//i;
+  const parts = String(pattern).split('://');
+  if (parts.length !== 2) return null;
+  const scheme = parts[0].replace(/\*/g, '[a-z0-9+.-]*');
+  let rest = parts[1];
+  let hostPart = rest;
+  let pathPart = '*';
+  const slash = rest.indexOf('/');
+  if (slash !== -1) {
+    hostPart = rest.slice(0, slash);
+    pathPart = rest.slice(slash);
+  }
+  hostPart = hostPart.replace(/\*/g, '[^/]*');
+  pathPart = pathPart.replace(/\*/g, '.*');
+  return new RegExp('^' + scheme + '://' + hostPart + pathPart + '$', 'i');
+}
+
+function urlMatchesAnyPattern(url, patterns) {
+  if (!Array.isArray(patterns) || patterns.length === 0) return true;
+  for (const p of patterns) {
+    const re = matchPatternToRegExp(p);
+    if (re && re.test(url)) return true;
+  }
+  return false;
+}
+
+function typeMatchesAny(resourceType, types) {
+  if (!Array.isArray(types) || types.length === 0) return true;
+  return types.includes(resourceType);
+}
+
 function createWebRequestHandler(evt) {
   return async (details, callback) => {
+    // 1) DNR 规则评估（所有已启用扩展，独立于 webRequest 监听器）。
+    // 仅对可阻塞/可改头的事件评估，非阻塞事件跳过以避免无谓的规则匹配开销。
+    let dnrResp = {};
+    if (['onBeforeRequest', 'onBeforeSendHeaders', 'onHeadersReceived', 'onAuthRequired'].includes(evt)) {
+      try {
+        const { evaluateAllDnr } = require('./declarativeNetRequest');
+        dnrResp = evaluateAllDnr(evt, details) || {};
+      } catch (e) { /* 忽略 */ }
+    }
+
     const { isSiteAccessAllowed } = require('./extensions');
     const targets = [];
     webRequestRegistry.forEach((reg, extId) => {
       if (reg.events && reg.events[evt] && reg.events[evt].hasListener &&
           isSiteAccessAllowed(extId, details.url)) {
+        // 按扩展声明的 filter（urls / types）过滤，对齐 Chrome webRequest
+        const f = reg.events[evt].filter || {};
+        if (!urlMatchesAnyPattern(details.url, f.urls)) return;
+        if (!typeMatchesAny(details.resourceType, f.types)) return;
         targets.push(extId);
       }
     });
     if (targets.length === 0) {
-      if (callback) callback({});
+      if (callback) callback(dnrResp);
       return;
     }
 
@@ -99,28 +178,43 @@ function createWebRequestHandler(evt) {
       } catch (e) { /* 后台脚本异常忽略 */ }
     }
 
-    // 合并各扩展的 blockingResponse
+    // 合并各扩展的 blockingResponse（扩展返回 Chrome 格式 → 转换为 Electron 格式）
     const merged = {};
     for (const res of results) {
       if (res.cancel) merged.cancel = true;
-      if (res.redirectUrl && !merged.redirectUrl) merged.redirectUrl = res.redirectUrl;
-      if (res.requestHeaders && !merged.requestHeaders) merged.requestHeaders = res.requestHeaders;
-      if (res.responseHeaders && !merged.responseHeaders) merged.responseHeaders = res.responseHeaders;
-      if (res.authCredentials && !merged.authCredentials) merged.authCredentials = res.authCredentials;
+      // Chrome redirectUrl → Electron redirectURL
+      if (res.redirectUrl && !merged.redirectURL) merged.redirectURL = res.redirectUrl;
+      // Chrome 数组头 → Electron 对象头
+      const rh = headersFromChromeArray(res.requestHeaders);
+      if (rh && !merged.requestHeaders) merged.requestHeaders = rh;
+      const rsh = headersFromChromeArray(res.responseHeaders);
+      if (rsh && !merged.responseHeaders) merged.responseHeaders = rsh;
+      // Chrome authCredentials → Electron username/password
+      if (res.authCredentials && !merged.username) {
+        merged.username = res.authCredentials.username;
+        merged.password = res.authCredentials.password;
+      }
       if (res.upgradeToSecure) merged.upgradeToSecure = true;
     }
+
+    // 合并 DNR 结果（DNR 优先级更高）
+    if (dnrResp.cancel) merged.cancel = true;
+    if (dnrResp.redirectURL && !merged.redirectURL) merged.redirectURL = dnrResp.redirectURL;
+    if (dnrResp.requestHeaders && !merged.requestHeaders) merged.requestHeaders = dnrResp.requestHeaders;
+    if (dnrResp.responseHeaders && !merged.responseHeaders) merged.responseHeaders = dnrResp.responseHeaders;
+
     if (callback) callback(merged);
   };
 }
 
-function webRequestRegister(extId, evt, hasListener) {
+function webRequestRegister(extId, evt, hasListener, filter) {
   ensureWebRequestInit();
   let reg = webRequestRegistry.get(extId);
   if (!reg) {
     reg = { events: {} };
     webRequestRegistry.set(extId, reg);
   }
-  reg.events[evt] = { hasListener: !!hasListener };
+  reg.events[evt] = { hasListener: !!hasListener, filter: filter || {} };
 }
 
 function webRequestUnregister(extId, evt) {
@@ -133,6 +227,9 @@ function webRequestUnregister(extId, evt) {
 // extId -> Map(menuId -> { title, contexts, enabled })
 const contextMenuRegistry = new Map();
 
+// ==================== 通知管理（notifications.clear 支持按 ID 关闭） ====================
+const activeNotifications = new Map(); // `${extId}:${notificationId}` -> Notification
+
 function contextMenuRegister(extId, menuId, props) {
   let map = contextMenuRegistry.get(extId);
   if (!map) {
@@ -143,6 +240,9 @@ function contextMenuRegister(extId, menuId, props) {
     title: props && props.title ? String(props.title) : '',
     contexts: Array.isArray(props && props.contexts) ? props.contexts : ['all'],
     enabled: !(props && props.enabled === false),
+    parentId: props && props.parentId !== undefined && props.parentId !== null ? String(props.parentId) : '',
+    type: (props && props.type) || 'normal',
+    checked: !!(props && props.checked),
   });
 }
 
@@ -164,7 +264,6 @@ function contextMenuUnregisterAll(extId) {
  * @returns {Array<Object>} Electron Menu 模板项
  */
 function buildExtensionContextMenuItems(params, onSelect) {
-  const items = [];
   const pageUrl = params && params.pageURL ? String(params.pageURL) : '';
   const linkUrl = params && params.linkURL ? String(params.linkURL) : '';
   const selection = params && params.selectionText ? String(params.selectionText) : '';
@@ -181,37 +280,72 @@ function buildExtensionContextMenuItems(params, onSelect) {
     return ctxList.includes(kind);
   };
 
+  // 收集命中上下文的菜单项（含父项），并按 parentId 建立层级
+  const nodes = new Map();
   contextMenuRegistry.forEach((map, extId) => {
     map.forEach((item, menuId) => {
       if (!item.title || !item.enabled) return;
       if (!matchesContext(item.contexts)) return;
-      items.push({
-        label: item.title,
-        click: () => {
-          const info = {
-            pageUrl,
-            linkUrl,
-            selectionText: selection,
-            editable: !!(params && params.isEditable),
-            mediaType: params && params.mediaType ? String(params.mediaType) : '',
-            srcUrl: params && params.srcURL ? String(params.srcURL) : '',
-          };
-          if (onSelect) onSelect(extId, menuId, info);
-        },
+      nodes.set(String(menuId), {
+        extId,
+        menuId: String(menuId),
+        item,
+        parentId: item.parentId || '',
+        children: [],
       });
     });
   });
 
-  return items;
+  const roots = [];
+  nodes.forEach((node) => {
+    if (node.parentId && nodes.has(node.parentId)) {
+      nodes.get(node.parentId).children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  const render = (node) => {
+    const t = { label: node.item.title };
+    if (node.item.type === 'checkbox') { t.type = 'checkbox'; t.checked = !!node.item.checked; }
+    else if (node.item.type === 'radio') { t.type = 'radio'; t.checked = !!node.item.checked; }
+    if (node.children.length > 0) {
+      t.submenu = node.children.map(render);
+    } else {
+      t.click = () => {
+        const info = {
+          menuItemId: node.menuId,
+          parentId: node.parentId || undefined,
+          pageUrl,
+          linkUrl,
+          selectionText: selection,
+          editable: !!(params && params.isEditable),
+          mediaType: params && params.mediaType ? String(params.mediaType) : '',
+          srcUrl: params && params.srcURL ? String(params.srcURL) : '',
+          checked: !!node.item.checked,
+        };
+        if (onSelect) onSelect(node.extId, node.menuId, info);
+      };
+    }
+    return t;
+  };
+
+  return roots.map(render);
 }
 
 // ==================== IPC 注册 ====================
 
 function registerExtensionBridgeIpc() {
+  // ---- declarativeNetRequest ----
+  try {
+    const { registerDnrIpc } = require('./declarativeNetRequest');
+    registerDnrIpc();
+  } catch (e) { /* 忽略 */ }
+
   // ---- webRequest ----
-  ipcMain.on(IPC_CHANNELS.EXT_WEBREQUEST_REGISTER, (event, { id, evt, hasListener }) => {
+  ipcMain.on(IPC_CHANNELS.EXT_WEBREQUEST_REGISTER, (event, { id, evt, hasListener, filter }) => {
     if (!id || !evt || !WEBREQUEST_EVENTS.includes(evt)) return;
-    webRequestRegister(id, evt, hasListener);
+    webRequestRegister(id, evt, hasListener, filter);
   });
   ipcMain.on(IPC_CHANNELS.EXT_WEBREQUEST_UNREGISTER, (event, { id, evt }) => {
     if (!id || !evt) return;
@@ -253,6 +387,21 @@ function registerExtensionBridgeIpc() {
           ).catch(() => {});
         }
       });
+      const key = `${id}:${nid}`;
+      activeNotifications.set(key, n);
+      n.on('close', () => {
+        activeNotifications.delete(key);
+        // 通知关闭（用户点击/系统关闭）→ 触发 notifications.onClosed
+        try {
+          const { findExtensionBackgroundWebContents } = require('./extensions');
+          const wc = findExtensionBackgroundWebContents(id);
+          if (wc && !wc.isDestroyed()) {
+            wc.executeJavaScript(
+              `window.__neutronFireNotification && window.__neutronFireNotification('closed', ${JSON.stringify(nid || '')})`
+            ).catch(() => {});
+          }
+        } catch (e) { /* 忽略 */ }
+      });
       n.show();
       return Promise.resolve(nid);
     } catch (e) {
@@ -260,7 +409,15 @@ function registerExtensionBridgeIpc() {
     }
   });
   ipcMain.on(IPC_CHANNELS.EXT_NOTIFICATIONS_CLEAR, (event, { id, notificationId }) => {
-    // Electron Notification 无法按 ID 关闭，空操作
+    // 按 ID 关闭通知（Electron Notification 支持 close()）
+    try {
+      const key = `${id}:${notificationId}`;
+      const n = activeNotifications.get(key);
+      if (n) {
+        try { n.close(); } catch (e) { /* 忽略 */ }
+        activeNotifications.delete(key);
+      }
+    } catch (e) { /* 忽略 */ }
   });
 
   // ---- cookies ----
@@ -332,6 +489,18 @@ function registerExtensionBridgeIpc() {
         expirationDate: d.expirationDate,
         sameSite: d.sameSite,
       });
+      emitCookieEvent('onChanged', {
+        cookie: {
+          name: d.name || '',
+          value: d.value || '',
+          domain: d.domain || (d.url ? new URL(d.url).hostname : ''),
+          path: d.path || '/',
+          secure: !!d.secure,
+          httpOnly: !!d.httpOnly,
+        },
+        cause: 'explicit',
+        removed: false,
+      });
       return true;
     } catch (e) {
       return false;
@@ -341,6 +510,18 @@ function registerExtensionBridgeIpc() {
     try {
       if (!isCookieAccessAllowed(event.sender, url)) return false;
       await session.defaultSession.cookies.remove(url || '', name || '');
+      emitCookieEvent('onChanged', {
+        cookie: {
+          name: name || '',
+          value: '',
+          domain: url ? new URL(url).hostname : '',
+          path: '/',
+          secure: false,
+          httpOnly: false,
+        },
+        cause: 'explicit',
+        removed: true,
+      });
       return true;
     } catch (e) {
       return false;
@@ -406,6 +587,138 @@ function registerExtensionBridgeIpc() {
       return handleExtensionStorage(event, payload || {});
     } catch (e) {
       return null;
+    }
+  });
+
+  // ---- i18n ----
+  ipcMain.handle(IPC_CHANNELS.EXT_I18N, (event, { id, method, args }) => {
+    try {
+      return handleI18nRequest(id, method, args || []);
+    } catch (e) {
+      return method === 'getUILanguage' ? 'en' : '';
+    }
+  });
+  // 同步取词（getMessage/getUILanguage 在 Chrome 中是同步 API，用 sendSync 保持一致语义）
+  ipcMain.on(IPC_CHANNELS.EXT_I18N_SYNC, (event, { id }) => {
+    try {
+      const locale = app.getLocale() || 'en-US';
+      event.returnValue = {
+        uiLanguage: String(locale).replace(/-/g, '_'),
+        messages: readExtI18nMessages(id, locale),
+      };
+    } catch (e) {
+      event.returnValue = { uiLanguage: 'en_US', messages: {} };
+    }
+  });
+
+  // ---- alarms ----
+  ipcMain.handle(IPC_CHANNELS.EXT_ALARMS, (event, { id, method, args }) => {
+    try {
+      return handleAlarmsRequest(id, method, args || []);
+    } catch (e) {
+      return null;
+    }
+  });
+
+  // ---- downloads ----
+  ipcMain.handle(IPC_CHANNELS.EXT_DOWNLOADS, async (event, { method, args }) => {
+    try {
+      return await handleDownloadsRequest(method, args || []);
+    } catch (e) {
+      return null;
+    }
+  });
+
+  // ---- topSites ----
+  ipcMain.handle(IPC_CHANNELS.EXT_TOPSITES, () => {
+    try {
+      return handleTopSitesRequest();
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // ---- idle ----
+  ipcMain.handle(IPC_CHANNELS.EXT_IDLE, (event, { method, args }) => {
+    try {
+      return handleIdleRequest(method, args || []);
+    } catch (e) {
+      return null;
+    }
+  });
+  setupIdleListener();
+
+  // ---- permissions ----
+  ipcMain.handle(IPC_CHANNELS.EXT_PERMISSIONS, async (event, { id, method, args }) => {
+    try {
+      return await handlePermissionsRequest(id, method, args || []);
+    } catch (e) {
+      return method === 'getAll' ? { permissions: [], origins: [] } : false;
+    }
+  });
+
+  // ---- sessions ----
+  ipcMain.handle(IPC_CHANNELS.EXT_SESSIONS, (event, { method, args }) => {
+    try {
+      return handleSessionsRequest(method, args || []);
+    } catch (e) {
+      return method === 'getRecentlyClosed' ? [] : null;
+    }
+  });
+
+  // ---- management ----
+  ipcMain.handle(IPC_CHANNELS.EXT_MANAGEMENT, (event, { method, args }) => {
+    try {
+      return handleManagementRequest(method, args || []);
+    } catch (e) {
+      return method === 'getAll' ? [] : null;
+    }
+  });
+
+  // ---- browsingData ----
+  ipcMain.handle(IPC_CHANNELS.EXT_BROWSING_DATA, async (event, { method, args }) => {
+    try {
+      return await handleBrowsingDataRequest(method, args || []);
+    } catch (e) {
+      return undefined;
+    }
+  });
+
+  // ---- chrome.runtime 消息桥接 ----
+  // 扩展页面 → 后台（或跨扩展）
+  ipcMain.handle(IPC_CHANNELS.EXT_RUNTIME_SEND_MESSAGE, async (event, { extId, message, targetExtId }) => {
+    try {
+      const target = targetExtId || extId;
+      return await sendToExtensionBackground(target, message, { id: extId });
+    } catch (e) {
+      return undefined;
+    }
+  });
+
+  // 后台 → 内容脚本（chrome.tabs.sendMessage）
+  ipcMain.handle(IPC_CHANNELS.EXT_TABS_SEND_MESSAGE, async (event, { extId, tabId, message }) => {
+    try {
+      return await dispatchToContentScript(tabId, message, { id: extId });
+    } catch (e) {
+      return undefined;
+    }
+  });
+
+  // 内容脚本 → 后台
+  ipcMain.handle(IPC_CHANNELS.EXT_CS_SEND_MESSAGE, async (event, { extId, tabId, message }) => {
+    try {
+      let realTabId = tabId;
+      const wm = global.windowManager;
+      if (wm && event.sender) {
+        const t = wm.tabs.find((x) => x.view && x.view.webContents && x.view.webContents.id === event.sender.id);
+        if (t) realTabId = Number(String(t.id).replace(/^tab_/, '')) || tabId;
+      }
+      return await sendToExtensionBackground(extId, message, {
+        id: extId,
+        tab: { id: realTabId, url: '', title: '' },
+      });
+    } catch (e) {
+      return undefined;
     }
   });
 }
@@ -595,6 +908,25 @@ function handleWindowsRequest(method, args) {
 
 // ==================== scripting 桥接（对齐 Edge：chrome.scripting 动态注入） ====================
 
+/** 安全解析扩展内相对路径，拒绝 .. 路径穿越 */
+function resolveExtFile(extRoot, rel) {
+  const root = path.resolve(extRoot);
+  const target = path.resolve(root, String(rel || '').replace(/^[/\\]+/, ''));
+  if (target !== root && !target.startsWith(root + path.sep)) return null;
+  return target;
+}
+
+/** 扩展内容脚本隔离世界 id */
+const EXT_ISOLATED_WORLD_ID = 999;
+
+/** 按 world 参数在指定上下文执行脚本（ISOLATED 走隔离世界，MAIN 走主世界） */
+function executeInWorld(wc, code, world) {
+  if (world === 'ISOLATED' && typeof wc.executeJavaScriptInIsolatedWorld === 'function') {
+    return wc.executeJavaScriptInIsolatedWorld(EXT_ISOLATED_WORLD_ID, [{ code }]);
+  }
+  return wc.executeJavaScript(code);
+}
+
 async function handleScriptingRequest(method, args, extId) {
   const wm = global.windowManager;
   if (!wm || !wm.mainWindow || wm.mainWindow.isDestroyed()) return [];
@@ -614,15 +946,17 @@ async function handleScriptingRequest(method, args, extId) {
   try {
     switch (method) {
       case 'executeScript': {
+        const world = details.world || 'ISOLATED';
+        const shim = (world === 'ISOLATED' && extId) ? buildContentScriptRuntimeShim(extId) : '';
         // 注入扩展文件
         if (details.files && details.files.length && ext && ext.path) {
           const results = [];
           for (const f of details.files) {
-            const filePath = path.join(ext.path, String(f).replace(/^\/+/, ''));
-            if (!fs.existsSync(filePath)) continue;
+            const filePath = resolveExtFile(ext.path, f);
+            if (!filePath || !fs.existsSync(filePath)) continue;
             const content = fs.readFileSync(filePath, 'utf8');
             try {
-              const r = await wc.executeJavaScript(content);
+              const r = await executeInWorld(wc, shim + content, world);
               results.push({ result: r });
             } catch (e) {
               results.push({ result: undefined });
@@ -634,9 +968,9 @@ async function handleScriptingRequest(method, args, extId) {
         if (details.func) {
           const fnSrc = String(details.func);
           const argsJson = JSON.stringify(details.args || []).replace(/</g, '\\u003c');
-          const code = '(function(){ try { return (' + fnSrc + ').apply(null, ' + argsJson + '); } catch(e) { return { __neutronErr: String((e && e.message) || e) }; } })()';
+          const code = shim + '(function(){ try { return (' + fnSrc + ').apply(null, ' + argsJson + '); } catch(e) { return { __neutronErr: String((e && e.message) || e) }; } })()';
           try {
-            const r = await wc.executeJavaScript(code);
+            const r = await executeInWorld(wc, code, world);
             if (r && r.__neutronErr) return [{ result: undefined }];
             return [{ result: r }];
           } catch (e) {
@@ -648,8 +982,8 @@ async function handleScriptingRequest(method, args, extId) {
       case 'insertCSS': {
         if (details.files && details.files.length && ext && ext.path) {
           for (const f of details.files) {
-            const filePath = path.join(ext.path, String(f).replace(/^\/+/, ''));
-            if (!fs.existsSync(filePath)) continue;
+            const filePath = resolveExtFile(ext.path, f);
+            if (!filePath || !fs.existsSync(filePath)) continue;
             await wc.insertCSS(fs.readFileSync(filePath, 'utf8'));
           }
         } else if (details.css) {
@@ -660,8 +994,8 @@ async function handleScriptingRequest(method, args, extId) {
       case 'removeCSS': {
         if (details.files && details.files.length && ext && ext.path) {
           for (const f of details.files) {
-            const filePath = path.join(ext.path, String(f).replace(/^\/+/, ''));
-            if (!fs.existsSync(filePath)) continue;
+            const filePath = resolveExtFile(ext.path, f);
+            if (!filePath || !fs.existsSync(filePath)) continue;
             await wc.removeInsertedCSS(fs.readFileSync(filePath, 'utf8'));
           }
         } else if (details.css) {
@@ -730,13 +1064,12 @@ function findBookmarkNode(bookmarks, id) {
 }
 
 function findBookmarkParent(bookmarks, id) {
-  const walk = (folder, parentId) => {
+  const walk = (folder) => {
     if (!folder) return null;
-    if (folder.id === id) return { parentId, parent: folder };
     for (const child of (folder.children || [])) {
       if (child.id === id) return { parentId: folder.id, parent: folder };
       if (child.type === 'folder') {
-        const found = walk(child, folder.id);
+        const found = walk(child);
         if (found) return found;
       }
     }
@@ -744,7 +1077,7 @@ function findBookmarkParent(bookmarks, id) {
   };
   for (const key of Object.keys(bookmarks)) {
     if (bookmarks[key] && bookmarks[key].type === 'folder') {
-      const found = walk(bookmarks[key], key);
+      const found = walk(bookmarks[key]);
       if (found) return found;
     }
   }
@@ -821,7 +1154,8 @@ function handleBookmarksRequest(method, args) {
     }
     case 'create': {
       const props = args[0] || {};
-      const parentId = props.parentId || 'bookmark_bar';
+      // Chrome 语义：未指定 parentId 时默认放入「其他书签」(other)
+      const parentId = props.parentId || 'other';
       const isFolder = !props.url;
       const node = {
         id: 'bm_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
@@ -841,6 +1175,7 @@ function handleBookmarksRequest(method, args) {
         : target.children.length;
       target.children.splice(idx, 0, node);
       saveBookmarks(bookmarks);
+      emitBookmarkEvent('onCreated', node.id, toChromeBookmarkNode(node, parentId));
       return toChromeBookmarkNode(node, parentId);
     }
     case 'update': {
@@ -851,6 +1186,10 @@ function handleBookmarksRequest(method, args) {
       if (changes.title !== undefined) node.title = changes.title;
       if (changes.url !== undefined) node.url = changes.url;
       saveBookmarks(bookmarks);
+      const changeInfo = {};
+      if (changes.title !== undefined) changeInfo.title = changes.title;
+      if (changes.url !== undefined) changeInfo.url = changes.url;
+      emitBookmarkEvent('onChanged', id, changeInfo);
       const p = findBookmarkParent(bookmarks, id);
       return toChromeBookmarkNode(node, p ? p.parentId : '0');
     }
@@ -876,6 +1215,9 @@ function handleBookmarksRequest(method, args) {
         : target.children.length;
       target.children.splice(insIdx, 0, node);
       saveBookmarks(bookmarks);
+      emitBookmarkEvent('onMoved', id, {
+        parentId: target.id, index: insIdx, oldParentId: found.parentId, oldIndex: idx,
+      });
       return toChromeBookmarkNode(node, target.id);
     }
     case 'remove':
@@ -883,8 +1225,10 @@ function handleBookmarksRequest(method, args) {
       const id = String(args[0] || '');
       const found = findBookmarkParent(bookmarks, id);
       if (!found) return null;
+      const rmIdx = found.parent.children.findIndex((c) => c.id === id);
       found.parent.children = found.parent.children.filter((c) => c.id !== id);
       saveBookmarks(bookmarks);
+      emitBookmarkEvent('onRemoved', id, { parentId: found.parentId, index: rmIdx });
       return null;
     }
     default:
@@ -947,24 +1291,33 @@ function handleHistoryRequest(method, args) {
         });
       }
       store.set('visits', visits);
+      const item = existing || visits[0];
+      if (item) emitHistoryEvent('onVisited', toChromeHistoryItem(item));
       return;
     }
     case 'deleteUrl': {
       const url = args[0] && args[0].url;
       if (!url) return;
       store.set('visits', visits.filter((v) => v.url !== url));
+      emitHistoryEvent('onVisitRemoved', { allHistory: false, urls: [url] });
       return;
     }
     case 'deleteAll':
       store.set('visits', []);
+      emitHistoryEvent('onVisitRemoved', { allHistory: true, urls: [] });
       return;
     case 'deleteRange': {
       const opt = args[0] || {};
-      store.set('visits', visits.filter((v) => {
-        if (opt.startTime && v.lastVisitTime < opt.startTime) return false;
-        if (opt.endTime && v.lastVisitTime > opt.endTime) return false;
-        return true;
-      }));
+      // 删除 [startTime, endTime] 区间内的记录，保留区间外
+      const keep = [];
+      const removedUrls = [];
+      for (const v of visits) {
+        const inRange = (!opt.startTime || v.lastVisitTime >= opt.startTime) &&
+          (!opt.endTime || v.lastVisitTime <= opt.endTime);
+        if (inRange) removedUrls.push(v.url); else keep.push(v);
+      }
+      store.set('visits', keep);
+      emitHistoryEvent('onVisitRemoved', { allHistory: false, urls: removedUrls });
       return;
     }
     default:
@@ -993,12 +1346,16 @@ function handleCommandsGetAll(extId) {
     if (!ext || !ext.path || !fs.existsSync(path.join(ext.path, 'manifest.json'))) return [];
     const manifest = JSON.parse(fs.readFileSync(path.join(ext.path, 'manifest.json'), 'utf8'));
     const commands = manifest.commands || {};
+    const platform = process.platform;
+    const platformKey = platform === 'darwin' ? 'mac'
+      : (platform === 'win32' ? 'windows' : 'linux');
     return Object.keys(commands).map((name) => {
       const cmd = commands[name] || {};
+      const sk = cmd.suggested_key || {};
       return {
         name,
         description: cmd.description || '',
-        shortcut: (cmd.suggested_key && cmd.suggested_key.default) || '',
+        shortcut: sk[platformKey] || sk.default || '',
       };
     });
   } catch (e) {
@@ -1061,9 +1418,16 @@ function extensionStorageSet(extId, area, items) {
   ensureExtensionStorageLoaded();
   const key = `${extId}:${area}`;
   const full = extensionStorageData.get(key) || {};
-  Object.keys(items || {}).forEach((k) => { full[k] = items[k]; });
+  const changes = {};
+  Object.keys(items || {}).forEach((k) => {
+    const oldValue = full[k];
+    const newValue = items[k];
+    full[k] = newValue;
+    changes[k] = { oldValue, newValue };
+  });
   extensionStorageData.set(key, full);
   saveExtensionStorage();
+  if (Object.keys(changes).length > 0) emitStorageEvent('onChanged', changes, area);
 }
 
 function extensionStorageRemove(extId, area, keys) {
@@ -1072,15 +1436,27 @@ function extensionStorageRemove(extId, area, keys) {
   const full = extensionStorageData.get(key);
   if (!full) return;
   const list = typeof keys === 'string' ? [keys] : (Array.isArray(keys) ? keys : []);
-  list.forEach((k) => { delete full[k]; });
+  const changes = {};
+  list.forEach((k) => {
+    if (Object.prototype.hasOwnProperty.call(full, k)) {
+      changes[k] = { oldValue: full[k], newValue: undefined };
+      delete full[k];
+    }
+  });
   if (Object.keys(full).length === 0) extensionStorageData.delete(key);
   saveExtensionStorage();
+  if (Object.keys(changes).length > 0) emitStorageEvent('onChanged', changes, area);
 }
 
 function extensionStorageClear(extId, area) {
   ensureExtensionStorageLoaded();
-  extensionStorageData.delete(`${extId}:${area}`);
+  const key = `${extId}:${area}`;
+  const full = extensionStorageData.get(key) || {};
+  const changes = {};
+  Object.keys(full).forEach((k) => { changes[k] = { oldValue: full[k], newValue: undefined }; });
+  extensionStorageData.delete(key);
   saveExtensionStorage();
+  if (Object.keys(changes).length > 0) emitStorageEvent('onChanged', changes, area);
 }
 
 function handleExtensionStorage(event, { method, id, area, args }) {
@@ -1099,6 +1475,526 @@ function handleExtensionStorage(event, { method, id, area, args }) {
       return true;
     default:
       return null;
+  }
+}
+
+// ==================== chrome.i18n ====================
+
+function readExtI18nMessages(extId, locale) {
+  try {
+    const { getInstalledExtensions } = require('./extensions');
+    const ext = getInstalledExtensions().find((e) => e.id === extId);
+    if (!ext || !ext.path) return {};
+    const manifest = JSON.parse(fs.readFileSync(path.join(ext.path, 'manifest.json'), 'utf8'));
+    const defaultLocale = manifest.default_locale || '';
+    let messages = {};
+    const tryLocale = (loc) => {
+      if (!loc) return;
+      const file = path.join(ext.path, '_locales', loc, 'messages.json');
+      if (fs.existsSync(file)) {
+        try { messages = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { /* 忽略 */ }
+      }
+    };
+    if (locale && locale !== defaultLocale) tryLocale(locale);
+    if (Object.keys(messages).length === 0) tryLocale(defaultLocale);
+    return messages;
+  } catch (e) {
+    return {};
+  }
+}
+
+function handleI18nRequest(extId, method, args) {
+  if (method === 'getUILanguage') {
+    return String(app.getLocale() || 'en-US').replace(/-/g, '_');
+  }
+  if (method === 'getAcceptLanguages') {
+    return [app.getLocale() || 'en-US'];
+  }
+  // getMessage(messageName, substitutions)
+  const locale = app.getLocale() || 'en-US';
+  const messages = readExtI18nMessages(extId, locale);
+  const name = String(args[0] || '');
+  const entry = messages[name];
+  if (!entry || entry.message === undefined) return '';
+  const subs = Array.isArray(args[1]) ? args[1] : [];
+  return String(entry.message)
+    .replace(/\$\$/g, '\u0000')
+    .replace(/\$(\d)/g, (m, n) => {
+      const i = Number(n) - 1;
+      return i < subs.length ? String(subs[i]) : '';
+    })
+    .replace(/\u0000/g, '$');
+}
+
+// ==================== chrome.alarms ====================
+const alarmStore = new Map();  // `${extId}:${name}` -> alarm 对象
+const alarmTimers = new Map(); // `${extId}:${name}` -> timeout
+
+function fireAlarm(extId, name) {
+  try {
+    const { findExtensionBackgroundWebContents } = require('./extensions');
+    const wc = findExtensionBackgroundWebContents(extId);
+    if (!wc || wc.isDestroyed()) return;
+    wc.executeJavaScript(
+      `window.__neutronFireAlarm && window.__neutronFireAlarm(${JSON.stringify({ name })})`
+    ).catch(() => {});
+  } catch (e) { /* 忽略 */ }
+}
+
+function scheduleAlarm(extId, name, alarm) {
+  const key = `${extId}:${name}`;
+  const old = alarmTimers.get(key);
+  if (old) { clearTimeout(old); alarmTimers.delete(key); }
+  if (!alarm) return;
+  const delay = Math.max(0, (alarm.scheduledTime || Date.now()) - Date.now());
+  const timer = setTimeout(() => {
+    alarmTimers.delete(key);
+    fireAlarm(extId, name);
+    if (alarm.periodInMinutes && alarm.periodInMinutes > 0) {
+      const next = { ...alarm, scheduledTime: Date.now() + alarm.periodInMinutes * 60 * 1000 };
+      alarmStore.set(key, next);
+      scheduleAlarm(extId, name, next);
+    } else {
+      alarmStore.delete(key);
+    }
+  }, delay);
+  alarmTimers.set(key, timer);
+}
+
+function alarmToChrome(alarm) {
+  return {
+    name: alarm.name,
+    scheduledTime: alarm.scheduledTime || Date.now(),
+    periodInMinutes: alarm.periodInMinutes,
+  };
+}
+
+function clearAlarmsForExt(extId) {
+  for (const key of Array.from(alarmStore.keys())) {
+    if (key.startsWith(`${extId}:`)) {
+      const t = alarmTimers.get(key);
+      if (t) { clearTimeout(t); alarmTimers.delete(key); }
+      alarmStore.delete(key);
+    }
+  }
+}
+
+function handleAlarmsRequest(extId, method, args) {
+  const normName = (v) => (v === undefined || v === null || v === '' ? '' : String(v));
+  switch (method) {
+    case 'create': {
+      const name = normName(args[0]);
+      const info = args[1] || {};
+      let scheduledTime = Date.now();
+      if (info.when) scheduledTime = Number(info.when);
+      else if (info.delayInMinutes) scheduledTime = Date.now() + Number(info.delayInMinutes) * 60 * 1000;
+      const alarm = {
+        name,
+        scheduledTime,
+        periodInMinutes: info.periodInMinutes ? Number(info.periodInMinutes) : undefined,
+      };
+      alarmStore.set(`${extId}:${name}`, alarm);
+      scheduleAlarm(extId, name, alarm);
+      return undefined;
+    }
+    case 'get': {
+      const alarm = alarmStore.get(`${extId}:${normName(args[0])}`);
+      return alarm ? alarmToChrome(alarm) : undefined;
+    }
+    case 'getAll': {
+      const out = [];
+      alarmStore.forEach((alarm, key) => {
+        if (key.startsWith(`${extId}:`)) out.push(alarmToChrome(alarm));
+      });
+      return out;
+    }
+    case 'clear': {
+      const name = normName(args[0]);
+      const key = `${extId}:${name}`;
+      const existed = alarmStore.has(key);
+      const t = alarmTimers.get(key);
+      if (t) { clearTimeout(t); alarmTimers.delete(key); }
+      alarmStore.delete(key);
+      return existed;
+    }
+    case 'clearAll': {
+      let cleared = false;
+      for (const key of Array.from(alarmStore.keys())) {
+        if (key.startsWith(`${extId}:`)) {
+          cleared = true;
+          const t = alarmTimers.get(key);
+          if (t) { clearTimeout(t); alarmTimers.delete(key); }
+          alarmStore.delete(key);
+        }
+      }
+      return cleared;
+    }
+    default:
+      return undefined;
+  }
+}
+
+// ==================== chrome.downloads ====================
+
+function handleDownloadsRequest(method, args) {
+  const { getStore } = require('./storage');
+  const wm = global.windowManager;
+  const store = getStore('downloads');
+  const items = store.get('items', []);
+  const indexOfId = (id) => items.findIndex((it, i) => (i + 1) === Number(id));
+
+  switch (method) {
+    case 'download': {
+      const url = args[0] && args[0].url;
+      if (!url) return -1;
+      let wc = null;
+      if (wm && wm.activeTabId) {
+        const tab = wm.tabs.find((t) => t.id === wm.activeTabId);
+        if (tab && tab.view && tab.view.webContents && !tab.view.webContents.isDestroyed()) wc = tab.view.webContents;
+      }
+      if (!wc && wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) wc = wm.mainWindow.webContents;
+      if (wc) wc.downloadURL(url);
+      return items.length + 1;
+    }
+    case 'search': {
+      return items.map((it, i) => ({
+        id: i + 1,
+        url: it.url || it.sourceUrl || '',
+        filename: it.path || it.savePath || it.filename || '',
+        state: it.state === 'completed' ? 'complete' : (it.state || 'in_progress'),
+        bytesReceived: it.receivedBytes || it.received || 0,
+        totalBytes: it.totalBytes || it.total || 0,
+        exists: true,
+      }));
+    }
+    case 'erase': {
+      const idx = indexOfId(args[0]);
+      if (idx !== -1) {
+        const next = items.slice();
+        next.splice(idx, 1);
+        store.set('items', next);
+      }
+      return undefined;
+    }
+    case 'cancel':
+    case 'pause':
+    case 'resume': {
+      const idx = indexOfId(args[0]);
+      const item = idx !== -1 ? items[idx] : null;
+      const fnName = method + 'Download';
+      if (item && wm && typeof wm[fnName] === 'function') {
+        wm[fnName](String(item.id));
+      }
+      return undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+// ==================== chrome.topSites ====================
+
+function handleTopSitesRequest() {
+  const { getStore } = require('./storage');
+  const visits = getStore('history').get('visits', []);
+  const byUrl = new Map();
+  for (const v of visits) {
+    if (!v || !/^https?:/i.test(v.url || '')) continue;
+    const cur = byUrl.get(v.url);
+    if (!cur || (v.visitCount || 1) > (cur.visitCount || 1)) byUrl.set(v.url, v);
+  }
+  return Array.from(byUrl.values())
+    .sort((a, b) => (b.visitCount || 1) - (a.visitCount || 1))
+    .slice(0, 20)
+    .map((v) => ({ url: v.url, title: v.title || '' }));
+}
+
+// ==================== chrome.idle ====================
+let idleListenerSetup = false;
+
+function setupIdleListener() {
+  if (idleListenerSetup) return;
+  idleListenerSetup = true;
+  try {
+    powerMonitor.on('lock-screen', () => emitIdleEvent('onStateChanged', 'locked'));
+    powerMonitor.on('unlock-screen', () => emitIdleEvent('onStateChanged', 'active'));
+    powerMonitor.on('suspend', () => emitIdleEvent('onStateChanged', 'locked'));
+    powerMonitor.on('resume', () => emitIdleEvent('onStateChanged', 'active'));
+  } catch (e) { /* 忽略 */ }
+}
+
+function handleIdleRequest(method, args) {
+  if (method === 'queryState') {
+    const secs = Number(args[0]) || 60;
+    try {
+      const state = powerMonitor.getSystemIdleState(secs);
+      if (state === 'locked') return 'locked';
+      if (state === 'idle') return 'idle';
+      return 'active';
+    } catch (e) {
+      return 'active';
+    }
+  }
+  if (method === 'setDetectionInterval') return undefined;
+  return undefined;
+}
+
+// ==================== chrome.permissions ====================
+
+function readManifestForExt(ext) {
+  try {
+    if (!ext || !ext.path) return {};
+    return JSON.parse(fs.readFileSync(path.join(ext.path, 'manifest.json'), 'utf8'));
+  } catch (e) {
+    return {};
+  }
+}
+
+async function handlePermissionsRequest(extId, method, args) {
+  const { getInstalledExtensions } = require('./extensions');
+  const ext = getInstalledExtensions().find((e) => e.id === extId);
+  if (!ext) return method === 'getAll' ? { permissions: [], origins: [] } : false;
+  const manifest = readManifestForExt(ext);
+  const manifestPerms = Array.isArray(manifest.permissions) ? manifest.permissions : [];
+  const manifestOrigins = Array.isArray(manifest.host_permissions) ? manifest.host_permissions : [];
+  const granted = Array.isArray(ext.grantedPermissions) ? ext.grantedPermissions : [];
+  const grantedOrigins = Array.isArray(ext.grantedOrigins) ? ext.grantedOrigins : [];
+
+  const save = () => {
+    const installed = getInstalledExtensions();
+    const target = installed.find((e) => e.id === extId);
+    if (target) {
+      target.grantedPermissions = granted;
+      target.grantedOrigins = grantedOrigins;
+      getStore('extensions').set('installed', installed);
+    }
+  };
+
+  switch (method) {
+    case 'contains': {
+      const req = args[0] || {};
+      const list = [...(req.permissions || []), ...(req.origins || [])];
+      const all = new Set([...manifestPerms, ...manifestOrigins, ...granted, ...grantedOrigins]);
+      return list.every((p) => all.has(p));
+    }
+    case 'getAll': {
+      return {
+        permissions: [...new Set([...manifestPerms, ...granted])],
+        origins: [...new Set([...manifestOrigins, ...grantedOrigins])],
+      };
+    }
+    case 'request': {
+      const req = args[0] || {};
+      const list = [...(req.permissions || []), ...(req.origins || [])].filter(Boolean);
+      if (list.length === 0) return true;
+      const wm = global.windowManager;
+      const parent = wm && wm.mainWindow && !wm.mainWindow.isDestroyed() ? wm.mainWindow : undefined;
+      const { response } = await dialog.showMessageBox(parent, {
+        type: 'info',
+        title: `“${ext.name || '扩展'}”请求额外权限`,
+        message: '允许此扩展获取以下权限吗？',
+        detail: list.map((p) => `•  ${p}`).join('\n'),
+        buttons: ['取消', '允许'],
+        defaultId: 1,
+        cancelId: 0,
+        noLink: true,
+      });
+      if (response !== 1) return false;
+      for (const p of list) {
+        if (p.includes('://') || p.startsWith('<all_urls>') || p.startsWith('*://')) {
+          if (!grantedOrigins.includes(p)) grantedOrigins.push(p);
+        } else if (!granted.includes(p)) {
+          granted.push(p);
+        }
+      }
+      save();
+      return true;
+    }
+    case 'remove': {
+      const req = args[0] || {};
+      const list = [...(req.permissions || []), ...(req.origins || [])];
+      for (const p of list) {
+        const pi = granted.indexOf(p); if (pi !== -1) granted.splice(pi, 1);
+        const oi = grantedOrigins.indexOf(p); if (oi !== -1) grantedOrigins.splice(oi, 1);
+      }
+      save();
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
+// ==================== chrome.sessions / management / browsingData ====================
+
+function handleSessionsRequest(method, args) {
+  const wm = global.windowManager;
+  switch (method) {
+    case 'getRecentlyClosed': {
+      if (!wm) return [];
+      const maxResults = args[0] && args[0].maxResults ? Number(args[0].maxResults) : 25;
+      return (wm.recentlyClosed || []).slice(0, maxResults).map((t) => ({
+        tab: {
+          sessionId: String(t.id),
+          tabId: Number(String(t.id).replace(/^tab_/, '')) || 0,
+          windowId: 1,
+          url: t.url || '',
+          title: t.title || '',
+          lastModified: t.closedAt || Date.now(),
+        },
+        lastModified: t.closedAt || Date.now(),
+      }));
+    }
+    case 'restore': {
+      if (!wm) return null;
+      const item = (wm.recentlyClosed || []).find((t) => String(t.id) === String(args[0]));
+      if (!item) return null;
+      wm.restoreRecentlyClosed(item.id);
+      return { sessionId: String(item.id), windowId: 1 };
+    }
+    default:
+      return [];
+  }
+}
+
+function managementItem(ext) {
+  const manifest = readManifestForExt(ext);
+  return {
+    id: ext.id,
+    name: ext.name,
+    description: ext.description || '',
+    version: ext.version || '',
+    enabled: !!ext.enabled,
+    installType: ext.source === 'edge_store' ? 'normal' : 'development',
+    mayDisable: true,
+    optionsUrl: manifest.options_page || (manifest.options_ui && manifest.options_ui.page) || '',
+    homepageUrl: manifest.homepage_url || manifest.homepage || '',
+  };
+}
+
+function handleManagementRequest(method, args) {
+  const { getInstalledExtensions } = require('./extensions');
+  const exts = getInstalledExtensions();
+  switch (method) {
+    case 'getAll':
+      return exts.map(managementItem);
+    case 'get': {
+      const ext = exts.find((e) => e.id === args[0]);
+      return ext ? managementItem(ext) : null;
+    }
+    default:
+      return null;
+  }
+}
+
+function handleBrowsingDataRequest(method, args) {
+  const { getStore } = require('./storage');
+  switch (method) {
+    case 'remove': {
+      const dataTypes = args[0] || {};
+      const options = args[1] || {};
+      const since = Number(options.since) || 0;
+      if (dataTypes.history) {
+        const visits = getStore('history').get('visits', []);
+        getStore('history').set('visits', visits.filter((v) => (v.lastVisitTime || 0) < since));
+      }
+      if (dataTypes.cookies) {
+        session.defaultSession.clearStorageData({ storages: ['cookies'] }).catch(() => {});
+      }
+      if (dataTypes.cache) {
+        session.defaultSession.clearCache().catch(() => {});
+      }
+      if (dataTypes.downloads) {
+        getStore('downloads').set('items', []);
+      }
+      return undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+// ==================== chrome.runtime 消息桥接 ====================
+
+/** 生成内容脚本 chrome.runtime shim（注入隔离世界，extId 内嵌用于归属路由） */
+function buildContentScriptRuntimeShim(extId) {
+  const extIdJson = JSON.stringify(extId || '');
+  return `(function () {
+  if (window.__neutronCsRuntime) return;
+  var extId = ${extIdJson};
+  var pending = {};
+  var msgSeq = 0;
+  var onMessageListeners = [];
+  function post(data) { try { window.postMessage({ __neutronCsMsg: data }, '*'); } catch (e) {} }
+  window.addEventListener('message', function (e) {
+    try {
+      var d = e.data;
+      if (!d || !d.__neutronCsResp) return;
+      var p = pending[d.id];
+      if (p) { delete pending[d.id]; if (d.error) p.reject(new Error(d.error)); else p.resolve(d.result); }
+    } catch (err) {}
+  });
+  var chrome = window.chrome || (window.chrome = {});
+  var runtime = chrome.runtime || (chrome.runtime = {});
+  runtime.sendMessage = function (message, callback) {
+    var id = ++msgSeq;
+    var pr = new Promise(function (resolve, reject) {
+      pending[id] = { resolve: resolve, reject: reject };
+      post({ type: 'sendMessage', id: id, extId: extId, message: message });
+    });
+    if (typeof callback === 'function') { pr.then(function (r) { callback(r); }, function () {}); return; }
+    return pr;
+  };
+  runtime.onMessage = {
+    addListener: function (fn) { if (onMessageListeners.indexOf(fn) === -1) onMessageListeners.push(fn); },
+    removeListener: function (fn) { var i = onMessageListeners.indexOf(fn); if (i >= 0) onMessageListeners.splice(i, 1); },
+    hasListener: function (fn) { return onMessageListeners.indexOf(fn) >= 0; }
+  };
+  window.__neutronDispatchRuntimeMessage = function (message, sender) {
+    var results = [];
+    onMessageListeners.slice().forEach(function (fn) {
+      try {
+        var r = fn(message, sender || {}, function (resp) { results.push(resp); });
+        if (r && typeof r.then === 'function') results.push(r);
+        else if (r !== undefined) results.push(r);
+      } catch (err) {}
+    });
+    var hasPromise = results.some(function (x) { return x && typeof x.then === 'function'; });
+    if (!hasPromise) return results.length > 0 ? results[0] : undefined;
+    return Promise.all(results.map(function (x) { return x && typeof x.then === 'function' ? x : Promise.resolve(x); }))
+      .then(function (arr) { return arr.length > 0 ? arr[0] : undefined; });
+  };
+  window.__neutronCsRuntime = true;
+})();`;
+}
+
+/** 向指定标签页的内容脚本派发消息（隔离世界 999），返回响应 */
+async function dispatchToContentScript(tabId, message, sender) {
+  const wm = global.windowManager;
+  if (!wm) return undefined;
+  const chromeId = Number(tabId);
+  const tab = wm.tabs.find((t) => Number(String(t.id).replace(/^tab_/, '')) === chromeId);
+  if (!tab || !tab.view || tab.view.webContents.isDestroyed()) return undefined;
+  const wc = tab.view.webContents;
+  if (typeof wc.executeJavaScriptInIsolatedWorld !== 'function') return undefined;
+  const code = `window.__neutronDispatchRuntimeMessage && window.__neutronDispatchRuntimeMessage(${JSON.stringify(message)}, ${JSON.stringify(sender || {})})`;
+  try {
+    return await wc.executeJavaScriptInIsolatedWorld(EXT_ISOLATED_WORLD_ID, [{ code }]);
+  } catch (e) {
+    return undefined;
+  }
+}
+
+/** 向扩展后台派发消息（content script 或扩展页面 → 后台），返回响应 */
+async function sendToExtensionBackground(extId, message, sender) {
+  try {
+    const { findExtensionBackgroundWebContents } = require('./extensions');
+    const wc = findExtensionBackgroundWebContents(extId);
+    if (!wc || wc.isDestroyed()) return undefined;
+    const code = `window.__neutronFireRuntimeMessage && window.__neutronFireRuntimeMessage(${JSON.stringify(message)}, ${JSON.stringify(sender || {})})`;
+    return await wc.executeJavaScript(code);
+  } catch (e) {
+    return undefined;
   }
 }
 
@@ -1130,7 +2026,12 @@ function ensureMv3Backgrounds() {
       if (!swPath) continue;
 
       const view = new BrowserView({
-        webPreferences: { session: session.defaultSession, sandbox: false, contextIsolation: true },
+        webPreferences: {
+          session: session.defaultSession,
+          sandbox: false,
+          contextIsolation: true,
+          backgroundThrottling: false, // 后台页永不显示，避免定时器被节流
+        },
       });
       mv3BackgroundViews.push({ extId: ext.id, view });
 
@@ -1174,6 +2075,101 @@ function destroyMv3Backgrounds() {
   mv3BackgroundViews.length = 0;
 }
 
+/** 销毁指定扩展的 MV3 模拟后台（禁用/卸载时调用，避免后台脚本泄漏继续运行） */
+function destroyMv3Background(extId) {
+  const idx = mv3BackgroundViews.findIndex((v) => v.extId === extId);
+  if (idx === -1) return;
+  const entry = mv3BackgroundViews[idx];
+  try {
+    if (entry.view && entry.view.webContents && !entry.view.webContents.isDestroyed()) {
+      entry.view.webContents.close();
+    }
+  } catch (e) { /* 忽略 */ }
+  mv3BackgroundViews.splice(idx, 1);
+}
+
+// ==================== tabs / windows 事件派发（对齐 Edge：chrome.tabs/chrome.windows 事件） ====================
+// Electron 原生不会向扩展后台派发标签页/窗口生命周期事件，这里由 windowManager 在各生命周期
+// 回调中主动广播，polyfill-webnav.js 的 __neutronFireTabEvent/__neutronFireWindowEvent 触发监听器。
+
+// namespace -> 扩展页面主世界 fire 函数名（由 polyfill-webnav.js 定义）
+const EVENT_FN_MAP = {
+  tabs: '__neutronFireTabEvent',
+  windows: '__neutronFireWindowEvent',
+  bookmarks: '__neutronFireBookmarkEvent',
+  history: '__neutronFireHistoryEvent',
+  cookies: '__neutronFireCookieEvent',
+  storage: '__neutronFireStorageEvent',
+  idle: '__neutronFireIdleEvent',
+};
+
+function emitExtensionEvent(namespace, eventName, argsArray) {
+  try {
+    const fnName = EVENT_FN_MAP[namespace];
+    if (!fnName) return;
+    const { getInstalledExtensions, findExtensionBackgroundWebContents } = require('./extensions');
+    for (const ext of getInstalledExtensions().filter((e) => e.enabled)) {
+      const wc = findExtensionBackgroundWebContents(ext.id);
+      if (!wc || wc.isDestroyed()) continue;
+      wc.executeJavaScript(
+        `window.${fnName} && window.${fnName}(${JSON.stringify(eventName)}, ${JSON.stringify(argsArray || [])})`
+      ).catch(() => {});
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
+function emitTabEvent(eventName, ...args) { emitExtensionEvent('tabs', eventName, args); }
+function emitWindowEvent(eventName, ...args) { emitExtensionEvent('windows', eventName, args); }
+function emitBookmarkEvent(eventName, ...args) { emitExtensionEvent('bookmarks', eventName, args); }
+function emitHistoryEvent(eventName, ...args) { emitExtensionEvent('history', eventName, args); }
+function emitCookieEvent(eventName, ...args) { emitExtensionEvent('cookies', eventName, args); }
+function emitStorageEvent(eventName, ...args) { emitExtensionEvent('storage', eventName, args); }
+function emitIdleEvent(eventName, ...args) { emitExtensionEvent('idle', eventName, args); }
+
+function notifyTabCreated(tab) {
+  const wm = global.windowManager;
+  if (!wm) return;
+  emitTabEvent('onCreated', tabToChrome(tab, wm.tabs.indexOf(tab)));
+}
+
+function notifyTabRemoved(tabId, isWindowClosing = false) {
+  emitTabEvent('onRemoved', tabToChromeId(tabId), { windowId: 1, isWindowClosing });
+}
+
+function notifyTabActivated(tabId) {
+  emitTabEvent('onActivated', { tabId: tabToChromeId(tabId), windowId: 1 });
+}
+
+function notifyTabUpdated(tab, changeInfo) {
+  const wm = global.windowManager;
+  if (!wm) return;
+  emitTabEvent('onUpdated', tabToChromeId(tab.id), changeInfo || {}, tabToChrome(tab, wm.tabs.indexOf(tab)));
+}
+
+function notifyWindowCreated() {
+  const wm = global.windowManager;
+  if (!wm) return;
+  emitWindowEvent('onCreated', windowToChrome(wm));
+}
+
+function notifyTabMoved(tabId, fromIndex, toIndex) {
+  emitTabEvent('onMoved', tabToChromeId(tabId), { windowId: 1, fromIndex, toIndex });
+}
+
+function notifyWindowFocused() {
+  emitWindowEvent('onFocusChanged', 1);
+}
+
+function notifyWindowBoundsChanged() {
+  const wm = global.windowManager;
+  if (!wm) return;
+  emitWindowEvent('onBoundsChanged', windowToChrome(wm));
+}
+
+function notifyWindowRemoved() {
+  emitWindowEvent('onRemoved', 1);
+}
+
 module.exports = {
   registerExtensionBridgeIpc,
   buildExtensionContextMenuItems,
@@ -1188,4 +2184,15 @@ module.exports = {
   ensureMv3Backgrounds,
   findMv3BackgroundWebContents,
   destroyMv3Backgrounds,
+  destroyMv3Background,
+  notifyTabCreated,
+  notifyTabRemoved,
+  notifyTabActivated,
+  notifyTabUpdated,
+  notifyWindowCreated,
+  notifyTabMoved,
+  notifyWindowFocused,
+  notifyWindowBoundsChanged,
+  notifyWindowRemoved,
+  clearAlarmsForExt,
 };
