@@ -3,6 +3,7 @@ build/
 dist/
 *.log
 *.tmp
+.e2e-tmp-*
 .env
 .DS_Store
 Thumbs.db

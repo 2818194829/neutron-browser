@@ -10,6 +10,7 @@ const fs = require('fs');
 const { IPC_CHANNELS, INTERNAL_PAGES, DEFAULT_SETTINGS } = require('../shared/constants');
 const { getStore } = require('./storage');
 const { normalizeHistoryTitle, sanitizeFavicon, sanitizeBookmarks, sanitizeHistory } = require('../shared/siteMeta');
+const { parseFaviconFromHtml } = require('../shared/faviconHtml');
 const {
   getInstalledExtensions,
   isDeveloperMode,
@@ -401,8 +402,8 @@ function registerIpcHandlers() {
     const wm = getWM();
     if (!wm) return [];
     return wm.tabs
-      .map(tab => tab.url)
-      .filter(url => url && !url.startsWith('neutron://'));
+      .map(tab => ({ url: tab.url, title: tab.title || '', favicon: tab.favicon || '' }))
+      .filter(t => t.url && !t.url.startsWith('neutron://'));
   });
 
   // ==================== 导航 ====================
@@ -1038,6 +1039,53 @@ function registerIpcHandlers() {
     return { success: true, removed: duplicateIds.length };
   });
 
+  // ==================== 网站图标解析（书签对话框「识别网址图标」用） ====================
+  // host → 已解析真实图标（主进程内存缓存；解析失败也缓存空值避免反复抓取）
+  const resolvedFaviconCache = new Map();
+
+  ipcMain.handle(IPC_CHANNELS.FAVICON_RESOLVE, async (event, { url } = {}) => {
+    try {
+      if (!url || !/^https?:\/\//i.test(url)) return { favicon: '' };
+      const parsed = new URL(url);
+      const host = parsed.hostname;
+      if (!host) return { favicon: '' };
+      if (resolvedFaviconCache.has(host)) {
+        return { favicon: resolvedFaviconCache.get(host) };
+      }
+
+      // 主进程抓取页面 HTML 解析 <link rel="icon">（Node fetch 无 CORS 限制）
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      let html = '';
+      let fetchedOk = false;
+      try {
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36',
+            Accept: 'text/html,application/xhtml+xml',
+          },
+        });
+        if (res && res.ok) {
+          fetchedOk = true;
+          const text = await res.text();
+          html = typeof text === 'string' ? text.slice(0, 300000) : '';
+        }
+      } catch (e) { /* 抓取失败：返回空，渲染层走候选链 */ }
+      clearTimeout(timer);
+
+      // 页面抓取成功才解析；解析不到才回退站点根 /favicon.ico。
+      // 抓取失败时返回空——避免根目录兜底覆盖渲染层知识库中更准确的真实图标
+      const favicon = fetchedOk
+        ? (parseFaviconFromHtml(html, parsed.href) || `${parsed.origin}/favicon.ico`)
+        : '';
+      resolvedFaviconCache.set(host, favicon);
+      return { favicon };
+    } catch (e) {
+      return { favicon: '' };
+    }
+  });
+
   // ==================== 历史记录 ====================
   ipcMain.handle(IPC_CHANNELS.HISTORY_GET_ALL, () => {
     return getStore('history').get('visits', []);
@@ -1517,9 +1565,10 @@ function registerIpcHandlers() {
   });
 
   // 打开/关闭扩展 Popup 覆盖层
-  ipcMain.on(IPC_CHANNELS.EXTENSIONS_ACTION_OPEN_POPUP, (event, payload) => {
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_ACTION_OPEN_POPUP, async (event, payload) => {
     const wm = getWM();
-    if (wm && wm.openExtensionPopup) wm.openExtensionPopup(payload || {});
+    if (!wm || !wm.openExtensionPopup) return { ok: false, reason: 'no-window' };
+    return await wm.openExtensionPopup(payload || {});
   });
   ipcMain.on(IPC_CHANNELS.EXTENSIONS_ACTION_HIDE_POPUP, () => {
     const wm = getWM();

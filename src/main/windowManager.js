@@ -510,6 +510,9 @@ class WindowManager {
     const targetTab = this.tabs.find(t => t.id === tabId);
     if (!targetTab) return;
 
+    // 切换标签页：关闭扩展 Popup（弹窗属于旧标签页上下文）
+    this.hideExtensionPopup();
+
     if (this.htmlFullScreenTabId && this.htmlFullScreenTabId !== tabId) {
       this.htmlFullScreenTabId = null;
       this.mainWindow.setFullScreen(false);
@@ -855,6 +858,8 @@ class WindowManager {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
     const type = payload && payload.type;
     if (!type) return;
+    // 面板与扩展 Popup 互斥
+    this.hideExtensionPopup();
     const overlay = this.ensurePanelOverlayView();
     this.panelOverlayType = type;
     this.panelOverlayAnchor = (payload && payload.anchor) || null;
@@ -1107,7 +1112,7 @@ class WindowManager {
 
   // ==================== 扩展 Popup 覆盖层（对齐 Edge：点击工具栏扩展图标弹出） ====================
 
-  /** 创建/获取扩展 Popup 覆盖层视图（透明 BrowserView，加载 chrome-extension:// 的 popup.html） */
+  /** 创建/获取扩展 Popup 覆盖层视图（非透明白底 BrowserView，加载 chrome-extension:// 的 popup.html） */
   ensureExtensionPopupView() {
     if (this.extensionPopupView) return this.extensionPopupView;
     const overlay = new BrowserView({
@@ -1116,13 +1121,22 @@ class WindowManager {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
-        transparent: true,
+        // 非透明：透明视图在 Windows 上 add/setBounds 会造成整窗重合成频闪，
+        // 且扩展 popup 页面透明时弹窗会完全隐形（"点了没反应"）
+        transparent: false,
         backgroundThrottling: false,
       },
     });
     try {
-      overlay.setBackgroundColor('#00000000');
+      overlay.setBackgroundColor('#FFFFFF');
     } catch (e) { /* 忽略 */ }
+    // popup 页面加载失败（文件缺失/导航失败）→ 自动关闭并通知渲染层提示
+    overlay.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame || !this.extensionPopupId) return;
+      if (errorCode === -3) return; // ERR_ABORTED：主动切换加载/关闭，忽略
+      this.hideExtensionPopup();
+      this.sendToRenderer(IPC_CHANNELS.EXTENSIONS_ACTION_POPUP_CLOSED, { failed: true, errorCode });
+    });
     this.extensionPopupView = overlay;
     return overlay;
   }
@@ -1130,19 +1144,30 @@ class WindowManager {
   /**
    * 打开扩展 Popup（悬浮在工具栏扩展图标下方）
    * @param {Object} payload - { id, popup, anchor }
+   * @returns {Promise<{ok:boolean, reason?:string}>} 供渲染层提示失败原因
    */
   async openExtensionPopup(payload) {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return { ok: false, reason: 'no-window' };
     const { id, popup, anchor } = payload || {};
-    if (!id || !popup) return;
+    if (!id || !popup) return { ok: false, reason: 'no-popup' };
 
-    // 关闭其他悬浮面板覆盖层；幂等清理旧 Popup（避免重复 addBrowserView）
+    // popup 文件存在性校验：扩展更新后路径可能失效，提前给出明确提示
+    const { getInstalledExtensions } = require('./extensions');
+    const installed = getInstalledExtensions();
+    const ext = installed.find((e) => e.id === id);
+    if (!ext || !ext.path) return { ok: false, reason: 'not-installed' };
+    const popupRel = String(popup).replace(/^\/+/, '').split(/[?#]/)[0];
+    if (!popupRel || !require('fs').existsSync(path.join(ext.path, popupRel))) {
+      return { ok: false, reason: 'popup-missing' };
+    }
+
+    // 关闭其他悬浮面板覆盖层；幂等清理旧 Popup（隐藏=1x1，不 remove 防频闪）
     if (this.panelOverlayView && this.panelOverlayType) this.hidePanelOverlay();
     this.hideExtensionPopup();
 
     const view = this.ensureExtensionPopupView();
     this.extensionPopupId = id;
-    this.mainWindow.addBrowserView(view);
+    this.mainWindow.addBrowserView(view); // 幂等（视图常驻，首次才真正添加）
     this.mainWindow.setTopBrowserView(view);
 
     const targetUrl = `chrome-extension://${id}/${String(popup).replace(/^\/+/, '')}`;
@@ -1175,16 +1200,21 @@ class WindowManager {
 
     // 点击网页任意位置关闭 Popup
     this._injectPanelClickCloser();
+    return { ok: true };
   }
 
-  /** 关闭扩展 Popup */
+  /** 关闭扩展 Popup（缩小为 1x1 保持附加：不 add/remove BrowserView，避免网页频闪） */
   hideExtensionPopup() {
     if (!this.extensionPopupView) return;
     this._removePanelClickCloser();
     try {
-      this.mainWindow.removeBrowserView(this.extensionPopupView);
+      this.hideViewInvisible(this.extensionPopupView);
     } catch (e) { /* 忽略 */ }
-    this.extensionPopupId = null;
+    if (this.extensionPopupId) {
+      this.extensionPopupId = null;
+      // 通知渲染层同步状态（用于图标开关切换）
+      this.sendToRenderer(IPC_CHANNELS.EXTENSIONS_ACTION_POPUP_CLOSED, {});
+    }
   }
 
   /** 检查视图 fallback：打开扩展任意页面（后台页/选项页）的 DevTools */

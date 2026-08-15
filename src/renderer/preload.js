@@ -103,7 +103,7 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   // ==================== 书签 ====================
   getBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_GET_ALL),
   addBookmark: (bookmark) => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_ADD, bookmark),
-  addFolder: (folder) => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_ADD, { ...folder, type: 'folder' }),
+  resolveSiteFavicon: (url) => ipcRenderer.invoke(IPC_CHANNELS.FAVICON_RESOLVE, { url }),
   updateBookmark: (id, bookmark) => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_UPDATE, { id, bookmark }),
   moveBookmark: (id, targetId, position = 'before') =>
     ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_MOVE, { id, targetId, position }),
@@ -205,8 +205,12 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.EXTENSIONS_ACTION_CHANGED, handler);
   },
   triggerExtensionAction: (id) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_ACTION_CLICKED, { id }),
-  openExtensionPopup: (payload) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_ACTION_OPEN_POPUP, payload),
+  openExtensionPopup: (payload) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_ACTION_OPEN_POPUP, payload),
   hideExtensionPopup: () => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_ACTION_HIDE_POPUP),
+  onExtensionPopupClosed: (handler) => {
+    ipcRenderer.on(IPC_CHANNELS.EXTENSIONS_ACTION_POPUP_CLOSED, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXTENSIONS_ACTION_POPUP_CLOSED, handler);
+  },
   inspectExtensionView: (id, url) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_INSPECT_VIEW, { id, url }),
   triggerExtensionCommand: (id, name) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_COMMANDS, { id, name }),
   // ==================== 扩展右键菜单（对齐 Edge） ====================

@@ -50,6 +50,8 @@ const IPC_CHANNELS = {
   BOOKMARKS_MOVE: 'bookmarks:move',
   BOOKMARKS_SEARCH: 'bookmarks:search',
   BOOKMARKS_IS_BOOKMARKED: 'bookmarks:isBookmarked',
+  // 网站图标解析（主进程抓取页面 HTML 解析 <link rel="icon">，书签对话框识别用）
+  FAVICON_RESOLVE: 'favicon:resolve',
   BOOKMARKS_CONTEXT_MENU: 'bookmarks:contextMenu',
   BOOKMARKS_FOLDER_MENU: 'bookmarks:folderMenu',
   BOOKMARKS_FOLDER_CONTEXT_MENU: 'bookmarks:folderContextMenu',
@@ -151,6 +153,7 @@ const IPC_CHANNELS = {
   EXTENSIONS_ACTION_CHANGED: 'extensions:actionChanged',
   EXTENSIONS_ACTION_OPEN_POPUP: 'extensions:actionOpenPopup',
   EXTENSIONS_ACTION_HIDE_POPUP: 'extensions:actionHidePopup',
+  EXTENSIONS_ACTION_POPUP_CLOSED: 'extensions:actionPopupClosed',
   EXTENSIONS_ACTION_CLICKED: 'extensions:actionClicked',
   EXTENSIONS_INSPECT_VIEW: 'extensions:inspectView',
   // 扩展右键菜单（对齐 Edge：网站访问权限/固定/选项）

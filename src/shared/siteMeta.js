@@ -53,6 +53,7 @@
     'baidu.com': ['bdstatic.com'],
     'zhihu.com': ['zhimg.com'],
     'bilibili.tv': ['hdslb.com'],
+    'doubao.com': ['doubaoimg.com', 'byteimg.com', 'bytedance.com'],
   };
 
   function isFaviconTrusted(faviconUrl, pageUrl) {
@@ -67,6 +68,9 @@
       if (iconHost.endsWith('.' + pageHost) || pageHost.endsWith('.' + iconHost)) return true;
 
       const siteKey = getSiteKey(pageHost);
+      // 同注册域下的子域（如 lf-flow-web-cdn.doubao.com 之于 www.doubao.com）
+      if (iconHost === siteKey || iconHost.endsWith('.' + siteKey)) return true;
+
       const cdnHosts = FAVICON_CDN_HOSTS[siteKey] || [];
       return cdnHosts.some((host) => iconHost === host || iconHost.endsWith('.' + host));
     } catch (e) {

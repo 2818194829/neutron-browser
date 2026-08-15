@@ -128,6 +128,7 @@
     bookmarkDialogTitle: $('#bookmarkDialogTitle'),
     bookmarkName: $('#bookmarkName'),
     bookmarkUrl: $('#bookmarkUrl'),
+    bookmarkUrlIcon: $('#bookmarkUrlIcon'),
     bookmarkFolder: $('#bookmarkFolder'),
     bookmarkDialogClose: $('#bookmarkDialogClose'),
     bookmarkDialogCancel: $('#bookmarkDialogCancel'),
@@ -172,6 +173,8 @@
     recentClosedTabs: [],
     editingBookmark: null,
     editingFolder: null,
+    dialogRecognizedFavicon: '',   // 书签对话框内识别到的网址图标（保存时使用）
+    dialogFaviconToken: 0,          // 对话框图标识别令牌（防旧网址异步结果覆盖）
     folderParentId: 'bookmark_bar',
     bookmarkDragId: null,
     bookmarkDropPosition: 'before',
@@ -179,6 +182,7 @@
     bookmarkFolderPopupOpenId: null, // 当前打开的文件夹弹出菜单对应文件夹 ID
     folderPopupOpenTimer: null,      // 拖拽悬停时自动打开文件夹的防抖定时器
     extensionPopupOpen: false,
+    extensionPopupOpenId: null,     // 当前打开的扩展 Popup 对应扩展 ID（开关切换用）
     extensionPopupExtensions: [],
     extensionActions: [],           // 工具栏扩展图标动作列表
     extensionSitePermissions: null,
@@ -236,6 +240,8 @@
     // 加载书签
     state.bookmarks = await api.getBookmarks();
     renderBookmarkBar();
+    // 预载历史/书签图标知识库（异步），就绪后刷新书签栏让图标更准确
+    ensureFaviconCache().then(() => renderBookmarkBar());
     loadDownloads();
 
     // 工具栏收藏夹按钮显示控制（设置页/菜单可隐藏）
@@ -454,13 +460,14 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         </span>`;
       } else {
-        const siteFavicon = getTrustedFavicon(item.favicon, item.url) || getSiteFaviconUrl(item.url);
-        const googleFavicon = getGoogleFaviconUrl(item.url);
-        const favicon = siteFavicon || googleFavicon;
-        const iconHtml = favicon
-          ? `<span class="bfp-item__icon"><img src="${escapeHtmlAttr(favicon)}" width="16" height="16" alt="" referrerpolicy="no-referrer" onerror="this.style.display='none'"></span>`
-          : `<span class="bfp-item__icon">★</span>`;
-        el.innerHTML = `${iconHtml}<span class="bfp-item__title">${escapeHtmlAttr(item.title)}</span>`;
+        const icon = document.createElement('span');
+        icon.className = 'bfp-item__icon';
+        mountBookmarkIcon(icon, item);
+        const title = document.createElement('span');
+        title.className = 'bfp-item__title';
+        title.textContent = item.title || '未命名书签';
+        el.appendChild(icon);
+        el.appendChild(title);
         el.addEventListener('click', () => {
           api.navigateTo(item.url);
           closeDownloadPanel(); // 复用关闭逻辑
@@ -1018,6 +1025,19 @@
     dom.bookmarkDialog.addEventListener('click', (e) => {
       if (e.target === dom.bookmarkDialog) closeBookmarkDialog();
     });
+
+    // 网址输入时实时识别网站图标（防抖 350ms）
+    let faviconTimer = null;
+    dom.bookmarkUrl.addEventListener('input', () => {
+      clearTimeout(faviconTimer);
+      faviconTimer = setTimeout(recognizeBookmarkDialogFavicon, 350);
+    });
+    // 回车保存
+    [dom.bookmarkName, dom.bookmarkUrl, dom.bookmarkFolder].forEach((el) => {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') saveBookmark();
+      });
+    });
   }
 
   function bindFolderDialog() {
@@ -1119,6 +1139,8 @@
     if (bookmark && bookmark.parentId) {
       dom.bookmarkFolder.value = bookmark.parentId;
     }
+    state.dialogRecognizedFavicon = '';
+    recognizeBookmarkDialogFavicon();
     dom.bookmarkName.focus();
     dom.bookmarkName.select();
   }
@@ -1131,9 +1153,9 @@
 
   async function saveBookmark() {
     const targetUrl = dom.bookmarkUrl.value || state.currentUrl || '';
-    const rawFavicon = state.editingBookmark && state.editingBookmark.favicon
-      ? state.editingBookmark.favicon
-      : (state.currentFavicon || '');
+    // 优先使用对话框内识别到的网址图标；未识别时回退已存图标/当前页图标
+    const rawFavicon = state.dialogRecognizedFavicon ||
+      ((state.editingBookmark && state.editingBookmark.favicon) || state.currentFavicon || '');
     const favicon = getTrustedFavicon(rawFavicon, targetUrl);
     const bookmark = {
       title: dom.bookmarkName.value || getDisplayTitleForUrl(state.currentTitle, targetUrl) || '未命名书签',
@@ -1392,34 +1414,10 @@
         icon.className = 'bookmark-item__icon bookmark-item__folder-icon';
         icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
       } else {
-        const siteFavicon = getTrustedFavicon(item.favicon, item.url) || getSiteFaviconUrl(item.url);
-        const googleFavicon = getGoogleFaviconUrl(item.url);
-
-        if (siteFavicon || googleFavicon) {
-          icon = document.createElement('img');
-          icon.className = 'bookmark-item__icon';
-          icon.alt = '';
-          icon.draggable = false;
-          icon.referrerPolicy = 'no-referrer';
-          icon.src = siteFavicon || googleFavicon;
-
-          icon.addEventListener('error', () => {
-            if (!icon.dataset.fallback && googleFavicon && icon.src !== googleFavicon) {
-              icon.dataset.fallback = '1';
-              icon.src = googleFavicon;
-              return;
-            }
-
-            const fallback = document.createElement('span');
-            fallback.className = 'bookmark-item__icon';
-            fallback.textContent = '★';
-            icon.replaceWith(fallback);
-          });
-        } else {
-          icon = document.createElement('span');
-          icon.className = 'bookmark-item__icon';
-          icon.textContent = '★';
-        }
+        // 网站图标：统一走智能解析（历史知识库 → /favicon.ico → DuckDuckGo → Google → ★）
+        icon = document.createElement('span');
+        icon.className = 'bookmark-item__icon';
+        mountBookmarkIcon(icon, item);
       }
 
       const title = document.createElement('span');
@@ -1498,6 +1496,7 @@
 
   async function refreshBookmarks() {
     state.bookmarks = await api.getBookmarks();
+    warmFaviconCacheFromBookmarks();
     renderBookmarkBar();
     // 收藏夹面板打开时同步刷新
     if (state.bookmarksPanelOpen) renderBookmarksPanel();
@@ -1549,6 +1548,198 @@
       return SiteMeta.isFaviconTrusted(favicon, url) ? favicon : '';
     }
     return favicon;
+  }
+
+  // ==================== 网站图标智能解析（书签栏/收藏夹面板/文件夹弹窗统一使用） ====================
+  // favicon 知识库：host/url → 已确认的真实图标（来自历史记录、书签、本次会话解析成功）
+  const faviconCacheByHost = {};
+  const faviconCacheByUrl = {};
+  let faviconCacheReady = false;
+
+  function walkBookmarkItems(bookmarks) {
+    const out = [];
+    const walk = (folder) => {
+      ((folder && folder.children) || []).forEach((child) => {
+        if (child.type === 'bookmark') out.push(child);
+        else if (child.type === 'folder') walk(child);
+      });
+    };
+    Object.keys(bookmarks || {}).forEach((key) => walk(bookmarks[key]));
+    return out;
+  }
+
+  function warmFaviconCacheFromBookmarks() {
+    walkBookmarkItems(state.bookmarks).forEach((b) => {
+      const f = getTrustedFavicon(b.favicon, b.url);
+      if (!f) return;
+      faviconCacheByUrl[b.url] = f;
+      try {
+        const host = new URL(b.url).hostname;
+        if (host && !faviconCacheByHost[host]) faviconCacheByHost[host] = f;
+      } catch (e) { /* 忽略无效 URL */ }
+    });
+  }
+
+  /** 预载图标知识库：历史记录里存的是 Chromium 从页面 <link rel="icon"> 抓取的真实图标 */
+  async function ensureFaviconCache() {
+    if (faviconCacheReady) { warmFaviconCacheFromBookmarks(); return; }
+    faviconCacheReady = true;
+    try {
+      const history = await api.getHistory();
+      (history || []).forEach((h) => {
+        const f = getTrustedFavicon(h.favicon, h.url);
+        if (!f) return;
+        faviconCacheByUrl[h.url] = f;
+        try {
+          const host = new URL(h.url).hostname;
+          if (host && !faviconCacheByHost[host]) faviconCacheByHost[host] = f;
+        } catch (e) { /* 忽略无效 URL */ }
+      });
+    } catch (e) { /* 历史加载失败不阻塞书签栏 */ }
+    warmFaviconCacheFromBookmarks();
+  }
+
+  /** 书签图标的候选链：已存图标 → 历史/书签知识库 → /favicon.ico → DuckDuckGo → DNSPod → Google */
+  function getBookmarkFaviconCandidates(item) {
+    const candidates = [];
+    const push = (v) => { if (v && candidates.indexOf(v) === -1) candidates.push(v); };
+    if (!item || !item.url) return candidates;
+
+    push(getTrustedFavicon(item.favicon, item.url));
+    try {
+      const u = new URL(item.url);
+      push(faviconCacheByUrl[item.url] || faviconCacheByHost[u.hostname] || '');
+    } catch (e) {}
+    push(getSiteFaviconUrl(item.url));
+    try {
+      const host = new URL(item.url).hostname;
+      if (host) {
+        push(`https://icons.duckduckgo.com/ip3/${encodeURIComponent(host)}.ico`);
+        // DNSPod 图标代理（腾讯，国内可用，避免 DDG/Google 被墙时无图标）
+        push(`https://statics.dnspod.cn/proxy_favicon/_/favicon?domain=${encodeURIComponent(host)}`);
+      }
+    } catch (e) {}
+    push(getGoogleFaviconUrl(item.url));
+    return candidates;
+  }
+
+  /** 图标解析成功：写入会话知识库；仅可信图标（同站/白名单 CDN）回写书签持久化 */
+  function rememberFavicon(url, faviconUrl, bookmarkId) {
+    try {
+      const u = new URL(url);
+      const host = u.hostname;
+      if (host && !faviconCacheByHost[host]) faviconCacheByHost[host] = faviconUrl;
+      // 精确 URL 只记第一个成功值，避免后到的解析结果覆盖更准确的图标
+      if (!faviconCacheByUrl[url]) faviconCacheByUrl[url] = faviconUrl;
+    } catch (e) { return; }
+    if (!bookmarkId || !getTrustedFavicon(faviconUrl, url)) return;
+    const bm = findBookmarkByUrl(state.bookmarks, url);
+    if (bm && bm.favicon !== faviconUrl) {
+      bm.favicon = faviconUrl;
+      api.updateBookmark(bookmarkId, { favicon: faviconUrl }).catch(() => {});
+    }
+  }
+
+  /**
+   * 为书签图标容器挂载真实网站图标（候选链异步推进，成功后缓存并回写书签）
+   * @param {HTMLElement} iconEl - 图标容器（span/div，样式含 ... img 规则）
+   * @param {Object} item - 书签项 {id, url, favicon}
+   * @param {string} [fallbackText] - 全部失败时的占位符（默认 ★）
+   * @param {Function} [onResolved] - 解析完成回调（成功传 src，失败传 ''）
+   */
+  function mountBookmarkIcon(iconEl, item, fallbackText, onResolved) {
+    const fallback = fallbackText === undefined ? '★' : fallbackText;
+    const candidates = getBookmarkFaviconCandidates(item);
+    if (candidates.length === 0) {
+      iconEl.textContent = fallback;
+      if (onResolved) onResolved('');
+      return;
+    }
+
+    const img = document.createElement('img');
+    img.alt = '';
+    img.draggable = false;
+    img.referrerPolicy = 'no-referrer';
+    let index = 0;
+    img.addEventListener('error', () => {
+      index += 1;
+      if (index >= candidates.length) {
+        img.remove();
+        iconEl.textContent = fallback;
+        if (onResolved) onResolved('');
+        return;
+      }
+      img.src = candidates[index];
+    });
+    img.addEventListener('load', () => {
+      rememberFavicon(item.url, img.src, item.id);
+      if (onResolved) onResolved(img.src);
+    });
+    img.src = candidates[index];
+    iconEl.appendChild(img);
+  }
+
+  /** 编辑/添加书签对话框：识别网址图标并实时预览（保存时使用识别结果） */
+  async function recognizeBookmarkDialogFavicon() {
+    const url = dom.bookmarkUrl.value.trim();
+    const iconEl = dom.bookmarkUrlIcon;
+    const token = ++state.dialogFaviconToken; // 防止旧网址的异步结果覆盖新输入
+    iconEl.innerHTML = '';
+    state.dialogRecognizedFavicon = '';
+    if (!/^https?:\/\//i.test(url)) {
+      iconEl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+      return;
+    }
+    const existing = (state.editingBookmark && state.editingBookmark.favicon) || '';
+    // 同步先取第一个可信候选（已存图标/历史知识库/站点根图标），保证保存即可带上
+    const candidates = getBookmarkFaviconCandidates({ url, favicon: existing });
+    const syncTrusted = candidates.map((c) => getTrustedFavicon(c, url)).find(Boolean) || '';
+    state.dialogRecognizedFavicon = syncTrusted;
+    // 异步走完整候选链（/favicon.ico → DuckDuckGo → DNSPod → Google），成功后展示并更新保存值
+    mountBookmarkIcon(iconEl, { id: null, url, favicon: existing }, '★', (src) => {
+      if (token === state.dialogFaviconToken) {
+        state.dialogRecognizedFavicon = src || syncTrusted;
+      }
+    });
+
+    // 主进程抓取页面 HTML 解析真实 <link rel="icon">（最准确），成功后替换预览并写入知识库
+    if (api.resolveSiteFavicon) {
+      try {
+        const resolved = await api.resolveSiteFavicon(url);
+        if (token !== state.dialogFaviconToken) return;
+        const trusted = resolved && getTrustedFavicon(resolved.favicon, url);
+        if (!trusted) return;
+        // 若知识库已有该站真实图标，且解析结果是根目录兜底，不降级覆盖
+        try {
+          const host = new URL(url).hostname;
+          const known = faviconCacheByHost[host] || '';
+          if (known && trusted === `${new URL(url).origin}/favicon.ico`) return;
+        } catch (e) {}
+        state.dialogRecognizedFavicon = trusted;
+        rememberFavicon(url, trusted, null); // 写入会话知识库，书签栏同站书签同步受益
+        iconEl.innerHTML = '';
+        mountBookmarkIcon(iconEl, { id: null, url, favicon: existing }, '★', (src) => {
+          if (token === state.dialogFaviconToken) {
+            state.dialogRecognizedFavicon = src || trusted;
+          }
+        });
+      } catch (e) { /* 主进程解析失败：保持候选链结果 */ }
+    }
+  }
+
+  /** 当前页浏览时，把真实图标回写到同名书签（历史遗留空图标自动修复） */
+  function syncCurrentFaviconToBookmark() {
+    if (!state.currentUrl || !state.currentFavicon) return;
+    if (!getTrustedFavicon(state.currentFavicon, state.currentUrl)) return;
+    const bm = findBookmarkByUrl(state.bookmarks, state.currentUrl);
+    if (!bm || bm.favicon === state.currentFavicon) return;
+    bm.favicon = state.currentFavicon;
+    api.updateBookmark(bm.id, { favicon: state.currentFavicon }).catch(() => {});
+    const barIcon = dom.bookmarkBarItems.querySelector(`[data-bookmark-id="${CSS.escape(bm.id)}"] .bookmark-item__icon`);
+    if (barIcon) {
+      barIcon.innerHTML = '';
+      mountBookmarkIcon(barIcon, bm);
+    }
   }
 
   function getDisplayTitleForUrl(title, url) {
@@ -3479,9 +3670,9 @@
       urls = (await api.getCurrentTabs()) || [];
     } catch (e) { urls = []; }
     // 过滤掉内部页面与已收藏的
-    const toAdd = urls.filter((url) => {
-      if (!url || url.startsWith('neutron://')) return false;
-      return !findBookmarkByUrl(state.bookmarks, url);
+    const toAdd = urls.filter((tab) => {
+      if (!tab || !tab.url || tab.url.startsWith('neutron://')) return false;
+      return !findBookmarkByUrl(state.bookmarks, tab.url);
     });
 
     if (toAdd.length === 0) {
@@ -3490,9 +3681,11 @@
     }
 
     let added = 0;
-    for (const url of toAdd) {
-      const title = getDisplayTitleForUrl('', url);
-      await api.addBookmark({ title, url, parentId: 'bookmark_bar', favicon: '' });
+    for (const tab of toAdd) {
+      const url = tab.url;
+      const title = getDisplayTitleForUrl(tab.title || '', url);
+      const favicon = getTrustedFavicon(tab.favicon || '', url);
+      await api.addBookmark({ title, url, parentId: 'bookmark_bar', favicon });
       added++;
     }
     await refreshBookmarks();
@@ -3660,11 +3853,14 @@
     // 书签
     row.classList.add('bookmarks-row--bookmark');
     row.title = item.url || '';
-    const favicon = getTrustedFavicon(item.favicon, item.url) || getGoogleFaviconUrl(item.url);
-    const iconHtml = favicon
-      ? `<span class="bookmarks-row__icon"><img src="${escapeHtmlAttr(favicon)}" width="16" height="16" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('span'), {className:'bookmarks-row__icon', textContent:'★'}))"></span>`
-      : `<span class="bookmarks-row__icon">★</span>`;
-    row.innerHTML = `${iconHtml}<span class="bookmarks-row__title">${escapeHtmlAttr(item.title || '未命名书签')}</span>`;
+    const iconWrap = document.createElement('span');
+    iconWrap.className = 'bookmarks-row__icon';
+    mountBookmarkIcon(iconWrap, item);
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'bookmarks-row__title';
+    titleSpan.textContent = item.title || '未命名书签';
+    row.appendChild(iconWrap);
+    row.appendChild(titleSpan);
     row.addEventListener('click', (e) => {
       e.stopPropagation();
       api.navigateTo(item.url);
@@ -3986,6 +4182,17 @@
         api.hideExtensionPopup();
       }
     });
+
+    // 主进程广播：扩展 Popup 已关闭（含加载失败）→ 同步开关状态并提示
+    if (api.onExtensionPopupClosed) {
+      const unsub = api.onExtensionPopupClosed((data) => {
+        state.extensionPopupOpenId = null;
+        if (data && data.failed) {
+          showToast('扩展弹出窗口加载失败', 'error');
+        }
+      });
+      state.unsubscribers.push(unsub);
+    }
   }
 
   async function refreshExtensionToolbarIcons() {
@@ -4084,7 +4291,14 @@
     }
   }
 
-  function handleExtensionActionClick(action, btn) {
+  async function handleExtensionActionClick(action, btn) {
+    // 同扩展再次点击 → 关闭弹窗（对齐 Edge 的开关行为）
+    if (state.extensionPopupOpenId === action.id) {
+      api.hideExtensionPopup();
+      state.extensionPopupOpenId = null;
+      return;
+    }
+
     // 关闭其它悬浮面板
     if (state.downloadPanelOpen) closeDownloadPanel();
     if (state.historyPanelOpen) closeHistoryPanel();
@@ -4092,14 +4306,29 @@
     if (state.extensionPopupOpen) closeExtensionPopup();
     if (state.contextMenuOpen) closeContextMenu();
     api.hideExtensionPopup();
+    state.extensionPopupOpenId = null;
 
     if (action.popup) {
       const rect = btn.getBoundingClientRect();
-      api.openExtensionPopup({
-        id: action.id,
-        popup: action.popup,
-        anchor: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
-      });
+      let result = { ok: false, reason: 'no-window' };
+      try {
+        result = (await api.openExtensionPopup({
+          id: action.id,
+          popup: action.popup,
+          anchor: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+        })) || { ok: false, reason: 'unknown' };
+      } catch (e) {
+        result = { ok: false, reason: 'ipc-error' };
+      }
+      if (result && result.ok) {
+        state.extensionPopupOpenId = action.id;
+      } else {
+        const reason = (result && result.reason) || '';
+        showToast(
+          reason === 'popup-missing' ? '此扩展的弹出窗口文件不存在，可能扩展已更新' :
+          reason === 'not-installed' ? '扩展不存在或已被移除' :
+          '扩展弹出窗口打开失败', 'error');
+      }
     } else {
       api.triggerExtensionAction(action.id);
     }
@@ -4650,37 +4879,9 @@
           }, 200);
         });
       } else {
-        const siteFavicon = getTrustedFavicon(item.favicon, item.url) || getSiteFaviconUrl(item.url);
-        const googleFavicon = getGoogleFaviconUrl(item.url);
-        const favicon = siteFavicon || googleFavicon;
-
         const icon = document.createElement('span');
         icon.className = 'bfp-item__icon';
-
-        if (favicon) {
-          const img = document.createElement('img');
-          img.width = 16;
-          img.height = 16;
-          img.alt = '';
-          img.draggable = false;
-          img.referrerPolicy = 'no-referrer';
-          img.src = favicon;
-          img.addEventListener('error', () => {
-            if (!img.dataset.fallback && googleFavicon && img.src !== googleFavicon) {
-              img.dataset.fallback = '1';
-              img.src = googleFavicon;
-              return;
-            }
-
-            const fallback = document.createElement('span');
-            fallback.className = 'bfp-item__icon';
-            fallback.textContent = '★';
-            icon.replaceWith(fallback);
-          });
-          icon.appendChild(img);
-        } else {
-          icon.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
-        }
+        mountBookmarkIcon(icon, item);
 
         const title = document.createElement('span');
         title.className = 'bfp-item__title';
@@ -5046,6 +5247,8 @@
         state.currentUrl = data.url || '';
         state.currentTitle = data.title || '';
         state.currentFavicon = data.favicon || '';
+        // 当前页有真实图标时，自动回写同名书签（修复历史遗留空图标）
+        syncCurrentFaviconToBookmark();
         state.canGoBack = data.canGoBack || false;
         state.canGoForward = data.canGoForward || false;
         state.isLoading = data.isLoading || false;

@@ -1313,6 +1313,15 @@ html.window-maximized .app {
   height: 14px;
   flex-shrink: 0;
   border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bookmark-item__icon img {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
   object-fit: contain;
 }
 
@@ -2790,6 +2799,37 @@ html.window-maximized .app {
 
 .form-input:focus {
   border-color: var(--accent-primary);
+}
+
+/* 网址输入框左侧图标预览（书签对话框图标识别） */
+.form-input-wrap {
+  position: relative;
+}
+
+.form-input-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.form-input-icon img {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  object-fit: contain;
+}
+
+.form-input--with-icon {
+  padding-left: 34px;
 }
 
 /* ==================== 按钮 ==================== */
