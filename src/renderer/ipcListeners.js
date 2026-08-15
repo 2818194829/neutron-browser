@@ -10,7 +10,7 @@ window.NeutronIpcListeners = function (ctx) {
     state, dom, api, IS_OVERLAY,
     renderTabs, syncCurrentFaviconToBookmark,
     updateAddressBar, updateNavButtons, updateLoadingBar, updateBookmarkState,
-    applyWindowMaximizedClass,
+    applyWindowMaximizedClass, applyVerticalTabsLayout, applySidebarLayout,
     updateDownloadRow, renderDownloadPanel, updateDownloadButton, openDownloadPanel,
     handleBookmarkFolderMenuOpen, refreshBookmarks,
   } = ctx;
@@ -20,6 +20,20 @@ window.NeutronIpcListeners = function (ctx) {
     const unsub1 = api.onTabListUpdated((data) => {
       state.tabs = data.tabs || [];
       state.activeTabId = data.activeTabId;
+      state.tabGroups = data.tabGroups || [];
+      if (typeof data.verticalTabs === 'boolean' && data.verticalTabs !== state.verticalTabs) {
+        applyVerticalTabsLayout(data.verticalTabs);
+      }
+      if ((data.splitTabId || null) !== state.splitTabId) {
+        state.splitTabId = data.splitTabId || null;
+        if (dom.btnSplit) {
+          dom.btnSplit.classList.toggle('tool-btn--active', !!state.splitTabId);
+          dom.btnSplit.setAttribute('aria-pressed', String(!!state.splitTabId));
+        }
+      }
+      if (typeof data.sidebarOpen === 'boolean' && data.sidebarOpen !== state.sidebarOpen) {
+        applySidebarLayout(data.sidebarOpen);
+      }
       renderTabs();
 
       // 更新内容区域占位符

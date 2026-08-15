@@ -1,13 +1,13 @@
 {
   "name": "neutron-browser",
-  "version": "1.10.4",
+  "version": "1.11.0",
   "description": "一款基于 Electron 的现代 PC 级浏览器，具备多标签页、书签管理、历史记录、下载管理等核心功能",
   "main": "dist/main/index.js",
   "scripts": {
     "start": "npm run build:ts && electron .",
     "dev": "npm run build:ts && electron . --dev",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build:ts && node scripts/test-storage.js",
+    "test": "npm run build:ts && node scripts/test-storage.js && node scripts/test-tracking-protection.js",
     "build:ts": "node scripts/copy-assets.js && tsc",
     "icons": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-icons.ps1",
     "build:settings": "tailwindcss -i ./settings-input.css -o ./src/renderer/pages/settings.css --minify",

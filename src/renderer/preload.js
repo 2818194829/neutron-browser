@@ -116,6 +116,34 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
     ipcRenderer.send(IPC_CHANNELS.TAB_RELOAD, { tabId, ignoreCache }),
   getCurrentTabs: () => ipcRenderer.invoke(IPC_CHANNELS.TABS_GET_CURRENT),
 
+  // ==================== 垂直标签栏 + 标签分组 ====================
+  toggleVerticalTabs: (enabled) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TAB_VERTICAL_TOGGLE, enabled),
+  createTabGroup: (tabIds, name, color) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TAB_GROUP_CREATE, { tabIds, name, color }),
+  addTabsToGroup: (groupId, tabIds) =>
+    ipcRenderer.send(IPC_CHANNELS.TAB_GROUP_ADD, { groupId, tabIds }),
+  removeTabFromGroup: (tabId) =>
+    ipcRenderer.send(IPC_CHANNELS.TAB_GROUP_REMOVE, { tabId }),
+  ungroupTabs: (groupId) =>
+    ipcRenderer.send(IPC_CHANNELS.TAB_GROUP_UNGROUP, { groupId }),
+  toggleTabGroup: (groupId) =>
+    ipcRenderer.send(IPC_CHANNELS.TAB_GROUP_TOGGLE, { groupId }),
+  renameTabGroup: (groupId, name) =>
+    ipcRenderer.send(IPC_CHANNELS.TAB_GROUP_RENAME, { groupId, name }),
+  setTabGroupColor: (groupId, color) =>
+    ipcRenderer.send(IPC_CHANNELS.TAB_GROUP_SET_COLOR, { groupId, color }),
+  closeTabGroup: (groupId) =>
+    ipcRenderer.send(IPC_CHANNELS.TAB_GROUP_CLOSE, { groupId }),
+
+  // ==================== 分屏 ====================
+  setSplitTab: (tabId) =>
+    ipcRenderer.send(IPC_CHANNELS.SPLIT_SET, { tabId }),
+
+  // ==================== 侧边栏 ====================
+  toggleSidebar: (enabled) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SIDEBAR_TOGGLE, enabled),
+
   // ==================== 导航 ====================
   navigateTo: (url) =>
     ipcRenderer.send(IPC_CHANNELS.NAV_GO, { url }),
@@ -124,6 +152,7 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   refresh: () => ipcRenderer.send(IPC_CHANNELS.NAV_REFRESH),
   stop: () => ipcRenderer.send(IPC_CHANNELS.NAV_STOP),
   goHome: () => ipcRenderer.send(IPC_CHANNELS.NAV_HOME),
+  readerToggle: () => ipcRenderer.invoke(IPC_CHANNELS.READER_TOGGLE),
 
   // ==================== 书签 ====================
   getBookmarks: () => ipcRenderer.invoke(IPC_CHANNELS.BOOKMARKS_GET_ALL),

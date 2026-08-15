@@ -143,6 +143,7 @@ window.NeutronDownloadPanel = function (ctx) {
   function getDownloadStateText(item) {
     switch (item.state) {
       case 'paused': return '已暂停';
+      case 'interrupted': return '已中断（可继续）';
       case 'failed': return '下载失败';
       case 'cancelled': return '已取消';
       case 'deleted': return '已删除';
@@ -289,8 +290,15 @@ window.NeutronDownloadPanel = function (ctx) {
         await api.cancelDownload(item.id);
       }));
     }
-    // 已取消/失败：可重新开始下载
-    if (state === 'cancelled' || state === 'failed') {
+    // 已中断：优先断点续传（继续下载），无法续传时再整文件重下
+    if (state === 'interrupted') {
+      actions.appendChild(makeDownloadAction('继续下载', 'play', async (e) => {
+        e.stopPropagation();
+        await api.resumeDownload(item.id);
+      }));
+    }
+    // 已取消/失败/中断：可重新开始下载
+    if (state === 'cancelled' || state === 'failed' || state === 'interrupted') {
       actions.appendChild(makeDownloadAction('重新开始', 'restart', async (e) => {
         e.stopPropagation();
         await api.retryDownload(item.id);
@@ -436,6 +444,8 @@ window.NeutronDownloadPanel = function (ctx) {
       parts.push('已删除');
     } else if (item.state === 'failed') {
       parts.push('下载失败');
+    } else if (item.state === 'interrupted') {
+      parts.push('已中断');
     } else if (item.state === 'cancelled') {
       parts.push('已取消');
     }

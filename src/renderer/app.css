@@ -35,6 +35,7 @@
   --tab-active-bg: #ffffff;
   --tab-hover-bg: #e8eaed;
   --tab-strip-height: 42px;
+  --vertical-tab-width: 220px;
 
   /* 工具栏 */
   --toolbar-height: 46px;
@@ -880,6 +881,24 @@ html.window-maximized .app {
   display: none;
 }
 
+.tab--sleeping .tab__title {
+  color: var(--text-secondary);
+  opacity: 0.55;
+}
+
+.tab--sleeping .tab__favicon--sleeping {
+  opacity: 0.6;
+}
+
+/* 分屏右栏标签标识 */
+.tab--split {
+  box-shadow: inset 0 0 0 1px var(--accent-primary);
+}
+
+.tab--split .tab__title {
+  color: var(--accent-primary);
+}
+
 .tab__favicon {
   width: 16px;
   height: 16px;
@@ -969,6 +988,212 @@ html.window-maximized .app {
 .tab-new:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+/* ==================== 主体布局（垂直标签栏 + 内容列） ==================== */
+.app__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.app__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 垂直标签栏（默认隐藏，切换后显示） */
+.vertical-tab-strip {
+  width: var(--vertical-tab-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--titlebar-bg);
+  border-right: 1px solid var(--border-color);
+  padding: 6px 4px;
+  gap: 2px;
+}
+
+.vertical-tab-strip[hidden] {
+  display: none;
+}
+
+.vertical-tab-strip .tab {
+  width: 100%;
+  height: 36px;
+  border-radius: 6px;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+}
+
+.vertical-tab-strip .tab--active {
+  background: var(--tab-active-bg);
+}
+
+/* 垂直模式下隐藏顶部水平标签栏（标题栏退化为纯标题栏） */
+.app--vertical-tabs .title-bar__tabs-area {
+  display: none;
+}
+
+/* 侧边栏（左侧固定收藏夹面板） */
+.sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--titlebar-bg);
+  border-right: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.sidebar[hidden] {
+  display: none;
+}
+
+.sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.sidebar__close {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.sidebar__close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 4px;
+}
+
+.sidebar__link,
+.sidebar__folder {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sidebar__link:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar__folder {
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: default;
+}
+
+.sidebar__empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+/* ==================== 标签分组标题 ==================== */
+.tab-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  border-left: 3px solid var(--group-color, #4285f4);
+  background: color-mix(in srgb, var(--group-color, #4285f4) 8%, transparent);
+  border-radius: 4px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.tab-group-header:hover {
+  background: color-mix(in srgb, var(--group-color, #4285f4) 16%, transparent);
+}
+
+.tab-group-header__caret {
+  width: 10px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.tab-group-header__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--group-color, #4285f4);
+  flex-shrink: 0;
+}
+
+.tab-group-header__name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.tab-group-header__count {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border-radius: 8px;
+  padding: 0 6px;
+  line-height: 16px;
+}
+
+/* 水平标签栏内的分组标题：更紧凑 */
+.title-bar__tabs-area .tab-group-header {
+  height: 100%;
+  margin-top: 0;
+  border-left: 3px solid var(--group-color, #4285f4);
+  border-radius: 0;
+  padding: 0 8px;
+}
+
+/* 工具按钮激活态（垂直标签栏开关） */
+.tool-btn--active {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
 }
 
 /* ==================== 工具栏 ==================== */

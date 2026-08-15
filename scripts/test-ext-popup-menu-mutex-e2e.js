@@ -111,10 +111,11 @@ async function main() {
   console.log('右键后主进程状态:', JSON.stringify(afterRight));
   console.log('右键后菜单状态:', JSON.stringify(menuAfterRight));
   check('右键后 Popup 已关闭（popupId=null）', afterRight.popupId === null, String(afterRight.popupId));
-  // 视图保持附加但隐藏为 1x1（不再 removeBrowserView，避免网页频闪）
-  check('右键后 Popup 视图已隐藏（1x1 保持附加）',
+  // 视图保持附加但移到屏幕外（保持尺寸，不再 removeBrowserView，避免网页频闪）
+  check('右键后 Popup 视图已隐藏（移出屏幕保持附加）',
     afterRight.hasPopupView === true &&
-    afterRight.popupBounds && afterRight.popupBounds.width <= 2 && afterRight.popupBounds.height <= 2,
+    afterRight.popupBounds && afterRight.popupBounds.x < -1000 && afterRight.popupBounds.y < -1000 &&
+    afterRight.popupBounds.width >= 380 && afterRight.popupBounds.height >= 500,
     JSON.stringify(afterRight));
   check('右键菜单打开', menuAfterRight.open === true && menuAfterRight.hasItems > 5, JSON.stringify(menuAfterRight));
   check('两个窗口不共存', afterRight.popupId === null && menuAfterRight.open === true);

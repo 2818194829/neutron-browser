@@ -436,6 +436,71 @@ function registerIpcHandlers() {
       .filter(t => t.url && !t.url.startsWith('neutron://'));
   });
 
+  // ==================== 垂直标签栏 + 标签分组 ====================
+  ipcMain.handle(IPC_CHANNELS.TAB_VERTICAL_TOGGLE, (event, enabled) => {
+    const wm = getWM();
+    if (!wm) return false;
+    const target = typeof enabled === 'boolean' ? enabled : !wm.verticalTabs;
+    wm.setVerticalTabs(target);
+    return target;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TAB_GROUP_CREATE, (event, { tabIds, name, color }) => {
+    const wm = getWM();
+    if (!wm) return null;
+    return wm.createTabGroup(tabIds, name, color);
+  });
+
+  ipcMain.on(IPC_CHANNELS.TAB_GROUP_ADD, (event, { groupId, tabIds }) => {
+    const wm = getWM();
+    if (wm) wm.addTabsToGroup(groupId, tabIds);
+  });
+
+  ipcMain.on(IPC_CHANNELS.TAB_GROUP_REMOVE, (event, { tabId }) => {
+    const wm = getWM();
+    if (wm) wm.removeTabFromGroup(tabId);
+  });
+
+  ipcMain.on(IPC_CHANNELS.TAB_GROUP_UNGROUP, (event, { groupId }) => {
+    const wm = getWM();
+    if (wm) wm.ungroupGroup(groupId);
+  });
+
+  ipcMain.on(IPC_CHANNELS.TAB_GROUP_TOGGLE, (event, { groupId }) => {
+    const wm = getWM();
+    if (wm) wm.toggleTabGroupCollapsed(groupId);
+  });
+
+  ipcMain.on(IPC_CHANNELS.TAB_GROUP_RENAME, (event, { groupId, name }) => {
+    const wm = getWM();
+    if (wm) wm.renameTabGroup(groupId, name);
+  });
+
+  ipcMain.on(IPC_CHANNELS.TAB_GROUP_SET_COLOR, (event, { groupId, color }) => {
+    const wm = getWM();
+    if (wm) wm.setTabGroupColor(groupId, color);
+  });
+
+  ipcMain.on(IPC_CHANNELS.TAB_GROUP_CLOSE, (event, { groupId }) => {
+    const wm = getWM();
+    if (wm) wm.closeTabGroup(groupId);
+  });
+
+  // ==================== 分屏 ====================
+  ipcMain.on(IPC_CHANNELS.SPLIT_SET, (event, { tabId }) => {
+    const wm = getWM();
+    if (wm) wm.setSplitTab(tabId || null);
+  });
+
+  // ==================== 侧边栏 ====================
+  ipcMain.handle(IPC_CHANNELS.SIDEBAR_TOGGLE, (event, enabled) => {
+    const wm = getWM();
+    if (!wm) return false;
+    const target = typeof enabled === 'boolean' ? enabled : !wm.sidebarOpen;
+    wm.setSidebarOpen(target);
+    return target;
+  });
+
   // ==================== 导航 ====================
   ipcMain.on(IPC_CHANNELS.NAV_GO, (event, { url }) => {
     const wm = getWM();
@@ -499,6 +564,18 @@ function registerIpcHandlers() {
       if (activeTab && activeTab.view) {
         activeTab.view.webContents.loadURL(targetUrl);
       }
+    }
+  });
+
+  // 阅读模式（沉浸式阅读器）切换
+  ipcMain.handle(IPC_CHANNELS.READER_TOGGLE, async () => {
+    const wm = getWM();
+    if (!wm) return { ok: false, reason: 'no-window' };
+    const { toggleReader } = require('./reader');
+    try {
+      return await toggleReader(wm);
+    } catch (e) {
+      return { ok: false, reason: (e && e.message) || 'error' };
     }
   });
 

@@ -365,7 +365,18 @@
 
         <section id="section-privacy" class="section-panel">
           <h1 class="text-2xl font-semibold leading-8">隐私与安全</h1>
-          <p class="mt-2 text-sm text-edge-muted">清除本机保存的浏览数据</p>
+          <p class="mt-2 text-sm text-edge-muted">管理跟踪器拦截与本地浏览数据</p>
+
+          <div class="mt-6">
+            <div class="setting-block">
+              <div class="text-[15px] font-medium">跟踪器拦截</div>
+              <p class="mt-2 mb-4 text-sm text-edge-muted">拦截常见广告、分析和行为跟踪器（推荐开启）</p>
+              <select class="settings-control" id="trackingProtection">
+                <option value="true">开启</option>
+                <option value="false">关闭</option>
+              </select>
+            </div>
+          </div>
 
           <div class="mt-6">
             <div class="setting-block">
@@ -492,6 +503,7 @@
       document.getElementById('showBookmarksButton').value = String(settings.showBookmarksButton ?? true);
       document.getElementById('searchEngine').value = settings.searchEngine || 'google';
       document.getElementById('askDownloadPath').value = String(settings.askDownloadPath ?? true);
+      document.getElementById('trackingProtection').value = String(settings.trackingProtection ?? true);
 
       const startupBehavior = settings.startupBehavior === 'home'
         ? 'custom'
@@ -689,6 +701,10 @@
 
     document.getElementById('showBookmarksButton').addEventListener('change', function() {
       saveSetting('showBookmarksButton', this.value === 'true');
+    });
+
+    document.getElementById('trackingProtection').addEventListener('change', function() {
+      saveSetting('trackingProtection', this.value === 'true');
     });
 
     document.getElementById('searchEngine').addEventListener('change', function() {

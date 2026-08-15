@@ -34,6 +34,23 @@ export const IPC_CHANNELS = {
   TAB_FOCUS_ADDRESS_BAR: 'tab:focusAddressBar',
   TABS_GET_CURRENT: 'tabs:getCurrent',
 
+  // 垂直标签栏 + 标签分组
+  TAB_VERTICAL_TOGGLE: 'tab:verticalToggle',
+  TAB_GROUP_CREATE: 'tab:groupCreate',
+  TAB_GROUP_ADD: 'tab:groupAdd',
+  TAB_GROUP_REMOVE: 'tab:groupRemove',
+  TAB_GROUP_UNGROUP: 'tab:groupUngroup',
+  TAB_GROUP_TOGGLE: 'tab:groupToggle',
+  TAB_GROUP_RENAME: 'tab:groupRename',
+  TAB_GROUP_SET_COLOR: 'tab:groupSetColor',
+  TAB_GROUP_CLOSE: 'tab:groupClose',
+
+  // 分屏（同窗口并排显示两个标签页）
+  SPLIT_SET: 'split:set',
+
+  // 侧边栏（左侧固定收藏夹面板）
+  SIDEBAR_TOGGLE: 'sidebar:toggle',
+
   // 导航
   NAV_GO: 'nav:go',
   NAV_BACK: 'nav:back',
@@ -43,6 +60,9 @@ export const IPC_CHANNELS = {
   NAV_HOME: 'nav:home',
   NAV_STATE_CHANGED: 'nav:stateChanged',
   NAV_LOADING_PROGRESS: 'nav:loadingProgress',
+
+  // 阅读模式（沉浸式阅读器）
+  READER_TOGGLE: 'reader:toggle',
 
   // 书签
   BOOKMARKS_GET_ALL: 'bookmarks:getAll',
@@ -235,6 +255,7 @@ export const DEFAULT_SETTINGS: Settings = {
   launchAtLogin: false,
   showBookmarkBar: true,
   showBookmarksButton: true,      // 工具栏收藏夹按钮是否显示
+  verticalTabs: false,            // 垂直标签栏（标签页左侧竖向排列）
   downloadPath: '',           // 空表示使用系统默认下载目录
   askDownloadPath: true,
   startupBehavior: 'home', // 'newTab' | 'home' | 'restore' | 'custom'
@@ -244,6 +265,7 @@ export const DEFAULT_SETTINGS: Settings = {
   enableImages: true,
   enablePopups: false,
   doNotTrack: false,
+  trackingProtection: true,  // 内置跟踪器拦截（隐私保护）
   clearOnExit: false,
   siteExtensionPermissions: {},
   // 验证码后端地址（由站长在官网 verify-server 统一管理配置，普通用户不可见）

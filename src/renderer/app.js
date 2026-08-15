@@ -32,6 +32,15 @@
     securityIcon: $('#securityIcon'),
     btnBookmark: $('#btnBookmark'),
     bookmarkIcon: $('#bookmarkIcon'),
+    btnVerticalTabs: $('#btnVerticalTabs'),
+    btnSplit: $('#btnSplit'),
+    btnSidebar: $('#btnSidebar'),
+    sidebar: $('#sidebar'),
+    sidebarContent: $('#sidebarContent'),
+    btnSidebarClose: $('#btnSidebarClose'),
+    verticalTabStrip: $('#verticalTabStrip'),
+    appBody: $('#appBody'),
+    appMain: $('#appMain'),
     btnDownloads: $('#btnDownloads'),
     downloadBadge: $('#downloadBadge'),
     downloadRing: $('#downloadRing'),
@@ -146,6 +155,10 @@
   const state = {
     tabs: [],
     activeTabId: null,
+    tabGroups: [],
+    verticalTabs: false,
+    splitTabId: null,
+    sidebarOpen: false,
     isMaximized: false,
     currentUrl: '',
     currentTitle: '',
@@ -825,12 +838,28 @@
     renderNewTabButton();
   }
 
-  function renderTabs() {
-    const tabsArea = dom.titleBarTabsArea;
-    // 清除现有标签页元素
-    tabsArea.querySelectorAll('.tab').forEach(el => el.remove());
+  // 返回当前模式下的标签页容器（水平标签栏 或 垂直标签栏）
+  function getTabContainer() {
+    return state.verticalTabs ? dom.verticalTabStrip : dom.titleBarTabsArea;
+  }
 
+  function renderTabs() {
+    const tabsArea = getTabContainer();
+    // 清除现有标签页与分组标题元素
+    tabsArea.querySelectorAll('.tab, .tab-group-header').forEach(el => el.remove());
+
+    let lastGroupId = null;
     state.tabs.forEach((tab, index) => {
+      // 分组标题：当 groupId 发生变化且存在分组时插入
+      if (tab.groupId !== lastGroupId && tab.groupId) {
+        const group = state.tabGroups.find(g => g.id === tab.groupId);
+        if (group) appendGroupHeader(tabsArea, group);
+      }
+      lastGroupId = tab.groupId;
+      // 折叠分组：隐藏其下标签页（但保持活动标签页可见，避免当前页凭空消失）
+      const group = tab.groupId ? state.tabGroups.find(g => g.id === tab.groupId) : null;
+      if (group && group.collapsed && tab.id !== state.activeTabId) return;
+
       const tabEl = createTabElement(tab, index);
       tabsArea.appendChild(tabEl);
     });
@@ -841,19 +870,111 @@
     renderNewTabButton();
   }
 
+  function appendGroupHeader(container, group) {
+    const header = document.createElement('div');
+    header.className = 'tab-group-header' + (group.collapsed ? ' tab-group-header--collapsed' : '');
+    header.dataset.groupId = group.id;
+    header.style.setProperty('--group-color', group.color || '#4285f4');
+    const caret = document.createElement('span');
+    caret.className = 'tab-group-header__caret';
+    caret.textContent = group.collapsed ? '›' : '⌄';
+    const dot = document.createElement('span');
+    dot.className = 'tab-group-header__dot';
+    const name = document.createElement('span');
+    name.className = 'tab-group-header__name';
+    name.textContent = group.name || '分组';
+    const count = document.createElement('span');
+    count.className = 'tab-group-header__count';
+    count.textContent = String(state.tabs.filter(t => t.groupId === group.id).length);
+    header.appendChild(caret);
+    header.appendChild(dot);
+    header.appendChild(name);
+    header.appendChild(count);
+    header.title = '点击折叠/展开分组';
+    header.addEventListener('click', () => api.toggleTabGroup(group.id));
+    container.appendChild(header);
+  }
+
+  // 应用垂直标签栏布局开关（切换 class 与容器显隐，不触发重绘，渲染由调用方负责）
+  function applyVerticalTabsLayout(enabled) {
+    state.verticalTabs = !!enabled;
+    dom.app.classList.toggle('app--vertical-tabs', !!enabled);
+    if (dom.verticalTabStrip) dom.verticalTabStrip.hidden = !enabled;
+    if (dom.btnVerticalTabs) {
+      dom.btnVerticalTabs.classList.toggle('tool-btn--active', !!enabled);
+      dom.btnVerticalTabs.setAttribute('aria-pressed', String(!!enabled));
+    }
+  }
+
+  // 应用侧边栏开关（切换显隐与按钮激活态，打开时渲染收藏夹）
+  function applySidebarLayout(enabled) {
+    state.sidebarOpen = !!enabled;
+    if (dom.sidebar) dom.sidebar.hidden = !enabled;
+    if (dom.btnSidebar) {
+      dom.btnSidebar.classList.toggle('tool-btn--active', !!enabled);
+      dom.btnSidebar.setAttribute('aria-pressed', String(!!enabled));
+    }
+    if (enabled) renderSidebar();
+  }
+
+  // 渲染侧边栏收藏夹（书签栏 + 子文件夹，平铺可点击导航）
+  function renderSidebar() {
+    const container = dom.sidebarContent;
+    if (!container) return;
+    container.innerHTML = '';
+    const bar = state.bookmarks && state.bookmarks['bookmark_bar'];
+    const children = (bar && bar.children) || [];
+    if (children.length === 0) {
+      container.innerHTML = '<div class="sidebar__empty">书签栏为空</div>';
+      return;
+    }
+    const walk = (items, depth) => {
+      for (const item of items) {
+        if (!item) continue;
+        if (item.type === 'folder') {
+          const folder = document.createElement('div');
+          folder.className = 'sidebar__folder';
+          folder.style.paddingLeft = (8 + depth * 14) + 'px';
+          folder.textContent = '📁 ' + (item.title || '文件夹');
+          container.appendChild(folder);
+          if (item.children && item.children.length) walk(item.children, depth + 1);
+        } else if (item.type === 'bookmark' || item.url) {
+          const link = document.createElement('a');
+          link.className = 'sidebar__link';
+          link.href = item.url || '#';
+          link.style.paddingLeft = (8 + depth * 14) + 'px';
+          link.textContent = item.title || item.url || '未命名';
+          link.title = item.url || '';
+          link.addEventListener('click', (e) => {
+            e.preventDefault();
+            navigateToUrl(item.url);
+          });
+          container.appendChild(link);
+        }
+      }
+    };
+    walk(children, 0);
+  }
+
   function createTabElement(tab, index) {
     const el = document.createElement('div');
     el.className = 'tab' + (tab.id === state.activeTabId ? ' tab--active' : '') +
-                  (tab.isPinned ? ' tab--pinned' : '');
+                  (tab.isPinned ? ' tab--pinned' : '') +
+                  (tab.isSleeping ? ' tab--sleeping' : '') +
+                  (tab.id === state.splitTabId ? ' tab--split' : '');
     el.dataset.tabId = tab.id;
     el.dataset.index = index;
-    el.title = tab.title || tab.url || '新标签页';
+    el.title = (tab.title || tab.url || '新标签页') + (tab.isSleeping ? '（已休眠，点击唤醒）' : '');
     el.draggable = true;
 
     // Favicon
     const faviconDiv = document.createElement('div');
     faviconDiv.className = 'tab__favicon';
-    if (tab.isLoading) {
+    if (tab.isSleeping) {
+      // 休眠指示器（月亮图标）
+      faviconDiv.classList.add('tab__favicon--sleeping');
+      faviconDiv.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    } else if (tab.isLoading) {
       faviconDiv.classList.add('tab__favicon--loading');
       faviconDiv.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"><animate attributeName="stroke-dashoffset" values="32;0" dur="1.5s" repeatCount="indefinite"/></circle></svg>';
     } else if (tab.favicon) {
@@ -926,7 +1047,7 @@
   }
 
   function renderNewTabButton() {
-    const tabsArea = dom.titleBarTabsArea;
+    const tabsArea = getTabContainer();
     const existing = tabsArea.querySelector('.tab-new');
     if (existing) return;
 
@@ -1757,6 +1878,34 @@
 
   // ==================== 工具按钮 ====================
   function bindToolButtons() {
+    dom.btnVerticalTabs.addEventListener('click', async () => {
+      try {
+        const enabled = await api.toggleVerticalTabs(!state.verticalTabs);
+        applyVerticalTabsLayout(enabled);
+      } catch (e) { /* 忽略 */ }
+    });
+    dom.btnSplit.addEventListener('click', () => {
+      if (state.splitTabId) {
+        api.setSplitTab(null); // 退出分屏
+      } else {
+        const idx = state.tabs.findIndex(t => t.id === state.activeTabId);
+        const target = state.tabs[idx + 1] || state.tabs[idx - 1];
+        if (!target) {
+          showToast('至少需要两个标签页才能分屏');
+          return;
+        }
+        api.setSplitTab(target.id);
+      }
+    });
+    dom.btnSidebar.addEventListener('click', async () => {
+      try {
+        const enabled = await api.toggleSidebar(!state.sidebarOpen);
+        applySidebarLayout(enabled);
+      } catch (e) { /* 忽略 */ }
+    });
+    if (dom.btnSidebarClose) {
+      dom.btnSidebarClose.addEventListener('click', () => api.toggleSidebar(false).then(applySidebarLayout));
+    }
     dom.btnDownloads.addEventListener('click', (e) => {
       e.stopPropagation();
       if (state.downloadPanelOpen) {
@@ -2007,7 +2156,7 @@
     state, dom, api, IS_OVERLAY,
     renderTabs, syncCurrentFaviconToBookmark,
     updateAddressBar, updateNavButtons, updateLoadingBar, updateBookmarkState,
-    applyWindowMaximizedClass,
+    applyWindowMaximizedClass, applyVerticalTabsLayout, applySidebarLayout,
     updateDownloadRow, renderDownloadPanel, updateDownloadButton, openDownloadPanel,
     handleBookmarkFolderMenuOpen, refreshBookmarks,
   });

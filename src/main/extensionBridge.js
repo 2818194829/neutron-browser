@@ -146,6 +146,18 @@ function createWebRequestHandler(evt) {
       } catch (e) { /* 忽略 */ }
     }
 
+    // 1.5) 内置跟踪器拦截（隐私保护）：仅 onBeforeRequest，且仅子资源请求。
+    if (evt === 'onBeforeRequest') {
+      try {
+        const { getStore } = require('./storage');
+        if (getStore('settings').get('trackingProtection', true) !== false) {
+          const { evaluateTrackingProtection } = require('./trackingProtection');
+          const tp = evaluateTrackingProtection(details);
+          if (tp && tp.cancel) dnrResp.cancel = true;
+        }
+      } catch (e) { /* 忽略 */ }
+    }
+
     const { isSiteAccessAllowed } = require('./extensions');
     const targets = [];
     webRequestRegistry.forEach((reg, extId) => {

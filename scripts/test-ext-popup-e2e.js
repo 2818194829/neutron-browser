@@ -3,7 +3,7 @@
  *
  * 验证：
  *   A. 点击有 popup 的扩展 → 弹窗打开（视图 380x500、内容加载、extensionPopupId 正确）
- *   B. 同图标再次点击 → 弹窗关闭，且视图保持附加（1x1）——不再 add/remove BrowserView（防网页频闪）
+ *   B. 同图标再次点击 → 弹窗关闭，且视图保持附加并移出屏幕（保持尺寸）——不再 add/remove BrowserView（防网页频闪）
  *   C. 无 popup 的扩展 → 不打开弹窗（走 onClicked，无空壳覆盖层）
  *   D. popup 文件缺失的扩展 → 打开失败并提示（toast），不留空壳
  *   E. 切换标签页 → 弹窗自动关闭
@@ -119,7 +119,7 @@ async function main() {
   check('A2 弹窗尺寸 380x500', state.bounds && Math.abs(state.bounds.width - 380) < 2 && Math.abs(state.bounds.height - 500) < 2, JSON.stringify(state.bounds));
   check('A3 弹窗内容已加载', state.popupText === 'EXT_POPUP_READY', JSON.stringify(state.popupText));
 
-  // ---- B. 同图标再次点击 → 关闭（视图保持附加，1x1，防频闪） ----
+  // ---- B. 同图标再次点击 → 关闭（视图保持附加、移出屏幕保持尺寸，防频闪） ----
   await page.evaluate((id) => {
     const btn = document.querySelector(`[data-ext-id="${CSS.escape(id)}"]`);
     if (btn) btn.click();
@@ -131,7 +131,7 @@ async function main() {
     return { id: wm.extensionPopupId, bounds: b, attached: wm.mainWindow.getBrowserViews().includes(wm.extensionPopupView) };
   `);
   check('B1 再次点击后弹窗关闭', state.id === null, JSON.stringify(state.id));
-  check('B2 关闭=1x1 保持附加（不再 removeBrowserView）', state.attached === true && state.bounds && state.bounds.width <= 2 && state.bounds.height <= 2, JSON.stringify(state));
+  check('B2 关闭=移出屏幕保持附加（不再 removeBrowserView）', state.attached === true && state.bounds && state.bounds.x < -1000 && state.bounds.y < -1000 && state.bounds.width >= 380 && state.bounds.height >= 500, JSON.stringify(state));
 
   // ---- C. 无 popup 扩展：不打开空壳 ----
   await page.evaluate((id) => {

@@ -208,7 +208,30 @@ window.NeutronContextMenu = function (ctx) {
       pin: svg('<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/>'),
       x: svg('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'),
       closeOthers: svg('<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/>'),
+      group: svg('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>'),
+      split: svg('<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="3" x2="12" y2="21"/>'),
     };
+
+    // 标签分组菜单项
+    const groupItems = [];
+    if (tab.groupId) {
+      groupItems.push({ label: '从分组移除', action: () => api.removeTabFromGroup(tab.id), icon: ICONS.group });
+      groupItems.push({ label: '解散分组', action: () => api.ungroupTabs(tab.groupId), icon: ICONS.group });
+      groupItems.push({ label: '关闭分组内标签页', action: () => api.closeTabGroup(tab.groupId), icon: ICONS.x, cls: 'context-menu__item--danger' });
+    } else {
+      groupItems.push({ label: '创建新分组', action: () => api.createTabGroup([tab.id]), icon: ICONS.group });
+      for (const g of (state.tabGroups || [])) {
+        groupItems.push({ label: '添加到「' + (g.name || '分组') + '」', action: () => api.addTabsToGroup(g.id, [tab.id]), icon: ICONS.group });
+      }
+    }
+
+    // 分屏菜单项
+    const splitItems = [];
+    if (state.splitTabId && state.splitTabId === tab.id) {
+      splitItems.push({ label: '退出分屏', action: () => api.setSplitTab(null), icon: ICONS.split });
+    } else if (tab.id !== state.activeTabId) {
+      splitItems.push({ label: '在分屏中打开', action: () => api.setSplitTab(tab.id), icon: ICONS.split });
+    }
 
     const items = [
       { label: '新建标签页', action: () => api.createTab(), icon: ICONS.plus },
@@ -216,6 +239,9 @@ window.NeutronContextMenu = function (ctx) {
       { type: 'separator' },
       { label: '复制标签页', action: () => api.duplicateTab(tab.id), icon: ICONS.copy },
       { label: tab.isPinned ? '取消固定标签页' : '固定标签页', action: () => api.pinTab(tab.id), icon: ICONS.pin },
+      { type: 'separator' },
+      ...groupItems,
+      ...splitItems,
       { type: 'separator' },
       { label: '关闭标签页', action: () => api.closeTab(tab.id), icon: ICONS.x, cls: tab.isPinned ? 'context-menu__item--disabled' : '' },
       { label: '关闭其他标签页', action: () => closeOtherTabs(tab.id), icon: ICONS.closeOthers, cls: 'context-menu__item--danger' },

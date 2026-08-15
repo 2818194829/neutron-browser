@@ -52,7 +52,21 @@ function createAppMenu() {
           label: '新建无痕窗口',
           accelerator: 'CmdOrCtrl+Shift+N',
           click: () => {
-            // TODO: 实现无痕模式
+            if (typeof global.createIncognitoWindow === 'function') {
+              global.createIncognitoWindow();
+            }
+          },
+        },
+        {
+          label: '将当前页面安装为应用',
+          click: () => {
+            const wm = getWM();
+            if (!wm) return;
+            const tab = wm.tabs.find(t => t.id === wm.activeTabId);
+            if (!tab || !tab.url) return;
+            if (typeof global.createPwaWindow === 'function') {
+              global.createPwaWindow(tab.url, tab.title || tab.url);
+            }
           },
         },
         { type: 'separator' },
@@ -175,6 +189,18 @@ function createAppMenu() {
             if (wm && wm.activeTabId) {
               const tab = wm.tabs.find(t => t.id === wm.activeTabId);
               if (tab && tab.view) tab.view.webContents.setZoomLevel(0);
+            }
+          },
+        },
+        { type: 'separator' },
+        {
+          label: '阅读模式',
+          accelerator: 'F9',
+          click: () => {
+            const wm = getWM();
+            if (wm) {
+              const { toggleReader } = require('./reader');
+              toggleReader(wm).catch((e) => { console.warn('[Reader] 切换失败:', e && e.message); });
             }
           },
         },

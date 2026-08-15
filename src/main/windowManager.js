@@ -12,6 +12,13 @@ const { collectExtensionCommands, triggerExtensionCommand } = require('./extensi
 // 应用图标路径（开发与 ASAR 打包路径均从 src/main 上两级到项目根目录）
 const APP_ICON_PATH = path.join(__dirname, '..', '..', 'icon', 'Rocket Browser.png');
 
+// 扩展 Popup 尺寸与隐藏位置：
+// 隐藏时保持原尺寸移到屏幕外（而非缩成 1×1），重新打开时只做同尺寸平移，
+// 避免 1×1↔380×500 的尺寸跳变强制 compositor 重绘白底区域 → 消除打开弹窗时的白闪
+const EXT_POPUP_SIZE = { width: 380, height: 500 };
+const EXT_POPUP_HIDDEN_X = -2000;
+const EXT_POPUP_HIDDEN_Y = -2000;
+
 // ==================== Edge 商店兼容性（动态生成，与真实内核版本一致） ====================
 // 写死旧版本号会导致商店判定"与你的浏览器不兼容"：
 // 1) UA/客户端提示版本过旧；2) 与 Chromium 自动发送的真实 Sec-CH-UA-Full-Version-List 不一致。
@@ -160,12 +167,36 @@ function setupEdgeStoreHeaders() {
 }
 
 class WindowManager {
-  constructor() {
+  constructor(options = {}) {
+    /** @type {boolean} 是否无痕窗口（独立非持久会话） */
+    this.incognito = !!options.incognito;
+
+    /** @type {Electron.Session} 本窗口使用的会话（无痕用独立 partition，普通用默认会话） */
+    this.session = this.incognito
+      ? session.fromPartition('incognito')
+      : session.defaultSession;
+
     /** @type {BrowserWindow|null} 主窗口实例 */
     this.mainWindow = null;
 
     /** @type {Array} 标签页列表 */
     this.tabs = [];
+
+    /** @type {Array<{id:string,name:string,color:string,collapsed:boolean}>} 标签分组列表 */
+    this.tabGroups = [];
+
+    /** @type {boolean} 垂直标签栏开关（标签页在左侧竖向排列） */
+    this.verticalTabs = false;
+    try {
+      const settingsStore = getStore('settings');
+      this.verticalTabs = settingsStore ? settingsStore.get('verticalTabs', false) : false;
+    } catch (e) { /* 忽略 */ }
+
+    /** @type {string|null} 分屏右栏标签页 ID（null 表示未分屏） */
+    this.splitTabId = null;
+
+    /** @type {boolean} 侧边栏（左侧固定收藏夹面板）开关 */
+    this.sidebarOpen = false;
 
     /** @type {Array} 最近关闭的标签页 */
     this.recentlyClosed = [];
@@ -220,10 +251,16 @@ class WindowManager {
     /** @type {number} 拖放进入深度（多来源 enter/leave 计数，0 时隐藏覆盖层） */
     this.extensionDragDepth = 0;
 
+    /** @type {ReturnType<typeof setInterval>|null} 标签页休眠定时器 */
+    this._sleepTimer = null;
+
     // 绑定方法
     this.handleNewWindow = this.handleNewWindow.bind(this);
 
     this.setupSharedSessionHandlers();
+
+    // 启动后台标签页休眠定时器
+    this.startTabSleeper();
   }
 
   /**
@@ -233,7 +270,8 @@ class WindowManager {
     if (this.sharedSessionHandlersReady) return;
     this.sharedSessionHandlersReady = true;
 
-    const sharedSession = session.defaultSession;
+    // 使用本窗口自己的会话（无痕窗口用独立会话，避免污染默认会话）
+    const sharedSession = this.session;
 
     sharedSession.setPermissionRequestHandler((webContents, permission, callback) => {
       // fullscreen 必须放行，否则网页 HTML5 全屏（requestFullscreen）会被拒绝，视频无法全屏
@@ -274,6 +312,7 @@ class WindowManager {
       resizable: true,                 // 允许调整大小（Chromium 自定义 WM_NCHITTEST，透明窗口边缘拖拽缩放正常）
       backgroundColor: '#00000000',    // 透明背景色（#AARRGGBB；最大化时主进程会临时切为不透明）
       icon: nativeImage.createFromPath(APP_ICON_PATH),  // 窗口图标
+      title: this.incognito ? 'Neutron Browser — 无痕模式' : 'Neutron Browser',
       show: false,                     // 先不显示，等 ready-to-show
       webPreferences: {
         preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
@@ -284,6 +323,12 @@ class WindowManager {
         spellcheck: false,
       },
     });
+
+    // Windows 任务栏图标：BrowserWindow 的 icon 选项已设置，这里再显式 setIcon 双保险，
+    // 确保任务栏按钮显示 Rocket Browser 图标（而非 electron.exe 默认图标）
+    try {
+      this.mainWindow.setIcon(nativeImage.createFromPath(APP_ICON_PATH));
+    } catch (e) { /* 忽略 */ }
 
     // 加载主界面 HTML
     this.mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'app.html'));
@@ -313,6 +358,11 @@ class WindowManager {
       if (settings.get('windowAlwaysOnTop')) {
         this.mainWindow.setAlwaysOnTop(true);
       }
+    });
+
+    // 多窗口：聚焦时更新全局「当前窗口管理器」，使菜单/IPC 路由到本窗口
+    this.mainWindow.on('focus', () => {
+      global.windowManager = this;
     });
 
     // 监听窗口状态变化
@@ -443,8 +493,12 @@ class WindowManager {
     // 关闭前保存窗口状态
     this.mainWindow.on('close', () => {
       if (!this.isMaximized) {
-        const bounds = this.mainWindow.getBounds();
-        settings.set('windowState', bounds);
+        try {
+          const bounds = this.mainWindow.getBounds();
+          settings.set('windowState', bounds);
+        } catch (e) {
+          // 防御：退出阶段存储可能已不可用，不影响窗口关闭
+        }
       }
     });
 
@@ -496,9 +550,10 @@ class WindowManager {
     // 解析 URL
     const resolvedUrl = this.resolveUrl(url);
 
-    // 创建 BrowserView，所有标签共享默认持久会话
+    // 创建 BrowserView，标签使用本窗口的会话（无痕窗口为独立非持久会话）
     const view = new BrowserView({
       webPreferences: {
+        session: this.session,
         preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
         contextIsolation: true,
         nodeIntegration: false,
@@ -545,6 +600,9 @@ class WindowManager {
       canGoBack: false,
       canGoForward: false,
       securityState: 'neutral', // 'secure' | 'insecure' | 'neutral'
+      isSleeping: false,        // 标签页休眠（后台超时卸载渲染进程）
+      lastActiveAt: Date.now(), // 最近一次被激活的时间戳（用于休眠判定）
+      groupId: null,            // 所属标签分组 ID（null 表示未分组）
     };
 
     this.tabs.push(tab);
@@ -613,6 +671,9 @@ class WindowManager {
     const targetTab = this.tabs.find(t => t.id === tabId);
     if (!targetTab) return;
 
+    // 唤醒休眠标签页（重新加载被卸载的渲染进程）
+    this.wakeTab(targetTab);
+
     // 切换标签页：关闭扩展 Popup（弹窗属于旧标签页上下文）
     this.hideExtensionPopup();
 
@@ -620,18 +681,30 @@ class WindowManager {
       this.exitHtmlFullScreen();
     }
 
+    // 切到分屏右栏标签本身 → 退出分屏，该标签成为唯一活动标签
+    if (this.splitTabId && this.splitTabId === tabId) {
+      this.splitTabId = null;
+    }
+
     // 隐藏之前活动的标签页（缩小为 1x1 而非移除视图，保持其画面持续渲染，
-    // 否则后台标签的视频会"声音正常、画面冻结"）
+    // 否则后台标签的视频会"声音正常、画面冻结"）；分屏右栏标签保持可见，不隐藏
     if (this.activeTabId) {
       const prevTab = this.tabs.find(t => t.id === this.activeTabId);
-      if (prevTab && prevTab.view) {
+      if (prevTab && prevTab.view && prevTab.id !== this.splitTabId) {
         this.hideViewInvisible(prevTab.view);
       }
     }
 
     // 显示目标标签页（确保附加到窗口，addBrowserView 幂等）
     this.activeTabId = tabId;
+    targetTab.lastActiveAt = Date.now();
     this.mainWindow.addBrowserView(targetTab.view);
+    if (this.splitTabId && this.splitTabId !== tabId) {
+      const splitTab = this.tabs.find(t => t.id === this.splitTabId);
+      if (splitTab && splitTab.view) {
+        this.mainWindow.addBrowserView(splitTab.view); // 右栏保持附加
+      }
+    }
     this.layoutViews();
 
     // 扩展 chrome.tabs.onActivated 事件
@@ -643,6 +716,254 @@ class WindowManager {
     // 通知渲染进程
     this.syncTabsToRenderer();
     this.syncNavState(targetTab);
+  }
+
+  /**
+   * 唤醒休眠标签页：重新加载被卸载的渲染进程
+   * @param {{id:string, view:any, isSleeping:boolean}} tab
+   */
+  wakeTab(tab) {
+    if (!tab || !tab.isSleeping) return;
+    tab.isSleeping = false;
+    tab.lastActiveAt = Date.now();
+    const wc = tab.view && tab.view.webContents;
+    if (wc && !wc.isDestroyed()) {
+      // 渲染进程已被 forcefullyCrashRenderer 卸载，reload 会重新拉起并加载 URL
+      try { wc.reload(); } catch (e) { /* 忽略 */ }
+    }
+    this.syncTabsToRenderer();
+  }
+
+  /**
+   * 休眠单个标签页：卸载渲染进程以释放内存，标签页数据保留
+   * @param {string} tabId
+   */
+  sleepTab(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab || !tab.view || tab.isSleeping || tab.id === this.activeTabId || tab.isPinned) return;
+    if (tab.isLoading || tab.isAudible || tab.crashed) return; // 加载中/播放中/已崩溃的标签不休眠
+    if (tab.id === this.splitTabId) return; // 分屏右栏可见标签不休眠
+    tab.isSleeping = true;
+    try {
+      // 主动卸载渲染进程；handleRenderProcessGone 会识别 isSleeping 并跳过崩溃处理
+      tab.view.webContents.forcefullyCrashRenderer();
+    } catch (e) { /* 某些状态下调用可能抛错，忽略 */ }
+    this.syncTabsToRenderer();
+  }
+
+  /**
+   * 定期检查后台标签页，将超时未活动的标签休眠
+   */
+  sleepInactiveTabs() {
+    const now = Date.now();
+    const idleMs = this.sleepIdleMs || (5 * 60 * 1000); // 默认 5 分钟
+    for (const tab of this.tabs) {
+      if (!tab.view || tab.isSleeping || tab.isPinned) continue;
+      if (tab.id === this.activeTabId) continue;
+      if (tab.id === this.splitTabId) continue; // 分屏右栏可见标签不休眠
+      if (tab.isLoading) continue; // 加载中的标签不强制休眠，避免打断导航
+      if (tab.isAudible) continue; // 正在播放声音的标签不休眠
+      if (now - (tab.lastActiveAt || now) >= idleMs) {
+        this.sleepTab(tab.id);
+      }
+    }
+  }
+
+  /**
+   * 启动标签页休眠定时器（每分钟检查一次）
+   */
+  startTabSleeper() {
+    if (this._sleepTimer) return;
+    this._sleepTimer = setInterval(() => this.sleepInactiveTabs(), 60 * 1000);
+  }
+
+  /**
+   * 停止标签页休眠定时器
+   */
+  stopTabSleeper() {
+    if (this._sleepTimer) {
+      clearInterval(this._sleepTimer);
+      this._sleepTimer = null;
+    }
+  }
+
+  // ==================== 垂直标签栏 ====================
+
+  /**
+   * 切换垂直标签栏
+   * @param {boolean} enabled
+   */
+  setVerticalTabs(enabled) {
+    this.verticalTabs = !!enabled;
+    try {
+      const settingsStore = getStore('settings');
+      if (settingsStore) settingsStore.set('verticalTabs', this.verticalTabs);
+    } catch (e) { /* 忽略 */ }
+    this.layoutViews();
+    this.syncTabsToRenderer();
+  }
+
+  /**
+   * 切换侧边栏（左侧固定收藏夹面板）
+   * @param {boolean} enabled
+   */
+  setSidebarOpen(enabled) {
+    this.sidebarOpen = !!enabled;
+    this.layoutViews();
+    this.syncTabsToRenderer();
+  }
+
+  // ==================== 分屏 ====================
+
+  /**
+   * 设置/取消分屏右栏标签
+   * @param {string|null} tabId 右栏标签页 ID；传 null 退出分屏
+   */
+  setSplitTab(tabId) {
+    const prevSplitId = this.splitTabId;
+    if (tabId) {
+      const tab = this.tabs.find(t => t.id === tabId);
+      if (!tab || !tab.view) return;
+      if (tab.id === this.activeTabId) return; // 不能与活动标签相同
+      // 更换分屏目标时，隐藏旧的分屏视图（避免残留占位）
+      if (prevSplitId && prevSplitId !== tabId) {
+        const old = this.tabs.find(t => t.id === prevSplitId);
+        if (old && old.view) this.hideViewInvisible(old.view);
+      }
+      this.splitTabId = tab.id;
+      this.mainWindow.addBrowserView(tab.view); // 幂等附加右栏
+    } else {
+      // 退出分屏：隐藏旧分屏视图
+      if (prevSplitId) {
+        const old = this.tabs.find(t => t.id === prevSplitId);
+        if (old && old.view) this.hideViewInvisible(old.view);
+      }
+      this.splitTabId = null;
+    }
+    this.layoutViews();
+    this.syncTabsToRenderer();
+  }
+
+  // ==================== 标签分组 ====================
+
+  /**
+   * 清理空分组（分组内无任何标签页时移除）
+   */
+  cleanupEmptyGroups() {
+    this.tabGroups = this.tabGroups.filter(g => this.tabs.some(t => t.groupId === g.id));
+    if (this.tabGroups.length === 0) {
+      // 保持引用不变，避免 renderer 引用失效（可选）
+    }
+  }
+
+  /**
+   * 生成新的分组 ID
+   */
+  generateGroupId() {
+    return 'g_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+  }
+
+  /**
+   * 创建标签分组并把指定标签页加入
+   * @param {string[]} tabIds
+   * @param {string} [name]
+   * @param {string} [color]
+   */
+  createTabGroup(tabIds, name, color) {
+    const ids = (tabIds || []).filter(id => this.tabs.some(t => t.id === id));
+    if (ids.length === 0) return null;
+    const group = {
+      id: this.generateGroupId(),
+      name: name || '新分组',
+      color: color || '#4285f4',
+      collapsed: false,
+    };
+    this.tabGroups.push(group);
+    for (const t of this.tabs) {
+      if (ids.includes(t.id)) t.groupId = group.id;
+    }
+    this.syncTabsToRenderer();
+    return group.id;
+  }
+
+  /**
+   * 把标签页加入已有分组
+   * @param {string} groupId
+   * @param {string[]} tabIds
+   */
+  addTabsToGroup(groupId, tabIds) {
+    if (!this.tabGroups.some(g => g.id === groupId)) return;
+    for (const t of this.tabs) {
+      if ((tabIds || []).includes(t.id)) t.groupId = groupId;
+    }
+    this.syncTabsToRenderer();
+  }
+
+  /**
+   * 把单个标签页从分组移除（变成未分组）
+   * @param {string} tabId
+   */
+  removeTabFromGroup(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (tab) tab.groupId = null;
+    this.cleanupEmptyGroups();
+    this.syncTabsToRenderer();
+  }
+
+  /**
+   * 解散整个分组（标签页保留，仅移除分组）
+   * @param {string} groupId
+   */
+  ungroupGroup(groupId) {
+    for (const t of this.tabs) {
+      if (t.groupId === groupId) t.groupId = null;
+    }
+    this.tabGroups = this.tabGroups.filter(g => g.id !== groupId);
+    this.syncTabsToRenderer();
+  }
+
+  /**
+   * 折叠/展开分组
+   * @param {string} groupId
+   */
+  toggleTabGroupCollapsed(groupId) {
+    const group = this.tabGroups.find(g => g.id === groupId);
+    if (!group) return;
+    group.collapsed = !group.collapsed;
+    this.syncTabsToRenderer();
+  }
+
+  /**
+   * 重命名分组
+   * @param {string} groupId
+   * @param {string} name
+   */
+  renameTabGroup(groupId, name) {
+    const group = this.tabGroups.find(g => g.id === groupId);
+    if (!group) return;
+    group.name = name || '分组';
+    this.syncTabsToRenderer();
+  }
+
+  /**
+   * 设置分组颜色
+   * @param {string} groupId
+   * @param {string} color
+   */
+  setTabGroupColor(groupId, color) {
+    const group = this.tabGroups.find(g => g.id === groupId);
+    if (!group) return;
+    group.color = color;
+    this.syncTabsToRenderer();
+  }
+
+  /**
+   * 关闭分组内所有标签页
+   * @param {string} groupId
+   */
+  closeTabGroup(groupId) {
+    const ids = this.tabs.filter(t => t.groupId === groupId).map(t => t.id);
+    for (const id of ids) this.closeTab(id);
   }
 
   /**
@@ -677,6 +998,10 @@ class WindowManager {
 
     // 从列表中移除
     this.tabs.splice(tabIndex, 1);
+
+    // 关闭后清理空分组与分屏引用
+    this.cleanupEmptyGroups();
+    if (this.splitTabId === tabId) this.splitTabId = null;
 
     if (this.htmlFullScreenTabId === tabId) {
       this.exitHtmlFullScreen();
@@ -896,21 +1221,43 @@ class WindowManager {
     const bookmarkBarHeight = 32;
     const statusBarHeight = 24;
     const topOffset = titleBarHeight + toolbarHeight + bookmarkBarHeight;
+    // 左侧偏移：垂直标签栏宽度 + 侧边栏宽度（与 app.css 变量保持一致）
+    const leftOffset = (this.verticalTabs ? 220 : 0) + (this.sidebarOpen ? 300 : 0);
 
     const contentBounds = this.mainWindow.getContentBounds();
     const activeTab = this.tabs.find(t => t.id === this.activeTabId);
-    if (activeTab && activeTab.view) {
-      // BrowserView 放在 UI 元素下方，留出标题栏、工具栏、书签栏、状态栏空间
-      const nb = {
-        x: 0,
-        y: topOffset,
-        width: contentBounds.width,
-        height: contentBounds.height - topOffset - statusBarHeight,
-      };
-      const cb = activeTab.view.getBounds();
+    const splitTab = this.splitTabId ? this.tabs.find(t => t.id === this.splitTabId) : null;
+    const contentHeight = contentBounds.height - topOffset - statusBarHeight;
+    const setViewBounds = (view, nb) => {
+      const cb = view.getBounds();
       if (cb.x !== nb.x || cb.y !== nb.y || cb.width !== nb.width || cb.height !== nb.height) {
-        activeTab.view.setBounds(nb);
+        view.setBounds(nb);
       }
+    };
+
+    // 分屏模式：活动标签在左栏、分屏标签在右栏（中间留 2px 缝隙显示背景）
+    if (splitTab && splitTab.view && splitTab.id !== this.activeTabId) {
+      const gap = 2;
+      const totalW = contentBounds.width - leftOffset;
+      const leftW = Math.floor((totalW - gap) / 2);
+      if (activeTab && activeTab.view) {
+        setViewBounds(activeTab.view, { x: leftOffset, y: topOffset, width: leftW, height: contentHeight });
+      }
+      setViewBounds(splitTab.view, {
+        x: leftOffset + leftW + gap,
+        y: topOffset,
+        width: totalW - leftW - gap,
+        height: contentHeight,
+      });
+    } else if (activeTab && activeTab.view) {
+      // BrowserView 放在 UI 元素下方，留出标题栏、工具栏、书签栏、状态栏空间；
+      // 垂直标签栏模式下再留出左侧标签栏宽度
+      setViewBounds(activeTab.view, {
+        x: leftOffset,
+        y: topOffset,
+        width: contentBounds.width - leftOffset,
+        height: contentHeight,
+      });
     }
 
     // 悬浮面板覆盖层跟随内容区布局
@@ -966,6 +1313,11 @@ class WindowManager {
           // 让视频画面持续渲染（不会出现"声音正常、画面冻结"），
           // 关闭面板后无缝恢复，视频不被打断、不改变显示形态
           this.hideViewInvisible(tab.view);
+          // 分屏模式下右栏视图同样缩小隐藏，避免盖住面板
+          if (this.splitTabId && this.splitTabId !== this.activeTabId) {
+            const splitTab = this.tabs.find(t => t.id === this.splitTabId);
+            if (splitTab && splitTab.view) this.hideViewInvisible(splitTab.view);
+          }
         }
       }
       return;
@@ -1393,25 +1745,17 @@ class WindowManager {
       return { ok: false, reason: 'popup-missing' };
     }
 
-    // 关闭其他悬浮面板覆盖层；幂等清理旧 Popup（隐藏=1x1，不 remove 防频闪）
+    // 关闭其他悬浮面板覆盖层
     if (this.panelOverlayView && this.panelOverlayType) this.hidePanelOverlay();
-    this.hideExtensionPopup();
 
     const view = this.ensureExtensionPopupView();
     if (!view || view.webContents.isDestroyed()) {
       return { ok: false, reason: 'no-view' };
     }
-    this.extensionPopupId = id;
-    this.mainWindow.addBrowserView(view); // 幂等（视图常驻，首次才真正添加）
-    this.mainWindow.setTopBrowserView(view);
 
-    const targetUrl = `chrome-extension://${id}/${String(popup).replace(/^\/+/, '')}`;
-    if (view.webContents.getURL() !== targetUrl) {
-      await view.webContents.loadURL(targetUrl).catch(() => {});
-    }
-
-    // 定位在锚点（工具栏图标）下方，右对齐
-    const size = { width: 380, height: 500 };
+    // 先计算目标位置（锚点下方、右对齐），再统一处理「隐藏 → 加载 → 显示」，
+    // 保证弹窗在屏幕外完成所有准备工作后才平移到目标位置
+    const size = EXT_POPUP_SIZE;
     const rect = anchor || { left: 100, top: 0, right: 140, bottom: 36, width: 40, height: 36 };
     const contentBounds = this.mainWindow.getContentBounds();
     const titleBarH = 38;
@@ -1425,20 +1769,45 @@ class WindowManager {
     if (top + size.height > contentBounds.height - 32) {
       top = Math.max(titleBarH + toolbarH + 4, rect.top - size.height - 8);
     }
+    const targetBounds = { x: Math.round(left), y: Math.round(top), width: size.width, height: size.height };
 
-    view.setBounds({
-      x: Math.round(left),
-      y: Math.round(top),
-      width: size.width,
-      height: size.height,
-    });
+    const targetUrl = `chrome-extension://${id}/${String(popup).replace(/^\/+/, '')}`;
+    const needLoad = view.webContents.getURL() !== targetUrl;
+
+    this.extensionPopupId = id;
+
+    // 先把视图移到屏幕外（保持原尺寸，避免与 1×1 之间的尺寸跳变）
+    try {
+      const b = view.getBounds();
+      const w = b.width > 0 ? b.width : size.width;
+      const h = b.height > 0 ? b.height : size.height;
+      view.setBounds({ x: EXT_POPUP_HIDDEN_X, y: EXT_POPUP_HIDDEN_Y, width: w, height: h });
+    } catch (e) { /* 忽略 */ }
+
+    // 仅在 URL 变化时重新加载（在屏幕外完成加载，白底加载页不会在目标位置闪现）
+    if (needLoad) {
+      await view.webContents.loadURL(targetUrl).catch(() => {});
+      // 加载失败：did-fail-load 已把视图隐藏并通知渲染层 → 不再定位显示
+      if (!this.extensionPopupId) return { ok: false, reason: 'load-failed' };
+    }
+
+    // 附加到窗口（幂等，视图常驻不 remove）；仅当不在顶层时才置顶，
+    // 避免每次打开都触发整窗重合成频闪
+    this.mainWindow.addBrowserView(view);
+    const views = this.mainWindow.getBrowserViews();
+    if (views[views.length - 1] !== view) {
+      this.mainWindow.setTopBrowserView(view);
+    }
+
+    // 同尺寸平移到目标位置：无尺寸跳变 → 无白闪
+    view.setBounds(targetBounds);
 
     // 点击网页任意位置关闭 Popup
     this._injectPanelClickCloser();
     return { ok: true };
   }
 
-  /** 关闭扩展 Popup（缩小为 1x1 保持附加：不 add/remove BrowserView，避免网页频闪） */
+  /** 关闭扩展 Popup（移到屏幕外保持附加：不 add/remove BrowserView，避免网页频闪） */
   hideExtensionPopup() {
     if (!this.extensionPopupView) return;
     // 视图已销毁（webContents 为 undefined 或 isDestroyed）：仅清理引用，不再操作
@@ -1448,7 +1817,18 @@ class WindowManager {
     }
     this._removePanelClickCloser();
     try {
-      this.hideViewInvisible(this.extensionPopupView);
+      // 移到屏幕外（保持原尺寸），而非缩成 1×1：
+      // 重新打开时只做同尺寸平移，没有 1×1→380×500 的尺寸跳变，
+      // 不会强制 compositor 重绘整块白底区域 → 消除打开弹窗时的白闪
+      const b = this.extensionPopupView.getBounds();
+      const w = b.width > 0 ? b.width : EXT_POPUP_SIZE.width;
+      const h = b.height > 0 ? b.height : EXT_POPUP_SIZE.height;
+      this.extensionPopupView.setBounds({
+        x: EXT_POPUP_HIDDEN_X,
+        y: EXT_POPUP_HIDDEN_Y,
+        width: w,
+        height: h,
+      });
     } catch (e) { /* 忽略 */ }
     if (this.extensionPopupId) {
       this.extensionPopupId = null;
@@ -1569,6 +1949,8 @@ class WindowManager {
    * @param {'navigation'|'meta'} mode - navigation 表示一次新访问，meta 表示标题/图标更新
    */
   recordHistoryEntry(tab, mode) {
+    // 无痕窗口不写入历史记录
+    if (this.incognito) return;
     if (!tab || !tab.url || !/^https?:/i.test(tab.url)) return;
 
     const store = getStore('history');
@@ -1974,6 +2356,16 @@ class WindowManager {
           click: () => wc.downloadURL(wc.getURL()),
         },
         {
+          label: '安装为应用',
+          click: () => {
+            const currentUrl = wc.getURL();
+            const currentTitle = wc.getTitle();
+            if (typeof global.createPwaWindow === 'function') {
+              global.createPwaWindow(currentUrl, currentTitle || currentUrl);
+            }
+          },
+        },
+        {
           label: '打印...',
           click: () => wc.print({ silent: false, printBackground: true }),
         },
@@ -2069,10 +2461,16 @@ class WindowManager {
       isLoading: t.isLoading,
       loadingProgress: t.loadingProgress,
       securityState: t.securityState,
+      isSleeping: t.isSleeping,
+      groupId: t.groupId,
     }));
     this.sendToRenderer(IPC_CHANNELS.TAB_LIST_UPDATED, {
       tabs: tabsData,
       activeTabId: this.activeTabId,
+      tabGroups: this.tabGroups,
+      verticalTabs: this.verticalTabs,
+      splitTabId: this.splitTabId,
+      sidebarOpen: this.sidebarOpen,
     });
   }
 
@@ -2255,7 +2653,7 @@ class WindowManager {
         downloadItem.state = 'cancelled';
         downloadItem.endTime = Date.now();
       } else if (state === 'interrupted') {
-        downloadItem.state = 'failed';
+        downloadItem.state = 'interrupted'; // 保留中断状态，可断点续传
         downloadItem.endTime = Date.now();
       }
 
@@ -2282,7 +2680,8 @@ class WindowManager {
         downloadItem.state = 'cancelled';
         downloadItem.endTime = Date.now();
       } else {
-        downloadItem.state = 'failed';
+        // 中断（网络断开等）：保留中断状态，可断点续传
+        downloadItem.state = 'interrupted';
         downloadItem.endTime = Date.now();
       }
 
@@ -2299,7 +2698,11 @@ class WindowManager {
         downloadsStore.set('items', allDownloads);
       }
       this.broadcast(IPC_CHANNELS.DOWNLOADS_UPDATED, downloadItem);
-      this.downloadItems.delete(downloadItem.id);
+      // 中断的下载保留 DownloadItem 引用，供「继续下载」（断点续传）使用；
+      // 已完成/已取消则释放引用
+      if (state !== 'interrupted') {
+        this.downloadItems.delete(downloadItem.id);
+      }
     });
   }
 
@@ -2327,11 +2730,21 @@ class WindowManager {
    */
   resumeDownload(id) {
     const item = this.downloadItems.get(id);
-    if (item && !item.isDone() && item.isPaused()) item.resume();
+    if (!item) return this.retryDownload(id); // 引用已释放（如应用重启后）→ 整文件重下
+    try {
+      // 断点续传：从中断/暂停位置继续（要求服务器支持 Range 且存在 .part 部分文件）
+      if (item.canResume()) {
+        item.resume();
+      } else if (!item.isDone() && item.isPaused()) {
+        item.resume();
+      }
+    } catch (e) {
+      return this.retryDownload(id); // 无法续传 → 整文件重下
+    }
     const store = getStore('downloads');
     const items = store.get('items', []);
     const d = items.find((x) => x.id === id);
-    if (d && d.state === 'paused') {
+    if (d && (d.state === 'paused' || d.state === 'interrupted')) {
       d.state = 'in_progress';
       d.endTime = null;
       store.set('items', items);
@@ -2375,6 +2788,10 @@ class WindowManager {
     // 查找崩溃的标签页
     const tab = this.tabs.find(t => t.view && t.view.webContents === contents);
     if (tab) {
+      // 标签页休眠导致的主动卸载不是崩溃：跳过崩溃处理，等待 wakeTab 重新加载
+      if (tab.isSleeping) {
+        return;
+      }
       console.error(`[Main] 标签页 "${tab.title}" 崩溃:`, details.reason);
       // 标记标签页状态
       tab.crashed = true;
@@ -2395,6 +2812,8 @@ class WindowManager {
    * 清理资源
    */
   cleanup() {
+    this.stopTabSleeper();
+
     // 销毁所有 BrowserView
     for (const tab of this.tabs) {
       if (tab.view) {
@@ -2406,6 +2825,7 @@ class WindowManager {
     }
     this.tabs = [];
     this.suspendedTabId = null;
+    this.splitTabId = null;
     this.viewCache.clear();
 
     // 销毁悬浮面板覆盖层
