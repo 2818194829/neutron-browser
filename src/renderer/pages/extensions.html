@@ -815,8 +815,18 @@
     });
 
     // ==================== Dev mode toggle ====================
+    // 持久化到设置（主进程拖放安装 / 加载已解压扩展会校验此开关，对齐 Edge）
+    async function initDevMode() {
+      let enabled = true;
+      try {
+        enabled = (await api.getSetting('developerMode')) !== false;
+      } catch (e) { /* 未在 Electron 中运行时默认开启 */ }
+      devModeToggle.checked = enabled;
+      devActions.style.display = enabled ? '' : 'none';
+    }
     devModeToggle.addEventListener('change', () => {
       devActions.style.display = devModeToggle.checked ? '' : 'none';
+      try { api.setSetting('developerMode', devModeToggle.checked); } catch (e) { /* 忽略 */ }
       loadExtensions();
     });
 
@@ -922,6 +932,22 @@
         });
       });
 
+      // 固定/取消固定到工具栏（对齐 Edge）
+      extensionsList.querySelectorAll('.btn-pin').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const extId = btn.dataset.extId;
+          const pinned = btn.dataset.extPinned !== '1';
+          const result = await api.setExtensionPinned(extId, pinned);
+          if (!result.success) {
+            showStatus(result.message || '操作失败', true);
+            return;
+          }
+          showStatus(result.meta && result.meta.pinned ? '已固定到工具栏' : '已从工具栏取消固定', false);
+          loadExtensions();
+        });
+      });
+
       // Attach details button listeners
       extensionsList.querySelectorAll('.btn-details').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -981,6 +1007,7 @@
         <div class="ext-card__bottom">
           <button class="btn-card btn-details" data-ext-id="${escapeHtml(ext.id)}" data-ext-name="${escapeHtml(ext.name)}">详细信息</button>
           ${hasDevMode ? `<button class="btn-card btn-inspect" data-ext-id="${escapeHtml(ext.id)}" title="打开扩展后台页 DevTools">检查视图</button>` : ''}
+          <button class="btn-card btn-pin" data-ext-id="${escapeHtml(ext.id)}" data-ext-pinned="${ext.pinned !== false ? '1' : '0'}">${ext.pinned !== false ? '从工具栏取消固定' : '固定到工具栏'}</button>
           <button class="btn-card btn-card--danger btn-delete" data-ext-id="${escapeHtml(ext.id)}" data-ext-name="${escapeHtml(ext.name)}">删除</button>
         </div>
       </div>`;
@@ -1240,7 +1267,7 @@
 
     // ==================== Init ====================
     applyTheme();
-    devActions.style.display = devModeToggle.checked ? '' : 'none';
+    initDevMode();
     loadExtensions();
   </script>
 </body>

@@ -26,20 +26,112 @@ const EDGE_SEC_CH_UA_FULL = `"Microsoft Edge";v="${CHROME_VERSION}", "Not=A?Bran
 const EDGE_SEC_CH_UA_PLATFORM = '"Windows"';
 
 const EDGE_STORE_JS_PATCH = `
-if (!navigator.userAgentData || !navigator.userAgentData.brands.some(b => b.brand === 'Microsoft Edge')) {
+if (!navigator.userAgentData || !(navigator.userAgentData.brands || []).some(b => b.brand === 'Microsoft Edge')) {
+  const edgeBrands = [
+    { brand: "Microsoft Edge", version: "${CHROME_MAJOR}" },
+    { brand: "Not=A?Brand", version: "99" },
+    { brand: "Chromium", version: "${CHROME_MAJOR}" }
+  ];
+  const edgeFullVersionList = [
+    { brand: "Microsoft Edge", version: "${CHROME_VERSION}" },
+    { brand: "Not=A?Brand", version: "99.0.0.0" },
+    { brand: "Chromium", version: "${CHROME_VERSION}" }
+  ];
+  // 商店 JS 通过 getHighEntropyValues(['uaFullVersion', ...]) 读取 Edge 完整版本
+  // 来判断是否需要"新版本 Microsoft Edge"。Electron 原生的 userAgentData 没有
+  // 此方法，调用会抛错 → 版本为 null → 商店判定"与你的浏览器不兼容"并禁用安装按钮。
+  // 这里补齐该方法，返回 Edge 风格的高熵值。
   Object.defineProperty(navigator, 'userAgentData', {
     get: () => ({
-      brands: [
-        { brand: "Microsoft Edge", version: "${CHROME_MAJOR}" },
-        { brand: "Not=A?Brand", version: "99" },
-        { brand: "Chromium", version: "${CHROME_MAJOR}" }
-      ],
+      brands: edgeBrands,
       mobile: false,
-      platform: "Windows"
+      platform: "Windows",
+      getHighEntropyValues: (hints) => {
+        const map = {
+          architecture: "x86",
+          bitness: "64",
+          model: "",
+          platform: "Windows",
+          platformVersion: "10.0.0",
+          uaFullVersion: "${CHROME_VERSION}",
+          wow64: false,
+          brands: edgeBrands,
+          mobile: false,
+          fullVersionList: edgeFullVersionList
+        };
+        const out = {};
+        (hints || []).forEach((h) => { if (h in map) out[h] = map[h]; });
+        return Promise.resolve(out);
+      }
     }),
     configurable: true,
     enumerable: true
   });
+}
+
+// ---------- Edge 商店私有 API chrome.webstorePrivate ----------
+// 商店 JS 用 chrome.webstorePrivate 是否存在来判断"是否真正的 Edge 浏览器"：
+//   pt() = IS_NON_ANAHEIM_BROWSER || d(chrome) || d(chrome.webstorePrivate)
+// Electron 的 window.chrome 没有此对象 → 判定"与你的浏览器不兼容"并禁用安装按钮。
+// 同时商店通过 beginInstallWithManifest3 安装扩展，这里桥接到本浏览器的 Edge 商店安装链路。
+const ch = window.chrome || (window.chrome = {});
+// 商店代码访问 chrome.runtime.lastError：Electron 普通网页的 chrome.runtime 可能不存在
+if (!ch.runtime) {
+  ch.runtime = { lastError: undefined };
+} else if (!('lastError' in ch.runtime)) {
+  try { Object.defineProperty(ch.runtime, 'lastError', { get: function () { return undefined; } }); } catch (e) { /* 忽略 */ }
+}
+if (!ch.webstorePrivate) {
+  ch.webstorePrivate = {
+    // 新版安装入口（商店点击"获取"调用），callback 收到 "success" 表示成功
+    beginInstallWithManifest3: function (data, callback) {
+      const finish = function (errMsg) { if (typeof callback === 'function') callback(errMsg || ''); };
+      let input = '';
+      if (typeof data === 'string') input = data;
+      else if (data && typeof data === 'object') {
+        input = data.crxId || data.id || data.url ||
+          (data.manifest && data.manifest.update_url) || location.href;
+      }
+      if (!input) input = location.href;
+      if (window.NeutronBrowser && window.NeutronBrowser.installFromEdgeStore) {
+        window.NeutronBrowser.installFromEdgeStore(input).then(function (r) {
+          finish(r && r.success ? 'success' : ((r && r.message) || 'install failed'));
+        }).catch(function (e) { finish(String((e && e.message) || e)); });
+      } else {
+        finish('no install bridge');
+      }
+    },
+    // 旧版安装入口（兼容商店旧流程）
+    install: function (url, onSuccess, onFailure) {
+      if (window.NeutronBrowser && window.NeutronBrowser.installFromEdgeStore) {
+        window.NeutronBrowser.installFromEdgeStore(url || location.href).then(function (r) {
+          if (r && r.success) { if (typeof onSuccess === 'function') onSuccess(); }
+          else if (typeof onFailure === 'function') onFailure((r && r.message) || 'install failed');
+        }).catch(function (e) { if (typeof onFailure === 'function') onFailure(String((e && e.message) || e)); });
+      }
+    },
+    // 商店在 beginInstallWithManifest3 成功后调用 completeInstall 完成收尾。
+    // 本浏览器安装已在 beginInstallWithManifest3 里完成，这里直接回调成功。
+    completeInstall: function () {
+      const args = Array.prototype.slice.call(arguments);
+      const cb = args.find(function (a) { return typeof a === 'function'; });
+      if (cb) cb('success');
+      return Promise.resolve('success');
+    },
+    // 模拟已登录的 Edge 账号（成人 MSA），避免商店要求先登录
+    getBrowserLogin: function (callback) {
+      if (typeof callback === 'function') {
+        callback({ account_type: 'MSA', account_location: 'CN', age_group_type: 3 });
+      }
+    },
+    // 偏好设置：成人用户
+    getPreferences: function (callback) {
+      if (typeof callback === 'function') {
+        callback({ is_edge_feedback_enabled: false, aadc_age_group: 'Adult' });
+      }
+    },
+    showFeedbackDialog: function () { /* 反馈对话框：本浏览器无此功能，空操作 */ }
+  };
 }
 `;
 
@@ -117,6 +209,12 @@ class WindowManager {
     this.extensionPopupView = null;
     /** @type {string|null} 当前打开的扩展 Popup 对应扩展 ID */
     this.extensionPopupId = null;
+    /** @type {Map<string, BrowserWindow>} 扩展选项页窗口（按扩展 ID） */
+    this.extensionOptionsWindows = new Map();
+    /** @type {BrowserView|null} 扩展包拖放全窗提示覆盖层（Edge 式拖拽安装反馈） */
+    this.extensionDropView = null;
+    /** @type {number} 拖放进入深度（多来源 enter/leave 计数，0 时隐藏覆盖层） */
+    this.extensionDragDepth = 0;
 
     // 绑定方法
     this.handleNewWindow = this.handleNewWindow.bind(this);
@@ -263,6 +361,14 @@ class WindowManager {
     this.mainWindow.webContents.setWindowOpenHandler(({ url }) => {
       this.createTab(url);
       return { action: 'deny' };
+    });
+
+    // 安全兜底：拖拽被 Esc 取消 / 切换到其他窗口时 OS 不再发送 dragleave，
+    // 窗口失焦时强制关闭拖放提示覆盖层，避免透明覆盖层残留阻挡交互
+    this.mainWindow.on('blur', () => {
+      if (this.extensionDragDepth > 0) {
+        this.hideExtensionDropOverlay();
+      }
     });
   }
 
@@ -784,6 +890,118 @@ class WindowManager {
     this.sendToRenderer(IPC_CHANNELS.PANEL_OVERLAY_CLOSED, {});
   }
 
+  // ==================== 扩展包拖放全窗覆盖层（Edge 式） ====================
+
+  /**
+   * 创建/获取扩展包拖放提示覆盖层：透明 BrowserView 盖住整个窗口，
+   * 加载 app.html?overlay=1&panel=extensionDrop 显示居中的「松开以安装扩展」提示卡片。
+   * BrowserView 是原生视图，可以盖在网页标签页之上，实现全窗口的拖放反馈。
+   */
+  ensureExtensionDropView() {
+    if (this.extensionDropView) return this.extensionDropView;
+    const view = new BrowserView({
+      webPreferences: {
+        preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        transparent: true,
+        backgroundThrottling: false,
+      },
+    });
+    try {
+      view.setBackgroundColor('#00000000');
+    } catch (e) { /* 忽略 */ }
+    // 竞态兜底：覆盖层首次创建加载 app.html 期间用户就松手时，
+    // 文件会落到未初始化的 webContents 上被 Chromium 当作 file:// 导航。
+    // 在此拦截 .crx/.zip 的导航并转交安装链路，避免覆盖层跳转成错误页。
+    view.webContents.on('will-navigate', (event, url) => {
+      if (!url || !url.startsWith('file://')) return;
+      const filePath = this.fileUrlToPath(url);
+      if (filePath && /\.(crx|zip)$/i.test(filePath)) {
+        event.preventDefault();
+        this.handleExtensionDragDrop(filePath);
+      }
+    });
+    this.extensionDropView = view;
+    return view;
+  }
+
+  /**
+   * 显示拖放提示覆盖层（进入窗口拖拽 .crx/.zip 时）
+   */
+  showExtensionDropOverlay() {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const view = this.ensureExtensionDropView();
+
+    const contentBounds = this.mainWindow.getContentBounds();
+    view.setBounds({
+      x: 0,
+      y: 0,
+      width: Math.round(contentBounds.width),
+      height: Math.round(contentBounds.height),
+    });
+
+    this.mainWindow.addBrowserView(view);
+    this.mainWindow.setTopBrowserView(view);
+
+    const targetUrl = 'file:///' + path.join(__dirname, '..', 'renderer', 'app.html').replace(/\\/g, '/')
+      + '?overlay=1&panel=extensionDrop';
+    if (view.webContents.getURL() !== targetUrl) {
+      view.webContents.loadURL(targetUrl).catch(() => {});
+    }
+  }
+
+  /**
+   * 隐藏拖放提示覆盖层并重置计数
+   */
+  hideExtensionDropOverlay() {
+    this.extensionDragDepth = 0;
+    if (!this.extensionDropView) return;
+    try {
+      this.mainWindow.removeBrowserView(this.extensionDropView);
+    } catch (e) { /* 忽略 */ }
+  }
+
+  /**
+   * 拖拽进入（.crx/.zip）：计数 +1 并显示覆盖层。
+   * 事件可能来自主窗口渲染层 / 网页预加载脚本 / 覆盖层自身，
+   * 用计数器避免跨 webContents 边界时覆盖层闪烁。
+   */
+  handleExtensionDragEnter() {
+    this.extensionDragDepth++;
+    console.log('[DropInstall][main] dragEnter depth=', this.extensionDragDepth);
+    try { require('./dragDebugLog').logDrag('main', 'dragEnter', { depth: this.extensionDragDepth }); } catch (e) { /* 忽略 */ }
+    this.showExtensionDropOverlay();
+  }
+
+  /**
+   * 拖拽离开：计数 -1，归零时隐藏覆盖层
+   */
+  handleExtensionDragLeave() {
+    this.extensionDragDepth = Math.max(0, this.extensionDragDepth - 1);
+    console.log('[DropInstall][main] dragLeave depth=', this.extensionDragDepth);
+    try { require('./dragDebugLog').logDrag('main', 'dragLeave', { depth: this.extensionDragDepth }); } catch (e) { /* 忽略 */ }
+    if (this.extensionDragDepth === 0) {
+      this.hideExtensionDropOverlay();
+    }
+  }
+
+  /**
+   * 拖放完成：隐藏覆盖层并转发文件路径给主窗口渲染层执行安装
+   * （统一安装链路：网页区域 / 主窗口 chrome 区域 / 覆盖层都汇合到这里）
+   * @param {string} filePath
+   */
+  handleExtensionDragDrop(filePath) {
+    console.log('[DropInstall][main] dragDrop path=', filePath);
+    try { require('./dragDebugLog').logDrag('main', 'drop', { path: filePath }); } catch (e) { /* 忽略 */ }
+    this.hideExtensionDropOverlay();
+    // 空路径也转发：渲染层会给出「无法获取文件路径」的明确提示，而不是静默失败
+    if (typeof filePath === 'string') {
+      this.sendToRenderer(IPC_CHANNELS.EXTENSIONS_DROP_FILE, filePath);
+    }
+  }
+
   /**
    * 覆盖层布局：仅占面板大小，定位在触发按钮附近。
    */
@@ -918,8 +1136,9 @@ class WindowManager {
     const { id, popup, anchor } = payload || {};
     if (!id || !popup) return;
 
-    // 关闭其他悬浮面板覆盖层
+    // 关闭其他悬浮面板覆盖层；幂等清理旧 Popup（避免重复 addBrowserView）
     if (this.panelOverlayView && this.panelOverlayType) this.hidePanelOverlay();
+    this.hideExtensionPopup();
 
     const view = this.ensureExtensionPopupView();
     this.extensionPopupId = id;
@@ -976,6 +1195,53 @@ class WindowManager {
       return url.includes(`chrome-extension://${extId}/`);
     });
     if (target && !target.isDestroyed()) target.openDevTools({ mode: 'detach' });
+  }
+
+  /**
+   * 打开扩展选项页（对齐 Edge：右键扩展 → 扩展选项）。
+   * 已有窗口则聚焦，否则创建新窗口加载 chrome-extension:// 的 options 页面。
+   */
+  openExtensionOptionsPage(extId) {
+    const { getExtensionMenuMeta } = require('./extensions');
+    const meta = getExtensionMenuMeta(extId);
+    if (!meta) return { success: false, message: '扩展不存在' };
+    if (!meta.hasOptionsPage) return { success: false, message: '此扩展没有选项页' };
+
+    const existing = this.extensionOptionsWindows.get(extId);
+    if (existing && !existing.isDestroyed()) {
+      if (existing.isMinimized()) existing.restore();
+      existing.focus();
+      return { success: true, focused: true };
+    }
+
+    const win = new BrowserWindow({
+      width: 840,
+      height: 640,
+      minWidth: 480,
+      minHeight: 360,
+      title: `${meta.name} - 选项`,
+      autoHideMenuBar: true,
+      webPreferences: {
+        preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    });
+
+    this.extensionOptionsWindows.set(extId, win);
+    win.on('closed', () => {
+      if (this.extensionOptionsWindows.get(extId) === win) {
+        this.extensionOptionsWindows.delete(extId);
+      }
+    });
+
+    const targetUrl = `chrome-extension://${extId}/${String(meta.optionsPage).replace(/^\/+/, '')}`;
+    win.loadURL(targetUrl).catch((e) => {
+      win.webContents.loadURL(`chrome-extension://${extId}/`).catch(() => {});
+      console.warn('[Extensions] 选项页加载失败:', e && e.message);
+    });
+    return { success: true };
   }
 
   // ==================== 扩展命令快捷键（对齐 Edge：manifest.commands） ====================
@@ -1135,6 +1401,9 @@ class WindowManager {
         this.syncTabsToRenderer();
         this.syncNavState(tab);
         this.recordHistoryEntry(tab, 'navigation');
+        // 真实导航成功：清理导航前的标题备份
+        delete tab._prevTitle;
+        delete tab._prevFavicon;
       }
     });
 
@@ -1183,15 +1452,45 @@ class WindowManager {
       if (tab) {
         if (isMainFrame) {
           tab.url = url || tab.url;
-          tab.title = '';
-          tab.favicon = '';
-          tab.isLoading = true;
-          tab.loadingProgress = 10;
+          // ⚠️ 站内 History API 导航（isInPlace=true：pushState/replaceState/hash 变化）
+          // 是同文档导航，页面不重载、document.title 不变 → page-title-updated 不会
+          // 再次触发。若在这里清空 tab.title，标签页会永久显示「新标签页」——
+          // 视频页在播放中做站内导航（如 B 站换集/切清晰度/直播拉流）即触发此 bug。
+          // 因此仅真正的跨文档导航才清空标题/图标并置加载状态。
+          if (!isInPlace) {
+            // 记录旧标题/图标：导航被中止（ERR_ABORTED，旧页面仍显示）时恢复
+            tab._prevTitle = tab.title || '';
+            tab._prevFavicon = tab.favicon || '';
+            tab.title = '';
+            tab.favicon = '';
+            tab.isLoading = true;
+            tab.loadingProgress = 10;
+          }
           this.syncNavState(tab);
         }
-        tab.loadingProgress = 10;
-        this.sendToRenderer(IPC_CHANNELS.NAV_LOADING_PROGRESS, { tabId, progress: 10 });
+        if (!isInPlace) {
+          tab.loadingProgress = 10;
+          this.sendToRenderer(IPC_CHANNELS.NAV_LOADING_PROGRESS, { tabId, progress: 10 });
+        }
       }
+    });
+
+    // 主框架导航被中止（ERR_ABORTED）：导航未 commit，旧页面通常仍显示，
+    // 恢复标题/图标，避免标签页显示成「新标签页」
+    wc.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame) return;
+      const tab = this.tabs.find(t => t.id === tabId);
+      if (!tab) return;
+      if (errorCode === -3 && !tab.title && tab._prevTitle) {
+        tab.title = tab._prevTitle;
+        tab.favicon = tab._prevFavicon || tab.favicon;
+        tab.isLoading = false;
+        tab.loadingProgress = 100;
+        this.syncTabsToRenderer();
+        this.syncNavState(tab);
+      }
+      delete tab._prevTitle;
+      delete tab._prevFavicon;
     });
 
     // 音频状态变化 + 后台节流控制
@@ -1785,6 +2084,16 @@ class WindowManager {
       } catch (e) { /* 忽略 */ }
       this.extensionPopupView = null;
     }
+
+    // 销毁扩展包拖放提示覆盖层
+    if (this.extensionDropView) {
+      try {
+        this.mainWindow.removeBrowserView(this.extensionDropView);
+        this.extensionDropView.webContents.close();
+      } catch (e) { /* 忽略 */ }
+      this.extensionDropView = null;
+    }
+    this.extensionDragDepth = 0;
   }
 }
 

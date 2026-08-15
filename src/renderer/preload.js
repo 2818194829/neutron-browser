@@ -2,7 +2,7 @@
  * 预加载脚本 - 安全桥接主进程与渲染进程
  * 通过 contextBridge 暴露安全的 API 给渲染进程
  */
-const { contextBridge, ipcRenderer, webFrame } = require('electron');
+const { contextBridge, ipcRenderer, webFrame, webUtils } = require('electron');
 const { IPC_CHANNELS } = require('../shared/constants');
 
 // ==================== Ctrl+滚轮 缩放页面 ====================
@@ -175,6 +175,25 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
     ipcRenderer.on(IPC_CHANNELS.EXTENSIONS_DROP_FILE, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.EXTENSIONS_DROP_FILE, handler);
   },
+  // ==================== 扩展包拖放安装（Edge 式全窗口拦截） ====================
+  // File.path 在 Electron 32+ 已移除，必须经 webUtils 桥接获取磁盘路径
+  getPathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch (e) {
+      return '';
+    }
+  },
+  notifyExtensionDragEnter: () => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_DRAG_ENTER),
+  notifyExtensionDragLeave: () => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_DRAG_LEAVE),
+  notifyExtensionDrop: (filePath) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_DRAG_DROP, { path: filePath }),
+  // 拖放诊断（真实系统拖放排查）
+  logDragDebug: (payload) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_DRAG_DEBUG, payload),
+  onExtensionDragDebugEvent: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.EXTENSIONS_DRAG_DEBUG_EVENT, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXTENSIONS_DRAG_DEBUG_EVENT, handler);
+  },
   installFromEdgeStore: (input) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_INSTALL_FROM_EDGE, input),
   toggleExtension: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_TOGGLE, { id }),
   uninstallExtension: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_UNINSTALL, { id }),
@@ -190,6 +209,13 @@ contextBridge.exposeInMainWorld('NeutronBrowser', {
   hideExtensionPopup: () => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_ACTION_HIDE_POPUP),
   inspectExtensionView: (id, url) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_INSPECT_VIEW, { id, url }),
   triggerExtensionCommand: (id, name) => ipcRenderer.send(IPC_CHANNELS.EXTENSIONS_COMMANDS, { id, name }),
+  // ==================== 扩展右键菜单（对齐 Edge） ====================
+  getExtensionMenuMeta: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_GET_MENU_META, { id }),
+  setExtensionSiteAccess: (id, mode, site) =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_SET_SITE_ACCESS, { id, mode, site }),
+  setExtensionPinned: (id, pinned) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_SET_PINNED, { id, pinned }),
+  openExtensionOptions: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_OPEN_OPTIONS, { id }),
+  viewExtensionWebPermissions: (id) => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_VIEW_WEB_PERMISSIONS, { id }),
 
   // ==================== 设置 ====================
   getSetting: (key) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET, key),

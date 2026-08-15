@@ -295,6 +295,9 @@ body.is-scrolled .topbar {
 }
 .suggest-item:hover, .suggest-item.is-active { background: rgba(99,102,241,0.1); }
 .suggest-item svg { width:16px; height:16px; color:var(--text-tertiary); flex-shrink:0; }
+.suggest-item img.suggest-favicon {
+  width:16px; height:16px; border-radius:3px; object-fit:contain; flex-shrink:0;
+}
 .suggest-item .suggest-url { margin-left:auto; font-size:12px; color:var(--text-tertiary); max-width:45%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .suggest-item.is-history svg { color:var(--accent-amber); }
 
@@ -326,6 +329,11 @@ body.is-scrolled .topbar {
   transition: transform .2s;
 }
 .sc-item:hover .sc-item__icon { transform: scale(1.05); }
+.sc-item__icon img.favicon-img {
+  width:28px; height:28px; border-radius:7px; object-fit:contain;
+  background:rgba(255,255,255,0.95); padding:3px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
 .sc-item__name {
   font-size:12px; color:var(--text-secondary); text-align:center;
   max-width:88px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -479,6 +487,31 @@ body.is-scrolled .topbar {
 .bottombar a { color:var(--text-tertiary); transition:color .15s; }
 .bottombar a:hover { color:var(--primary); }
 .bottombar .bottombar__dot { width:3px; height:3px; border-radius:50%; background:var(--border-strong); }
+
+/* ============ 壁纸工具条（切换/固定/保存） ============ */
+.wall-tools {
+  position:fixed; right:20px; bottom:56px; z-index:30;
+  display:flex; align-items:center; gap:6px;
+  padding:6px 8px; border-radius:999px;
+  background: var(--card-bg-solid);
+  box-shadow: var(--sh-3), var(--glass-highlight);
+  backdrop-filter: blur(10px);
+  animation: riseIn .5s ease .3s both;
+}
+.wall-tools button {
+  width:34px; height:34px; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center;
+  color: var(--text-secondary);
+  transition: background .2s, transform .08s, color .2s, box-shadow .2s;
+}
+.wall-tools button:hover { background: var(--bg-hover); color: var(--text-primary); transform: scale(1.06); }
+.wall-tools button:active { transform: scale(0.94); }
+.wall-tools button svg { width:17px; height:17px; }
+.wall-tools button.is-active {
+  color: var(--primary);
+  background: rgba(99,102,241,0.14);
+  box-shadow: inset 0 0 0 1px rgba(99,102,241,0.35);
+}
 
 /* ============ 设置抽屉 ============ */
 .drawer-mask {
@@ -773,6 +806,19 @@ select:focus { border-color:var(--primary); }
     </div>
   </footer>
 
+  <!-- ======== 壁纸工具条：切换 / 固定 / 保存 ======== -->
+  <div class="wall-tools" id="wallTools" role="toolbar" aria-label="壁纸操作">
+    <button id="btnWallNext" title="切换壁纸" aria-label="切换壁纸">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+    </button>
+    <button id="btnWallPin" title="固定壁纸" aria-label="固定壁纸">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>
+    </button>
+    <button id="btnWallSave" title="保存壁纸" aria-label="保存壁纸">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </button>
+  </div>
+
   <!-- ======== 设置抽屉 ======== -->
   <div class="drawer-mask" id="drawerMask"></div>
   <aside class="settings-drawer" id="settingsDrawer" role="dialog" aria-label="设置">
@@ -988,11 +1034,11 @@ select:focus { border-color:var(--primary); }
     duckduckgo: { label: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=',               color: '#DE5833' },
   };
   const DEFAULT_SETTINGS = {
-    theme: 'system', wallpaper: 'gradient', dynamicStyle: 'particles',
+    theme: 'system', wallpaper: 'image', dynamicStyle: 'particles',
     overlay: 10, blur: 0, accent: 'indigo', radius: 'medium', fontscale: 'medium',
     engine: 'google', scPerRow: 8, showSeconds: true, showGreeting: true,
     showWeather: true, showTodo: true, showNews: true, showSystem: true,
-    searchHistory: true, reducedMotion: false, customWallpaper: null,
+    searchHistory: true, reducedMotion: false, customWallpaper: null, pinned: null,
   };
   const NEWS_POOL = [
     { title: 'AI 助手正重塑开发者的日常编码工作流', src: '科技前线', time: '2 小时前', emoji: '🤖', url: 'https://www.infoq.cn' },
@@ -1031,6 +1077,73 @@ select:focus { border-color:var(--primary); }
     const palette = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#F43F5E', '#8B5CF6', '#14B8A6', '#EF4444'];
     return palette[Math.abs(h) % palette.length];
   }
+
+  /* ---------------- favicon 解析（各网站真实图标） ---------------- */
+  let faviconCache = null;      // host → 已确认的 favicon（来自书签/历史，最准确）
+  const faviconLoadState = {};  // favicon URL → true(可用) / false(失败)
+  async function ensureFaviconCache() {
+    if (faviconCache) return faviconCache;
+    faviconCache = {};
+    const add = (u, f) => {
+      if (!u || !f) return;
+      try {
+        const h = new URL(u).hostname.replace(/^www\./, '').toLowerCase();
+        if (h && !faviconCache[h]) faviconCache[h] = f;
+      } catch (e) { /* 忽略无效 URL */ }
+    };
+    try {
+      const bm = await api.getBookmarks();
+      (function walk(n) {
+        if (!n) return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        if (n && typeof n === 'object') {
+          if (n.url) add(n.url, n.favicon);
+          if (Array.isArray(n.children)) n.children.forEach(walk);
+          if (Array.isArray(n.bookmarks)) n.bookmarks.forEach(walk);
+        }
+      })(bm);
+    } catch (e) { /* 忽略 */ }
+    try {
+      const hist = await api.getHistory();
+      (hist || []).forEach(h => add(h.url, h.favicon));
+    } catch (e) { /* 忽略 */ }
+    return faviconCache;
+  }
+  function faviconCandidates(url) {
+    const out = [];
+    if (!url) return out;
+    let host = '';
+    try { host = new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return out; }
+    if (!host) return out;
+    if (faviconCache && faviconCache[host]) out.push(faviconCache[host]);
+    out.push('https://' + host + '/favicon.ico');                    // 站点根图标
+    out.push('https://icons.duckduckgo.com/ip3/' + host + '.ico');   // 兜底图标服务
+    return out;
+  }
+  function mountFavicon(url, el, fallbackHtml) {
+    const cands = faviconCandidates(url);
+    if (!cands.length) return;
+    let i = 0;
+    const img = document.createElement('img');
+    img.className = 'favicon-img'; img.alt = ''; img.referrerPolicy = 'no-referrer';
+    const next = () => {
+      if (i >= cands.length) {
+        // 全部失败：保留字母兜底
+        if (el && !el.querySelector('img')) el.innerHTML = fallbackHtml;
+        return;
+      }
+      const src = cands[i];
+      if (faviconLoadState[src] === false) { i++; next(); return; } // 已知失败，跳过
+      if (faviconLoadState[src] === true) {                          // 已确认可用
+        if (el) { el.innerHTML = ''; el.appendChild(img); }
+        return;
+      }
+      img.onload = () => { faviconLoadState[src] = true; if (el) { el.innerHTML = ''; el.appendChild(img); } };
+      img.onerror = () => { faviconLoadState[src] = false; i++; next(); };
+      img.src = src;
+    };
+    next();
+  }
   function navigate(url) {
     if (api.navigateTo) api.navigateTo(url);
     else window.location.href = url;
@@ -1067,7 +1180,7 @@ select:focus { border-color:var(--primary); }
     } else { const st = $('#rm-style'); if (st) st.remove(); }
   }
   function syncSeg(segEl, val) {
-    $$('button', segEl).forEach(b => b.classList.toggle('is-active', b.dataset.val === val));
+    Array.from(segEl.querySelectorAll('button')).forEach(b => b.classList.toggle('is-active', b.dataset.val === val));
   }
   function syncSwitch(sw, on) { if (sw) sw.classList.toggle('is-on', !!on); }
   function setThemeMode(t) {
@@ -1094,22 +1207,44 @@ select:focus { border-color:var(--primary); }
 
   /* ---------------- 壁纸 ---------------- */
   let particleRaf = 0;
-  function buildGradient() {
-    const presets = [
-      'linear-gradient(135deg,#EEF2FF,#F0FDFA)',
-      'linear-gradient(135deg,#FFECD2,#FCB69F)',
-      'linear-gradient(135deg,#2E3192,#1BFFFF)',
-      'linear-gradient(135deg,#134E5E,#71B280)',
-      'linear-gradient(135deg,#8E2DE2,#4A00E0)',
-      'linear-gradient(135deg,#F0F2F0,#000C40)',
-      'linear-gradient(135deg,#667EEA,#764BA2)',
-      'linear-gradient(135deg,#FDCBF1,#E6DEE9)',
-      'linear-gradient(135deg,#2193B0,#6DD5ED)',
-      'linear-gradient(135deg,#11998E,#38EF7D)',
-    ];
+  const GRADIENT_PRESETS = [
+    'linear-gradient(135deg,#EEF2FF,#F0FDFA)',
+    'linear-gradient(135deg,#FFECD2,#FCB69F)',
+    'linear-gradient(135deg,#2E3192,#1BFFFF)',
+    'linear-gradient(135deg,#134E5E,#71B280)',
+    'linear-gradient(135deg,#8E2DE2,#4A00E0)',
+    'linear-gradient(135deg,#F0F2F0,#000C40)',
+    'linear-gradient(135deg,#667EEA,#764BA2)',
+    'linear-gradient(135deg,#FDCBF1,#E6DEE9)',
+    'linear-gradient(135deg,#2193B0,#6DD5ED)',
+    'linear-gradient(135deg,#11998E,#38EF7D)',
+  ];
+  let gradientIdx = 0;   // 当前渐变预设索引（运行时）
+  let wallSeed = '';     // 当前每日一图 seed（运行时）
+  // 渐变索引：固定时用固定索引，否则按日期轮换
+  function gradientPresetIndex() {
+    if (S.pinned && S.pinned.wallpaper === 'gradient' && typeof S.pinned.idx === 'number') return S.pinned.idx;
     const day = new Date();
-    const idx = Math.abs(day.getDate() + day.getMonth() * 31) % presets.length;
-    $('#bgGradient').style.background = presets[idx];
+    return Math.abs(day.getDate() + day.getMonth() * 31) % GRADIENT_PRESETS.length;
+  }
+  function buildGradient() {
+    gradientIdx = gradientPresetIndex();
+    $('#bgGradient').style.background = GRADIENT_PRESETS[gradientIdx];
+  }
+  function buildGradientAt(idx) {
+    gradientIdx = ((idx % GRADIENT_PRESETS.length) + GRADIENT_PRESETS.length) % GRADIENT_PRESETS.length;
+    $('#bgGradient').style.background = GRADIENT_PRESETS[gradientIdx];
+  }
+  // 每日一图 seed：固定时用固定 seed，否则按日期变化
+  function imageSeed() {
+    if (S.pinned && S.pinned.wallpaper === 'image' && S.pinned.seed) return S.pinned.seed;
+    return 'tabspace' + new Date().toISOString().slice(0, 10);
+  }
+  function buildImage() {
+    wallSeed = imageSeed();
+    const img = $('#bgImage');
+    img.style.backgroundImage = 'url(https://picsum.photos/seed/' + wallSeed + '/1920/1080)';
+    img.classList.add('is-visible');
   }
   function startParticles() {
     const canvas = $('#bgParticles');
@@ -1203,8 +1338,10 @@ select:focus { border-color:var(--primary); }
   }
   function applyWallpaper() {
     const w = S.wallpaper;
-    document.body.setAttribute('data-wallpaper', w);
     stopParticles();
+    // 动态壁纸的 data-wallpaper 需等于动态样式值（particles/waves/stars/fluid），
+    // 否则对应动态层不显示（CSS 选择器 body[data-wallpaper="particles"] 等）
+    document.body.setAttribute('data-wallpaper', w === 'dynamic' ? S.dynamicStyle : w);
     if (w === 'gradient') {
       buildGradient();
       $('#bgImage').classList.remove('is-visible');
@@ -1214,9 +1351,7 @@ select:focus { border-color:var(--primary); }
       $('#bgImage').classList.remove('is-visible');
       if (S.dynamicStyle === 'particles') startParticles();
     } else if (w === 'image') {
-      const img = $('#bgImage');
-      img.style.backgroundImage = 'url(https://picsum.photos/seed/tabspace' + new Date().toISOString().slice(0, 10) + '/1920/1080)';
-      img.classList.add('is-visible');
+      buildImage();
     } else if (w === 'custom') {
       const img = $('#bgImage');
       if (S.customWallpaper) {
@@ -1238,6 +1373,93 @@ select:focus { border-color:var(--primary); }
     $('#rangeBlur').value = S.blur;
     $('#rowWallpaperStyle').style.display = (w === 'dynamic') ? '' : 'none';
     if (w === 'dynamic') syncSeg($('#segDynamic'), S.dynamicStyle);
+  }
+
+  /* ---------------- 壁纸操作：切换 / 固定 / 保存 ---------------- */
+  const DYNAMIC_ORDER = ['particles', 'waves', 'stars', 'fluid'];
+  const DYNAMIC_LABEL = { particles: '粒子', waves: '波浪', stars: '星空', fluid: '流体' };
+  function cycleWallpaper() {
+    const w = S.wallpaper;
+    if (w === 'image') {
+      // 每日一图：换一张新的（随机 seed），若已固定则同步更新固定 seed
+      wallSeed = 'tabspace-' + Date.now() + '-' + Math.floor(Math.random() * 99999);
+      const img = $('#bgImage');
+      img.style.backgroundImage = 'url(https://picsum.photos/seed/' + wallSeed + '/1920/1080)';
+      img.classList.add('is-visible');
+      if (S.pinned && S.pinned.wallpaper === 'image') { S.pinned.seed = wallSeed; Store.set('pinned', S.pinned); }
+      toast('已切换壁纸', 'info');
+    } else if (w === 'gradient') {
+      buildGradientAt(gradientIdx + 1);
+      if (S.pinned && S.pinned.wallpaper === 'gradient') { S.pinned.idx = gradientIdx; Store.set('pinned', S.pinned); }
+      toast('已切换壁纸', 'info');
+    } else if (w === 'dynamic') {
+      const cur = DYNAMIC_ORDER.indexOf(S.dynamicStyle);
+      S.dynamicStyle = DYNAMIC_ORDER[(cur + 1) % DYNAMIC_ORDER.length];
+      Store.set('dynamicStyle', S.dynamicStyle);
+      if (S.pinned && S.pinned.wallpaper === 'dynamic') { S.pinned.style = S.dynamicStyle; Store.set('pinned', S.pinned); }
+      applyWallpaper();
+      syncSeg($('#segDynamic'), S.dynamicStyle);
+      toast('已切换动态壁纸：' + (DYNAMIC_LABEL[S.dynamicStyle] || S.dynamicStyle), 'info');
+    } else if (w === 'custom') {
+      // 自定义壁纸：重新选择一张图片
+      openWallpaperFile();
+    }
+  }
+  function togglePin() {
+    const w = S.wallpaper;
+    if (w === 'custom' || w === 'dynamic') {
+      toast(w === 'custom' ? '自定义壁纸不会自动变化，无需固定' : '动态壁纸不会自动变化，无需固定', 'info');
+      return;
+    }
+    if (S.pinned) {
+      S.pinned = null;
+      Store.set('pinned', null);
+      applyWallpaper();
+      updatePinButton();
+      toast('已取消固定，恢复自动切换', 'info');
+    } else {
+      if (w === 'image') S.pinned = { wallpaper: 'image', seed: wallSeed || imageSeed() };
+      else if (w === 'gradient') S.pinned = { wallpaper: 'gradient', idx: gradientIdx };
+      Store.set('pinned', S.pinned);
+      applyWallpaper();
+      updatePinButton();
+      toast('已固定当前壁纸', 'success');
+    }
+  }
+  function saveWallpaper() {
+    const w = S.wallpaper;
+    if (w === 'custom') { toast('当前已是自定义壁纸', 'info'); return; }
+    if (w === 'image') {
+      const seed = wallSeed || imageSeed();
+      S.customWallpaper = 'https://picsum.photos/seed/' + seed + '/1920/1080';
+      Store.set('customWallpaper', S.customWallpaper);
+      toast('已保存为自定义壁纸（设置中可切换）', 'success');
+    } else if (w === 'gradient' || w === 'dynamic') {
+      try {
+        // 用 canvas 把当前渐变渲染成图片并保存为自定义壁纸
+        const c = document.createElement('canvas');
+        c.width = 1920; c.height = 1080;
+        const ctx = c.getContext('2d');
+        const preset = GRADIENT_PRESETS[gradientIdx] || GRADIENT_PRESETS[0];
+        const colors = preset.match(/#[0-9a-fA-F]{6}/g) || ['#6366F1', '#8B5CF6'];
+        const g = ctx.createLinearGradient(0, 0, 1920, 1080);
+        g.addColorStop(0, colors[0]);
+        g.addColorStop(1, colors.length > 1 ? colors[1] : colors[0]);
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, 1920, 1080);
+        S.customWallpaper = c.toDataURL('image/jpeg', 0.85);
+        Store.set('customWallpaper', S.customWallpaper);
+        toast('已保存为自定义壁纸（设置中可切换）', 'success');
+      } catch (e) {
+        toast('保存壁纸失败', 'error');
+      }
+    }
+  }
+  function updatePinButton() {
+    const btn = $('#btnWallPin');
+    if (!btn) return;
+    btn.classList.toggle('is-active', !!S.pinned);
+    btn.title = S.pinned ? '取消固定' : '固定壁纸';
   }
 
   /* ---------------- 时钟 ---------------- */
@@ -1293,9 +1515,11 @@ select:focus { border-color:var(--primary); }
     if (!list.length) { box.classList.remove('is-open'); box.innerHTML = ''; return; }
     box.innerHTML = list.map((it, i) =>
       '<div class="suggest-item ' + (it.history ? 'is-history' : '') + (i === 0 ? ' is-active' : '') + '" data-i="' + i + '">' +
-      (it.history
-        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>'
-        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>') +
+      (it.favicon
+        ? '<img class="suggest-favicon" src="' + it.favicon + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()">'
+        : (it.history
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>')) +
       '<span>' + it.text + '</span>' +
       (it.url ? '<span class="suggest-url">' + it.url + '</span>' : '') +
       '</div>').join('');
@@ -1323,7 +1547,7 @@ select:focus { border-color:var(--primary); }
         const fromBookmarks = flat
           .filter(b => (b.title || '').toLowerCase().includes(lower) || (b.url || '').toLowerCase().includes(lower))
           .slice(0, 4)
-          .map(b => ({ text: b.title || b.url, url: b.url }));
+          .map(b => ({ text: b.title || b.url, url: b.url, favicon: b.favicon || '' }));
         showSuggest(fromHist.concat(fromBookmarks).slice(0, 8));
       }).catch(() => showSuggest(useHist));
       return;
@@ -1413,7 +1637,9 @@ select:focus { border-color:var(--primary); }
     grid.innerHTML = items.map((sc, i) =>
       '<div class="sc-item" draggable="true" data-i="' + i + '" title="' + (sc.url || '') + '">' +
       '<div class="sc-item__icon" style="background:linear-gradient(135deg,' + (sc.color || hashColor(sc.name)) + ',' + (sc.color || hashColor(sc.name)) + 'cc)">' +
-      (sc.letter || (sc.name || '?').slice(0, 1).toUpperCase()) +
+      (sc.favicon
+        ? '<img class="favicon-img" src="' + sc.favicon + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()">'
+        : (sc.letter || (sc.name || '?').slice(0, 1).toUpperCase())) +
       '</div>' +
       '<span class="sc-item__name">' + escapeHtml(sc.name || '') + '</span>' +
       '<button class="sc-item__del" data-del="' + i + '" aria-label="删除 ' + escapeHtml(sc.name || '') + '">×</button>' +
@@ -1445,6 +1671,18 @@ select:focus { border-color:var(--primary); }
       addBtn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openShortcutModal(); } });
     }
     bindDrag(items);
+
+    // 异步解析并显示各网站真实图标（书签/历史缓存 → 站点 favicon.ico → 兜底图标服务）
+    ensureFaviconCache().then(() => {
+      if (!grid.isConnected) return; // 已重新渲染则跳过
+      grid.querySelectorAll('.sc-item').forEach(el => {
+        const sc = items[+el.dataset.i];
+        const iconEl = el.querySelector('.sc-item__icon');
+        if (sc && sc.url && iconEl && !iconEl.querySelector('img')) {
+          mountFavicon(sc.url, iconEl, iconEl.innerHTML);
+        }
+      });
+    });
   }
   function bindDrag(items) {
     const grid = $('#shortcutsGrid');
@@ -1651,7 +1889,10 @@ select:focus { border-color:var(--primary); }
 
     function bindSeg(segId, key, cb) {
       const seg = $(segId);
-      $$('button', seg).forEach(b => b.addEventListener('click', () => {
+      // ⚠️ 必须限定在 seg 容器内：$$('button', seg) 因 $$ 只接受一个选择器参数
+      // 会退化成 document.querySelectorAll('button')，把切换监听器绑到页面所有按钮上——
+      // 点击壁纸工具条等按钮会先把 S[key] 置为 undefined（无 data-val），导致功能失效
+      Array.from(seg.querySelectorAll('button')).forEach(b => b.addEventListener('click', () => {
         S[key] = b.dataset.val; Store.set(key, b.dataset.val);
         syncSeg(seg, b.dataset.val);
         if (cb) cb(b.dataset.val);
@@ -1659,7 +1900,12 @@ select:focus { border-color:var(--primary); }
       syncSeg(seg, S[key]);
     }
     bindSeg('#segTheme', 'theme', () => applyTheme());
-    bindSeg('#segWallpaper', 'wallpaper', () => applyWallpaper());
+    bindSeg('#segWallpaper', 'wallpaper', () => {
+      // 切换壁纸类型时取消固定（固定是针对当前类型的某张壁纸）
+      if (S.pinned) { S.pinned = null; Store.set('pinned', null); }
+      applyWallpaper();
+      updatePinButton();
+    });
     bindSeg('#segDynamic', 'dynamicStyle', () => applyWallpaper());
     bindSeg('#segRadius', 'radius', () => applyTheme());
     bindSeg('#segFont', 'fontscale', () => applyTheme());
@@ -1698,6 +1944,7 @@ select:focus { border-color:var(--primary); }
 
     $('#btnReset').addEventListener('click', () => {
       S = Object.assign({}, DEFAULT_SETTINGS);
+      S.pinned = null;
       localStorage.removeItem(LS_KEY);
       state.todos = []; state.shortcuts = null; state.searchHist = [];
       Store.load(); Store.save();
@@ -1707,6 +1954,7 @@ select:focus { border-color:var(--primary); }
       syncSeg($('#segDynamic'), S.dynamicStyle); syncSeg($('#segRadius'), S.radius); syncSeg($('#segFont'), S.fontscale);
       $$('#swatches .swatch').forEach(x => x.classList.toggle('is-active', x.dataset.accent === S.accent));
       bindSwitchRefs();
+      updatePinButton();
       toast('已恢复默认设置', 'success');
     });
   }
@@ -1716,10 +1964,13 @@ select:focus { border-color:var(--primary); }
   }
 
   /* ---------------- 自定义壁纸上传 ---------------- */
+  let wallpaperFileInput = null;
+  function openWallpaperFile() { if (wallpaperFileInput) wallpaperFileInput.click(); }
   function initCustomWallpaper() {
     const input = document.createElement('input');
     input.type = 'file'; input.accept = 'image/*'; input.style.display = 'none';
     document.body.appendChild(input);
+    wallpaperFileInput = input;
     input.addEventListener('change', () => {
       const file = input.files && input.files[0];
       if (!file) return;
@@ -1808,6 +2059,10 @@ select:focus { border-color:var(--primary); }
     initSettings();
     initCustomWallpaper();
     initKeys();
+    $('#btnWallNext').addEventListener('click', cycleWallpaper);
+    $('#btnWallPin').addEventListener('click', togglePin);
+    $('#btnWallSave').addEventListener('click', saveWallpaper);
+    updatePinButton();
     initReveal();
     initScroll();
     initBottomLinks();

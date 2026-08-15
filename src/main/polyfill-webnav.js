@@ -12,7 +12,7 @@
  * - 查询类返回空结果，操作类空操作，事件提供 listener 对象
  * - 仅对 chrome-extension: 协议页面生效（由 session.setPreloads 注入）
  */
-const { webFrame, contextBridge, ipcRenderer } = require('electron');
+const { webFrame, contextBridge, ipcRenderer, webUtils } = require('electron');
 // sandbox preload 无法 require 相对路径模块（Electron 创建的扩展页面默认 sandbox），
 // 这里内联 IPC 频道名，必须与 src/shared/constants.js 保持一致。
 const IPC_CHANNELS = {
@@ -683,4 +683,91 @@ if (location.protocol === 'chrome-extension:') {
       })();
     `);
   } catch (e) { /* 忽略 */ }
+} else {
+  // ==================== 普通网页：扩展包拖放安装拦截（Edge 式全窗口） ====================
+  // 本脚本由 session.setPreloads 注入所有 webContents（含网页标签页与内部页面）。
+  // 在这里拦截 .crx/.zip 文件的拖放：网页自己处理 drop（preventDefault）或导航到
+  // file:// 都不影响安装——路径通过 webUtils.getPathForFile 获取（File.path 在
+  // Electron 32+ 已移除），并通知主进程显示全窗提示覆盖层 / 执行安装。
+  // 频道名与 src/shared/constants.js 的 EXTENSIONS_DRAG_* 保持一致（sandbox preload 内联）。
+  (function () {
+    // 仅顶层 frame；app.html 由 preload.js + app.js 自行处理（避免重复计数）
+    try {
+      if (window !== window.top) return;
+    } catch (e) { return; }
+    if (/\/app\.html(\?|$)/.test(location.href)) return;
+
+    function isExtFileDrag(e) {
+      const dt = e && e.dataTransfer;
+      if (!dt || !dt.files) return false;
+      for (let i = 0; i < dt.files.length; i++) {
+        const name = String(dt.files[i].name || '').toLowerCase();
+        if (name.endsWith('.crx') || name.endsWith('.zip')) return true;
+      }
+      return false;
+    }
+
+    // 拖放诊断：所有文件拖放事件上报主进程（写日志 + 主窗口可见提示）
+    function debugEvent(e, name) {
+      try {
+        const dt = e && e.dataTransfer;
+        const names = [];
+        if (dt && dt.files) {
+          for (let i = 0; i < dt.files.length; i++) names.push(String(dt.files[i].name || ''));
+        }
+        if (names.length === 0) return;
+        ipcRenderer.send('extensions:dragDebug', {
+          source: 'page',
+          event: name,
+          names: names,
+          types: dt && dt.types ? Array.prototype.slice.call(dt.types) : [],
+          url: location.href,
+        });
+      } catch (err) { /* 忽略 */ }
+    }
+
+    let dragDepth = 0;
+
+    window.addEventListener('dragenter', (e) => {
+      debugEvent(e, 'dragenter');
+      if (!isExtFileDrag(e)) return;
+      console.log('[DropInstall][page] dragenter', location.href);
+      dragDepth++;
+      if (dragDepth === 1) ipcRenderer.send('extensions:dragEnter');
+    }, true);
+
+    window.addEventListener('dragleave', (e) => {
+      if (!isExtFileDrag(e)) return;
+      console.log('[DropInstall][page] dragleave', location.href);
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) ipcRenderer.send('extensions:dragLeave');
+    }, true);
+
+    window.addEventListener('dragover', (e) => {
+      if (!isExtFileDrag(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    }, true);
+
+    window.addEventListener('drop', (e) => {
+      debugEvent(e, 'drop');
+      if (!isExtFileDrag(e)) return;
+      console.log('[DropInstall][page] drop', location.href);
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepth = 0;
+      let target = null;
+      const files = e.dataTransfer.files;
+      for (let i = 0; i < files.length; i++) {
+        const name = String(files[i].name || '').toLowerCase();
+        if (name.endsWith('.crx') || name.endsWith('.zip')) { target = files[i]; break; }
+      }
+      let filePath = '';
+      if (target) {
+        try { filePath = webUtils.getPathForFile(target); } catch (err) { /* 忽略 */ }
+      }
+      console.log('[DropInstall][page] drop path =', filePath);
+      ipcRenderer.send('extensions:dragDrop', { path: filePath });
+    }, true);
+  })();
 }

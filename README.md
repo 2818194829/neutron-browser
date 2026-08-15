@@ -2,11 +2,11 @@
 
 Neutron Browser 是一款基于 Electron 的现代 PC 级浏览器，支持多标签页、书签管理、历史记录、下载管理、扩展安装，以及接近 Edge 的网页右键菜单体验。
 
-当前版本：**1.10.1**
+当前版本：**1.10.2**
 
 GitHub：[https://github.com/2818194829/neutron-browser](https://github.com/2818194829/neutron-browser)
 
-Release：[v1.10.1](https://github.com/2818194829/neutron-browser/releases/tag/v1.10.1)
+Release：[v1.10.2](https://github.com/2818194829/neutron-browser/releases/tag/v1.10.2)
 
 ## 功能特性
 
@@ -105,7 +105,7 @@ npm run build:installer
 生成位置：
 
 ```text
-build\Neutron Browser Setup 1.10.1.exe
+build\Neutron Browser Setup 1.10.2.exe
 ```
 
 安装包支持：
@@ -232,6 +232,13 @@ npm run build:win
 - MV3 扩展后台通过模拟 Service Worker 支持，复杂 MV3 扩展仍可能存在兼容问题
 
 ## 版本记录
+
+### 1.10.2
+
+- **安装向导 Modern 风格界面**：欢迎页品牌侧边栏（深海军蓝渐变 + 应用图标 + NEUTRON 字标 + 品牌渐变条）、内页品牌页眉，卸载向导同步同款风格
+- **扩展弹窗与右键菜单互斥**：对齐 Edge，两个入口不再同时出现上下层遮挡
+- **拖拽安装扩展增强诊断**：拖放 .crx / .zip 全程可见提示，并记录拖放事件日志便于排查拦截
+- **新标签页增强**：壁纸快捷工具条（切换 / 固定 / 保存）、快捷方式真实网站图标逐级回退加载
 
 ### 1.10.1
 

@@ -10,8 +10,9 @@ const path = require('path');
 function setupExtensionPolyfills() {
   try {
     const preload = path.join(__dirname, 'polyfill-webnav.js');
-    session.defaultSession.setPreloads([preload]);
-    console.log('[ExtensionPolyfills] 已注入扩展 API polyfill');
+    const edgeStorePreload = path.join(__dirname, 'edgeStorePatchPreload.js');
+    session.defaultSession.setPreloads([preload, edgeStorePreload]);
+    console.log('[ExtensionPolyfills] 已注入扩展 API polyfill + Edge 商店兼容补丁');
   } catch (e) {
     console.error('[ExtensionPolyfills] 注入失败:', e.message);
   }

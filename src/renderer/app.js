@@ -321,6 +321,25 @@
     document.documentElement.classList.add('overlay-mode');
     document.documentElement.dataset.overlayPanel = OVERLAY_PANEL;
 
+    // 扩展包拖放提示覆盖层：全窗透明 BrowserView，居中显示「松开以安装扩展」卡片
+    // 并处理落在覆盖层上的拖放事件（drop → 统一走主进程转发安装）
+    if (OVERLAY_PANEL === 'extensionDrop') {
+      const dropEl = document.getElementById('dropOverlay');
+      if (dropEl) dropEl.hidden = false;
+      try {
+        state.theme = await api.getTheme();
+        applyAppearance();
+      } catch (e) { /* 忽略 */ }
+      setupExtensionDropInstall();
+      // 安全兜底：拖拽被 Esc 取消时 OS 不会发送 dragleave，覆盖层上点击/按键时主动隐藏
+      const safeHide = () => {
+        if (api.notifyExtensionDragLeave) api.notifyExtensionDragLeave();
+      };
+      window.addEventListener('mousedown', safeHide);
+      window.addEventListener('keydown', safeHide);
+      return;
+    }
+
     // 外观（面板需要正确的主题变量）
     state.theme = await api.getTheme();
     const [accentColor, themeSkin] = await Promise.all([
@@ -4034,6 +4053,13 @@
       handleExtensionActionClick(action, btn);
     });
 
+    // 右键：对齐 Edge 的扩展上下文菜单
+    btn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showExtensionContextMenu(e.clientX, e.clientY, action);
+    });
+
     return btn;
   }
 
@@ -4079,6 +4105,236 @@
     }
   }
 
+  // ==================== 扩展右键菜单（对齐 Edge） ====================
+
+  /**
+   * 打开扩展图标右键菜单：
+   * 网站访问权限（仅在单击时允许/当前网站/所有网站）· 扩展选项 · 删除 ·
+   * 取消固定 · 管理扩展 · 查看 Web 权限 · 检查弹出窗口
+   */
+  async function showExtensionContextMenu(x, y, action) {
+    if (state.contextMenuOpen) closeContextMenu();
+    // 对齐 Edge/Chromium：右键菜单与扩展 Popup 互斥，两者绝不同时显示。
+    // Chromium 中 Popup 是 close-on-deactivate 气泡，右键菜单抢走焦点后气泡自动关闭
+    // （extensions_toolbar_desktop.cc 在 macOS 上还会显式 HideActivePopup()）。
+    // 本浏览器 Popup 是 BrowserView 原生层（永远盖在主窗口 DOM 之上），
+    // 必须在打开菜单前主动移除，否则两层窗口同时出现并互相遮挡。
+    if (state.extensionPopupOpen) closeExtensionPopup();
+    api.hideExtensionPopup();
+
+    let meta = null;
+    try {
+      meta = await api.getExtensionMenuMeta(action.id);
+    } catch (e) {
+      meta = null;
+    }
+    if (!meta) {
+      meta = {
+        id: action.id,
+        name: action.name,
+        siteAccess: 'all',
+        pinned: true,
+        hasOptionsPage: false,
+        hasPopup: !!action.popup,
+        hasHostAccess: false,
+      };
+    }
+
+    // 当前活动标签页的站点（用于"允许在 xxx 上使用"）
+    const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+    let currentHost = '';
+    let isHttpPage = false;
+    try {
+      const u = new URL(activeTab && activeTab.url ? activeTab.url : '');
+      if (u.protocol === 'http:' || u.protocol === 'https:') {
+        currentHost = u.hostname;
+        isHttpPage = true;
+      }
+    } catch (e) { /* 忽略 */ }
+
+    dom.contextMenu.innerHTML = '';
+    dom.contextMenu.classList.add('context-menu--ext');
+
+    const svg = (inner) =>
+      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+    const ICONS = {
+      check: svg('<polyline points="20 6 9 17 4 12"/>'),
+      options: svg('<circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>'),
+      trash: svg('<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>'),
+      unpin: svg('<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/><line x1="2" y1="2" x2="22" y2="22"/>'),
+      puzzle: svg('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v2a2 2 0 0 0 4 0v11a2 2 0 0 1-2 2z"/><path d="M10 3v3M7 6h6"/>'),
+      shield: svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'),
+      inspect: svg('<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>'),
+    };
+
+    const appendGroupHeader = (label) => {
+      const el = document.createElement('div');
+      el.className = 'context-menu__group-header';
+      el.textContent = label;
+      dom.contextMenu.appendChild(el);
+    };
+
+    const appendSeparator = () => {
+      const sep = document.createElement('div');
+      sep.className = 'context-menu__separator';
+      dom.contextMenu.appendChild(sep);
+    };
+
+    const appendItem = (config) => {
+      const disabled = config.enabled === false;
+      const el = document.createElement('div');
+      el.className = 'context-menu__item' +
+        (disabled ? ' context-menu__item--disabled' : '') +
+        (config.cls ? ' ' + config.cls : '');
+      el.innerHTML =
+        `<span class="context-menu__item-icon">${config.icon || ''}</span>` +
+        `<span class="context-menu__item-label">${config.label}</span>`;
+      if (!disabled && config.action) {
+        el.addEventListener('click', () => {
+          closeContextMenu();
+          config.action();
+        });
+      }
+      dom.contextMenu.appendChild(el);
+      return el;
+    };
+
+    const appendCheckItem = (config) => {
+      const el = document.createElement('div');
+      el.className = 'context-menu__item' +
+        (config.enabled === false ? ' context-menu__item--disabled' : '');
+      el.innerHTML =
+        `<span class="context-menu__item-icon">${config.checked ? ICONS.check : ''}</span>` +
+        `<span class="context-menu__item-label">${config.label}</span>`;
+      if (config.enabled !== false && config.action) {
+        el.addEventListener('click', () => {
+          closeContextMenu();
+          config.action();
+        });
+      }
+      dom.contextMenu.appendChild(el);
+      return el;
+    };
+
+    // ===== 网站访问权限 =====
+    appendGroupHeader('网站访问权限');
+    const modeOptions = [
+      { mode: 'on_click', label: '仅在单击时允许' },
+      {
+        mode: 'specific',
+        label: isHttpPage ? `允许在 ${currentHost} 上使用` : '允许在指定网站上使用',
+        enabled: isHttpPage,
+      },
+      { mode: 'all', label: '允许在所有网站上使用' },
+    ];
+    modeOptions.forEach((opt) => {
+      appendCheckItem({
+        checked: meta.siteAccess === opt.mode,
+        label: opt.label,
+        enabled: opt.enabled !== false,
+        action: async () => {
+          const res = await api.setExtensionSiteAccess(
+            meta.id,
+            opt.mode,
+            opt.mode === 'specific' ? currentHost : ''
+          );
+          if (res && res.success) {
+            showToast(`已更新“${meta.name}”的网站访问权限`, 'success');
+          } else {
+            showToast((res && res.message) || '设置失败', 'error');
+          }
+        },
+      });
+    });
+
+    appendSeparator();
+
+    // ===== 扩展选项 =====
+    appendItem({
+      icon: ICONS.options,
+      label: '扩展选项',
+      enabled: meta.hasOptionsPage,
+      action: async () => {
+        const res = await api.openExtensionOptions(meta.id);
+        if (res && !res.success) showToast(res.message || '无法打开选项页', 'error');
+      },
+    });
+
+    // ===== 删除 / 取消固定 =====
+    appendItem({
+      icon: ICONS.trash,
+      label: '从 Neutron 浏览器中删除',
+      cls: 'context-menu__item--danger',
+      action: async () => {
+        if (!confirm(`确定要卸载扩展“${meta.name}”吗？`)) return;
+        const res = await api.uninstallExtension(meta.id);
+        if (res && res.success) {
+          showToast(`已卸载“${meta.name}”`, 'success');
+        } else {
+          showToast((res && res.message) || '卸载失败', 'error');
+        }
+      },
+    });
+    appendItem({
+      icon: ICONS.unpin,
+      label: meta.pinned ? '从工具栏取消固定' : '固定到工具栏',
+      action: async () => {
+        const res = await api.setExtensionPinned(meta.id, !meta.pinned);
+        if (res && res.success) {
+          showToast(
+            res.meta && res.meta.pinned
+              ? `已将“${meta.name}”固定到工具栏`
+              : `已从工具栏取消固定“${meta.name}”（可在管理扩展页重新固定）`,
+            'success'
+          );
+        } else {
+          showToast((res && res.message) || '操作失败', 'error');
+        }
+      },
+    });
+
+    appendSeparator();
+
+    // ===== 管理扩展 / 查看 Web 权限 / 检查弹出窗口 =====
+    appendItem({
+      icon: ICONS.puzzle,
+      label: '管理扩展',
+      action: () => api.createTab('neutron://extensions'),
+    });
+    appendItem({
+      icon: ICONS.shield,
+      label: '查看 Web 权限',
+      action: () => api.viewExtensionWebPermissions(meta.id),
+    });
+    appendItem({
+      icon: ICONS.inspect,
+      label: meta.hasPopup ? '检查弹出窗口' : '检查扩展后台页',
+      action: () => {
+        if (meta.hasPopup && action.popup) {
+          const btn = dom.extensionToolbarIcons.querySelector(
+            `[data-ext-id="${CSS.escape(meta.id)}"]`
+          );
+          const rect = btn ? btn.getBoundingClientRect() : null;
+          api.openExtensionPopup({
+            id: meta.id,
+            popup: action.popup,
+            anchor: rect
+              ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height }
+              : undefined,
+          });
+          // Popup 加载后再打开 DevTools（主进程按 URL 匹配 Popup 视图）
+          setTimeout(() => api.inspectExtensionView(meta.id, action.popup), 400);
+        } else {
+          api.inspectExtensionView(meta.id);
+        }
+      },
+    });
+
+    openContextMenu();
+    dom.contextMenu.style.left = Math.max(0, Math.min(x, window.innerWidth - 280)) + 'px';
+    dom.contextMenu.style.top = Math.max(0, Math.min(y, window.innerHeight - 560)) + 'px';
+  }
+
   // ==================== 右键菜单（统一置顶管理） ====================
   // BrowserView 是原生视图，永远盖在主窗口 webContents 之上，
   // 因此打开任何悬浮菜单前必须 setModalVisible(true) 移除 BrowserView（显示内容快照），
@@ -4113,6 +4369,7 @@
     state.contextMenuOpen = false;
     dom.contextMenu.style.display = 'none';
     dom.contextMenu.classList.remove('context-menu--addressbar');
+    dom.contextMenu.classList.remove('context-menu--ext');
     // 覆盖层内不调用 setModalVisible（覆盖层本身就是最上层）
     if (!IS_OVERLAY && !isAnyOverlayOpen()) {
       api.setModalVisible(false);
@@ -4264,15 +4521,27 @@
   function showTabContextMenu(x, y, tab) {
     dom.contextMenu.innerHTML = '';
 
+    // 统一图标：lucide 风格内联 SVG（与浏览器工具栏/面板图标一致，避免字符/emoji 混用）
+    const svg = (inner) =>
+      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+    const ICONS = {
+      plus: svg('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'),
+      reload: svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>'),
+      copy: svg('<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'),
+      pin: svg('<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/>'),
+      x: svg('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'),
+      closeOthers: svg('<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/>'),
+    };
+
     const items = [
-      { label: '新建标签页', action: () => api.createTab(), icon: '+' },
-      { label: '重新加载', action: () => api.reloadTab(tab.id), icon: '↻' },
+      { label: '新建标签页', action: () => api.createTab(), icon: ICONS.plus },
+      { label: '重新加载', action: () => api.reloadTab(tab.id), icon: ICONS.reload },
       { type: 'separator' },
-      { label: '复制标签页', action: () => api.duplicateTab(tab.id), icon: '⧉' },
-      { label: tab.isPinned ? '取消固定标签页' : '固定标签页', action: () => api.pinTab(tab.id), icon: '📌' },
+      { label: '复制标签页', action: () => api.duplicateTab(tab.id), icon: ICONS.copy },
+      { label: tab.isPinned ? '取消固定标签页' : '固定标签页', action: () => api.pinTab(tab.id), icon: ICONS.pin },
       { type: 'separator' },
-      { label: '关闭标签页', action: () => api.closeTab(tab.id), icon: '×', cls: tab.isPinned ? 'context-menu__item--disabled' : '' },
-      { label: '关闭其他标签页', action: () => closeOtherTabs(tab.id), icon: '', cls: 'context-menu__item--danger' },
+      { label: '关闭标签页', action: () => api.closeTab(tab.id), icon: ICONS.x, cls: tab.isPinned ? 'context-menu__item--disabled' : '' },
+      { label: '关闭其他标签页', action: () => closeOtherTabs(tab.id), icon: ICONS.closeOthers, cls: 'context-menu__item--danger' },
     ];
 
     items.forEach((item) => {
@@ -4285,7 +4554,9 @@
 
       const el = document.createElement('div');
       el.className = 'context-menu__item ' + (item.cls || '');
-      el.innerHTML = `<span>${item.icon}</span> ${item.label}`;
+      el.innerHTML =
+        `<span class="context-menu__item-icon">${item.icon || ''}</span>` +
+        `<span class="context-menu__item-label">${item.label}</span>`;
       el.addEventListener('click', () => {
         closeContextMenu();
         if (item.action) item.action();
@@ -4599,15 +4870,46 @@
   }
 
   // ==================== 拖放支持（在地址栏） ====================
-  // ==================== 拖拽安装扩展（.crx / .zip） ====================
+  // ==================== 拖拽安装扩展（.crx / .zip，Edge 式全窗口拦截） ====================
+  // 三处入口统一：主窗口 chrome 区域（本函数）、网页区域（polyfill-webnav.js 预加载脚本）、
+  // 拖放提示覆盖层（本文件 overlay 模式）。enter/leave 通知主进程显示/隐藏全窗提示覆盖层，
+  // drop 时通过 webUtils 桥接取磁盘路径（File.path 在 Electron 32+ 已移除）并统一交给主进程转发安装。
   function setupExtensionDropInstall() {
     const overlay = document.getElementById('dropOverlay');
     let dragCounter = 0;
 
+    const fileNamesOf = (e) => {
+      const files = (e && e.dataTransfer && e.dataTransfer.files) || [];
+      const names = [];
+      for (let i = 0; i < files.length; i++) names.push(String(files[i].name || ''));
+      return names;
+    };
+
+    // 拖放诊断：所有文件拖放事件上报主进程（写日志 + 回传可见提示）
+    const debugEvent = (e, name) => {
+      try {
+        if (api.logDragDebug) {
+          api.logDragDebug({
+            source: IS_OVERLAY ? 'overlay' : 'chrome',
+            event: name,
+            names: fileNamesOf(e),
+            types: e && e.dataTransfer && e.dataTransfer.types ? Array.prototype.slice.call(e.dataTransfer.types) : [],
+          });
+        }
+      } catch (err) { /* 忽略 */ }
+    };
+
+    // 主进程回传的拖放诊断事件 → 可见提示（真实拖放排查的关键信号）
+    if (api.onExtensionDragDebugEvent && !IS_OVERLAY) {
+      api.onExtensionDragDebugEvent((payload) => {
+        if (!payload || payload.event !== 'dragenter') return;
+        const names = payload.names || [];
+        showToast('检测到文件拖放: ' + names.slice(0, 3).join('、') + (names.length > 3 ? ' 等' : ''));
+      });
+    }
+
     const isExtFileDrag = (e) => {
       if (!e || !e.dataTransfer) return false;
-      const types = Array.prototype.slice.call(e.dataTransfer.types || []);
-      if (!types.includes('Files')) return false;
       const files = e.dataTransfer.files || [];
       for (let i = 0; i < files.length; i++) {
         const name = String(files[i].name || '').toLowerCase();
@@ -4617,41 +4919,64 @@
     };
 
     document.addEventListener('dragenter', (e) => {
+      const names = fileNamesOf(e);
+      if (names.length === 0) return;
+      console.log('[DropInstall][chrome] dragenter');
+      debugEvent(e, 'dragenter');
       if (!isExtFileDrag(e)) return;
       dragCounter++;
-      overlay.hidden = false;
+      if (overlay) overlay.hidden = false;
+      if (dragCounter === 1 && api.notifyExtensionDragEnter) api.notifyExtensionDragEnter();
     });
     document.addEventListener('dragleave', (e) => {
       if (!isExtFileDrag(e)) return;
+      console.log('[DropInstall][chrome] dragleave');
       dragCounter--;
-      if (dragCounter <= 0) { dragCounter = 0; overlay.hidden = true; }
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        if (overlay) overlay.hidden = true;
+        if (api.notifyExtensionDragLeave) api.notifyExtensionDragLeave();
+      }
     });
     document.addEventListener('dragover', (e) => {
       if (!isExtFileDrag(e)) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     });
-    document.addEventListener('drop', async (e) => {
+    document.addEventListener('drop', (e) => {
       if (!isExtFileDrag(e)) return;
+      console.log('[DropInstall][chrome] drop');
+      debugEvent(e, 'drop');
       e.preventDefault();
       dragCounter = 0;
-      overlay.hidden = true;
+      if (overlay) overlay.hidden = true;
       const files = e.dataTransfer.files || [];
       const file = Array.from(files).find((f) => {
         const n = String(f.name || '').toLowerCase();
         return n.endsWith('.crx') || n.endsWith('.zip');
       });
       if (!file) return;
-      if (!file.path) { showToast('无法获取文件路径，安装失败', 'error'); return; }
-      await installDroppedExtensionFile(file.path, file.name);
+      // File.path 已在 Electron 32+ 移除，统一走 webUtils 桥接取磁盘路径
+      let filePath = '';
+      if (api.getPathForFile) filePath = api.getPathForFile(file);
+      if (!filePath && file.path) filePath = file.path;
+      if (api.notifyExtensionDrop) {
+        // 统一链路：主进程隐藏提示覆盖层并把路径转发回 onExtensionDropFile 执行安装
+        api.notifyExtensionDrop(filePath || '');
+      } else if (filePath) {
+        installDroppedExtensionFile(filePath, file.name);
+      } else {
+        showToast('无法获取文件路径，安装失败', 'error');
+      }
     });
 
-    // 网页内容区（BrowserView）拖放的文件由主进程转发到这里
+    // 网页内容区 / 拖放提示覆盖层的 drop 由主进程统一转发到这里执行安装
     if (api.onExtensionDropFile) {
       api.onExtensionDropFile(async (filePath) => {
         if (filePath) {
-          overlay.hidden = true;
           await installDroppedExtensionFile(filePath, filePath.split(/[\\/]/).pop());
+        } else {
+          showToast('无法获取文件路径，安装失败', 'error');
         }
       });
     }

@@ -12,6 +12,7 @@ const { getStore } = require('./storage');
 const { normalizeHistoryTitle, sanitizeFavicon, sanitizeBookmarks, sanitizeHistory } = require('../shared/siteMeta');
 const {
   getInstalledExtensions,
+  isDeveloperMode,
   installExtensionFile,
   installUnpackedExtension,
   installFromEdgeStore,
@@ -22,9 +23,14 @@ const {
   findExtensionBackgroundWebContents,
   triggerExtensionActionClicked,
   triggerExtensionCommand,
+  getExtensionMenuMeta,
+  setExtensionSiteAccess,
+  setExtensionPinned,
+  grantSiteAccessOnClick,
 } = require('./extensions');
 const { sendVerifyCode, checkVerifyCode } = require('./verifyCode');
 const { registerExtensionBridgeIpc, ensureMv3Backgrounds } = require('./extensionBridge');
+const { logDrag } = require('./dragDebugLog');
 
 // ==================== 书签导入/导出辅助 ====================
 
@@ -1351,6 +1357,10 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle(IPC_CHANNELS.EXTENSIONS_INSTALL, async () => {
+    // 开发者模式关闭时禁止侧载（对齐 Edge：商店外安装需要开发者模式）
+    if (!isDeveloperMode()) {
+      return { success: false, message: '开发者模式未开启，请在扩展管理页开启“开发者模式”后重试' };
+    }
     const result = await dialog.showOpenDialog({
       title: '安装扩展',
       properties: ['openFile'],
@@ -1377,6 +1387,9 @@ function registerIpcHandlers() {
     if (!filePath || typeof filePath !== 'string') {
       return { success: false, message: '无效的文件路径' };
     }
+    if (!isDeveloperMode()) {
+      return { success: false, message: '开发者模式未开启，请在扩展管理页开启“开发者模式”后重试' };
+    }
     try {
       const extension = await installExtensionFile(filePath);
       broadcastExtensionsChanged();
@@ -1386,7 +1399,45 @@ function registerIpcHandlers() {
     }
   });
 
+  // ==================== 扩展包拖放安装（Edge 式全窗口拦截） ====================
+  // 拖放 enter/leave/drop 可能来自：主窗口渲染层 chrome 区域、网页预加载脚本（polyfill-webnav.js）、
+  // 拖放提示覆盖层自身。主进程统一计数并管理全窗提示覆盖层，drop 时转发路径给主窗口执行安装。
+  ipcMain.on(IPC_CHANNELS.EXTENSIONS_DRAG_ENTER, () => {
+    const wm = getWM();
+    if (wm && typeof wm.handleExtensionDragEnter === 'function') {
+      wm.handleExtensionDragEnter();
+    }
+  });
+
+  ipcMain.on(IPC_CHANNELS.EXTENSIONS_DRAG_LEAVE, () => {
+    const wm = getWM();
+    if (wm && typeof wm.handleExtensionDragLeave === 'function') {
+      wm.handleExtensionDragLeave();
+    }
+  });
+
+  ipcMain.on(IPC_CHANNELS.EXTENSIONS_DRAG_DROP, (event, data) => {
+    const wm = getWM();
+    const filePath = data && (typeof data === 'string' ? data : data.path);
+    if (wm && typeof wm.handleExtensionDragDrop === 'function') {
+      wm.handleExtensionDragDrop(filePath);
+    }
+  });
+
+  // 拖放诊断：渲染层（chrome 区 / 网页区 / 覆盖层）上报事件 → 写日志 → 回传主窗口弹提示
+  ipcMain.on(IPC_CHANNELS.EXTENSIONS_DRAG_DEBUG, (event, payload) => {
+    const p = payload && typeof payload === 'object' ? payload : {};
+    logDrag(p.source || 'renderer', p.event || 'unknown', p);
+    const wm = getWM();
+    if (wm && wm.mainWindow && !wm.mainWindow.isDestroyed()) {
+      wm.mainWindow.webContents.send(IPC_CHANNELS.EXTENSIONS_DRAG_DEBUG_EVENT, p);
+    }
+  });
+
   ipcMain.handle(IPC_CHANNELS.EXTENSIONS_INSTALL_UNPACKED, async () => {
+    if (!isDeveloperMode()) {
+      return { success: false, message: '开发者模式未开启，请在扩展管理页开启“开发者模式”后重试' };
+    }
     const result = await dialog.showOpenDialog({
       title: '加载已解压的扩展',
       properties: ['openDirectory'],
@@ -1456,6 +1507,12 @@ function registerIpcHandlers() {
   // 点击工具栏扩展图标（无 Popup 时）→ 触发扩展后台 onClicked
   ipcMain.on(IPC_CHANNELS.EXTENSIONS_ACTION_CLICKED, (event, { id }) => {
     if (!id) return;
+    // on_click 访问模式：点击图标时授予当前标签页站点访问（activeTab 语义）
+    const wm = getWM();
+    const activeTab = wm && wm.tabs ? wm.tabs.find((t) => t.id === wm.activeTabId) : null;
+    if (activeTab && activeTab.url) {
+      grantSiteAccessOnClick(id, activeTab.url);
+    }
     triggerExtensionActionClicked(id);
   });
 
@@ -1493,6 +1550,57 @@ function registerIpcHandlers() {
   ipcMain.on(IPC_CHANNELS.EXTENSIONS_COMMANDS, (event, { id, name }) => {
     if (!id || !name) return;
     triggerExtensionCommand(id, name);
+  });
+
+  // ==================== 扩展右键菜单（对齐 Edge：网站访问权限/固定/选项） ====================
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_GET_MENU_META, (event, { id }) => {
+    return getExtensionMenuMeta(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_SET_SITE_ACCESS, (event, { id, mode, site }) => {
+    try {
+      const meta = setExtensionSiteAccess(id, mode, site);
+      return { success: true, meta };
+    } catch (e) {
+      return { success: false, message: e.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_SET_PINNED, (event, { id, pinned }) => {
+    try {
+      const meta = setExtensionPinned(id, pinned);
+      // 工具栏图标增删 → 通知主窗口刷新
+      broadcastExtensionsChanged();
+      return { success: true, meta };
+    } catch (e) {
+      return { success: false, message: e.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_OPEN_OPTIONS, (event, { id }) => {
+    const wm = getWM();
+    if (!wm || !wm.openExtensionOptionsPage) {
+      return { success: false, message: '窗口管理器未就绪' };
+    }
+    return wm.openExtensionOptionsPage(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXTENSIONS_VIEW_WEB_PERMISSIONS, async (event, { id }) => {
+    const meta = getExtensionMenuMeta(id);
+    if (!meta) return { success: false, message: '扩展不存在' };
+    const lines = meta.hostPermissions.length > 0
+      ? meta.hostPermissions
+      : ['此扩展没有网站访问权限'];
+    const wm = getWM();
+    await dialog.showMessageBox(wm && wm.mainWindow ? wm.mainWindow : undefined, {
+      type: 'info',
+      title: `“${meta.name}”的 Web 权限`,
+      message: '网站访问权限',
+      detail: lines.join('\n'),
+      buttons: ['确定'],
+      noLink: true,
+    });
+    return { success: true };
   });
 }
 

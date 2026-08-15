@@ -2530,6 +2530,13 @@ html.window-maximized .app {
   text-align: center;
 }
 
+.context-menu__item-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  margin: 0 auto;
+}
+
 .context-menu__item-label {
   min-width: 0;
   overflow: hidden;
@@ -2552,6 +2559,21 @@ html.window-maximized .app {
 
 .context-menu__item--disabled:hover {
   background: transparent;
+}
+
+/* ==================== 扩展右键菜单（对齐 Edge） ==================== */
+.context-menu--ext {
+  min-width: 300px;
+}
+
+.context-menu__group-header {
+  padding: 6px 16px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  cursor: default;
+  letter-spacing: 0.3px;
+  user-select: none;
 }
 
 /* ==================== 书签文件夹弹出菜单 ==================== */
@@ -3039,6 +3061,14 @@ html.overlay-mode .drop-overlay,
 html.overlay-mode .toast,
 html.overlay-mode .panel-backdrop {
   display: none !important;
+}
+
+/* 扩展包拖放提示覆盖层（?overlay=1&panel=extensionDrop）：
+   恢复显示拖放提示卡片，作为全窗透明覆盖层（Edge 式拖拽安装反馈） */
+html.overlay-mode[data-overlay-panel="extensionDrop"] .drop-overlay {
+  display: flex !important;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
 }
 
 /* 面板充满覆盖层视口，圆角 + 自身不透明背景 */

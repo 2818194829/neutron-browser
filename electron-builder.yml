@@ -47,3 +47,7 @@ nsis:
   installerIcon: assets/icons/icon.ico
   uninstallerIcon: assets/icons/icon.ico
   installerHeaderIcon: assets/icons/icon.ico
+  installerSidebar: assets/installer/installerSidebar.bmp
+  uninstallerSidebar: assets/installer/installerSidebar.bmp
+  installerHeader: assets/installer/installerHeader.bmp
+  include: assets/installer/installer.nsh

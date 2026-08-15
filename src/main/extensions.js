@@ -2,7 +2,7 @@
  * 扩展管理模块
  * 支持安装 .zip/.crx、加载已解压扩展，并通过 Electron session 实际启用扩展
  */
-const { app, session, net, dialog } = require('electron');
+const { app, session, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
@@ -24,12 +24,31 @@ function getExtension(id) {
   return getInstalledExtensions().find(ext => ext.id === id);
 }
 
-function readArchiveBuffer(filePath) {
-  const buffer = fs.readFileSync(filePath);
+/**
+ * 解析扩展包缓冲区：识别 CRX（版本 2/3）与 zip，返回 zip 内容。
+ * @param {Buffer} buffer 文件内容
+ * @returns {Buffer} zip 内容（AdmZip 可直接解压）
+ */
+function parseArchiveBuffer(buffer) {
+  // CRX 文件头：魔数 Cr24（4 字节）+ 版本号（4 字节）
+  if (buffer.length > 16 && buffer.toString('latin1', 0, 4) === 'Cr24') {
+    const version = buffer.readUInt32LE(4);
+    let zipStart;
 
-  if (buffer.length > 12 && buffer.toString('latin1', 0, 4) === 'Cr24') {
-    const headerSize = buffer.readUInt32LE(8);
-    const zipStart = 12 + headerSize;
+    if (version === 2) {
+      // CRX2：魔数(4) + 版本(4) + 公钥长度(4) + 签名长度(4) = 16 字节头，
+      // 其后依次是公钥、签名，zip 内容在 16 + pubkeyLen + sigLen 处
+      const pubkeyLen = buffer.readUInt32LE(8);
+      const sigLen = buffer.readUInt32LE(12);
+      zipStart = 16 + pubkeyLen + sigLen;
+    } else if (version >= 3) {
+      // CRX3：魔数(4) + 版本(4) + 头长度(4)，zip 内容在 12 + headerSize 处
+      const headerSize = buffer.readUInt32LE(8);
+      zipStart = 12 + headerSize;
+    } else {
+      throw new Error(`不支持的 CRX 版本: ${version}`);
+    }
+
     if (zipStart >= buffer.length) {
       throw new Error('CRX 文件头无效');
     }
@@ -41,6 +60,10 @@ function readArchiveBuffer(filePath) {
   }
 
   throw new Error('请选择有效的 .zip 或 .crx 扩展包');
+}
+
+function readArchiveBuffer(filePath) {
+  return parseArchiveBuffer(fs.readFileSync(filePath));
 }
 
 function findManifestDir(root) {
@@ -268,6 +291,20 @@ async function installExtensionFile(filePath, source) {
   return installFromArchiveBuffer(readArchiveBuffer(filePath), source || 'local');
 }
 
+/**
+ * 开发者模式开关（对齐 Edge：edge://extensions 的 Developer mode）
+ * 关闭时禁止侧载（拖放安装 / 加载已解压扩展），商店安装不受影响。
+ * 默认开启：本浏览器定位侧载友好，用户可自行关闭。
+ * @returns {boolean}
+ */
+function isDeveloperMode() {
+  try {
+    return getStore('settings').get('developerMode', true) !== false;
+  } catch (e) {
+    return true;
+  }
+}
+
 async function installUnpackedExtension(dirPath) {
   fs.mkdirSync(extensionsRoot(), { recursive: true });
 
@@ -315,29 +352,62 @@ async function installFromEdgeStore(input) {
     '?response=redirect&prod=CHROMECRX' +
     `&x=id%3D${encodeURIComponent(crxId)}%26installsource%3Dondemand%26uc`;
 
-  const response = await net.fetch(downloadUrl, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36 Edg/120.0.0.0',
-    },
-  });
+  const chromeVersion = process.versions.chrome || '120.0.0.0';
+  const userAgent =
+    `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ` +
+    `Chrome/${chromeVersion} Safari/537.36 Edg/${chromeVersion}`;
 
-  if (!response.ok) {
-    throw new Error(`Edge 商店下载失败: HTTP ${response.status}`);
+  // 扩展语言自动跟随系统：Edge 商店根据 Accept-Language 返回对应语言包的 CRX。
+  // 下载走 Node fetch（不经过 Chromium），必须显式带上系统语言，
+  // 否则 undici 默认发 `accept-language: *`，商店会返回英文默认语言包。
+  const locale = app.getLocale() || 'zh-CN';
+  const baseLang = locale.split(/[-_]/)[0] || 'en';
+  const acceptLanguage = `${locale},${baseLang};q=0.9,en;q=0.8`;
+
+  let lastError = null;
+  // 下载可能因网络/CDN 挂起或失败，超时后重试一次。
+  // 用 Node 原生 fetch（而非 net.fetch/session.fetch）：Chromium 网络栈受系统代理
+  // 与 webRequest 监听器影响，偶发挂起（实测 Node fetch 680ms 而 session.fetch 曾 90s+ 不返回）
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60000);
+    try {
+      const response = await fetch(downloadUrl, {
+        headers: {
+          'User-Agent': userAgent,
+          'Accept-Language': acceptLanguage,
+        },
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+      clearTimeout(timer);
+
+      if (!response.ok) {
+        throw new Error(`Edge 商店下载失败: HTTP ${response.status}`);
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.length < 12 || buffer.toString('latin1', 0, 4) !== 'Cr24') {
+        throw new Error('Edge 商店返回的不是有效的 CRX 文件');
+      }
+
+      const tempFile = path.join(app.getPath('temp'), `neutron-edge-${crxId}-${Date.now()}.crx`);
+      fs.writeFileSync(tempFile, buffer);
+
+      try {
+        return await installExtensionFile(tempFile, 'edge_store');
+      } finally {
+        fs.rmSync(tempFile, { force: true });
+      }
+    } catch (e) {
+      clearTimeout(timer);
+      lastError = e;
+      if (attempt === 0) {
+        console.warn(`[Extensions] Edge 商店下载失败，重试一次: ${crxId}`, e.message);
+      }
+    }
   }
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (buffer.length < 12 || buffer.toString('latin1', 0, 4) !== 'Cr24') {
-    throw new Error('Edge 商店返回的不是有效的 CRX 文件');
-  }
-
-  const tempFile = path.join(app.getPath('temp'), `neutron-edge-${crxId}-${Date.now()}.crx`);
-  fs.writeFileSync(tempFile, buffer);
-
-  try {
-    return await installExtensionFile(tempFile, 'edge_store');
-  } finally {
-    fs.rmSync(tempFile, { force: true });
-  }
+  throw lastError || new Error('Edge 商店下载失败');
 }
 
 async function initExtensions() {
@@ -458,7 +528,8 @@ function getExtensionActions() {
   const installed = getInstalledExtensions();
   const badgeStates = getBadgeStates();
   return installed
-    .filter((ext) => ext.enabled && ext.path && fs.existsSync(path.join(ext.path, 'manifest.json')))
+    .filter((ext) => ext.enabled && ext.pinned !== false &&
+      ext.path && fs.existsSync(path.join(ext.path, 'manifest.json')))
     .map((ext) => {
       try {
         const manifest = JSON.parse(fs.readFileSync(path.join(ext.path, 'manifest.json'), 'utf8'));
@@ -563,9 +634,150 @@ function triggerExtensionCommand(extId, commandName) {
   return true;
 }
 
+// ==================== 扩展右键菜单（网站访问权限/工具栏固定，对齐 Edge） ====================
+
+/** 读取扩展 manifest（损坏时返回空对象） */
+function readExtManifest(ext) {
+  try {
+    if (!ext || !ext.path) return {};
+    return JSON.parse(fs.readFileSync(path.join(ext.path, 'manifest.json'), 'utf8'));
+  } catch (e) {
+    return {};
+  }
+}
+
+/** 从 manifest 推断默认站点访问模式（仅当记录中无 siteAccess 时） */
+function inferSiteAccess(ext, manifest) {
+  const hosts = Array.isArray(manifest.host_permissions) ? manifest.host_permissions : [];
+  if (hosts.length > 0) return 'all';
+  const perms = Array.isArray(manifest.permissions) ? manifest.permissions : [];
+  if (perms.includes('activeTab')) return 'on_click';
+  return 'all';
+}
+
+/** 人性化 host 权限列表（查看 Web 权限） */
+function humanizeHostPermissions(hosts) {
+  return (Array.isArray(hosts) ? hosts : []).map((h) => {
+    if (h === '<all_urls>') return '在所有网站上读取和更改数据';
+    const m = /^https?:\/\/([^/:*]+)/.exec(h);
+    if (m) return `在 ${m[1]} 上读取和更改数据`;
+    return h;
+  });
+}
+
+/** 解析 URL/站点字符串为 hostname（无协议时按 https 处理） */
+function toHostname(value) {
+  if (!value) return '';
+  try {
+    return new URL(value.includes('://') ? value : `https://${value}`).hostname;
+  } catch (e) {
+    return String(value).trim();
+  }
+}
+
+/** 获取扩展右键菜单所需元数据 */
+function getExtensionMenuMeta(id) {
+  const ext = getExtension(id);
+  if (!ext) return null;
+  const manifest = readExtManifest(ext);
+  const hostPermissions = Array.isArray(manifest.host_permissions) ? manifest.host_permissions : [];
+  const hasHostAccess = hostPermissions.length > 0;
+  const action = manifest.browser_action || manifest.action || null;
+  const optionsPage = (manifest.options_ui && manifest.options_ui.page) || manifest.options_page || '';
+  return {
+    id: ext.id,
+    name: ext.name,
+    siteAccess: ext.siteAccess || inferSiteAccess(ext, manifest),
+    siteAccessSite: ext.siteAccessSite || '',
+    pinned: ext.pinned !== false,
+    hasOptionsPage: !!optionsPage,
+    optionsPage,
+    hasPopup: !!(action && action.default_popup),
+    hasHostAccess,
+    hostPermissions: humanizeHostPermissions(hostPermissions),
+    permissions: (Array.isArray(manifest.permissions) ? manifest.permissions : [])
+      .map((p) => PERMISSION_NAMES[p] || p),
+  };
+}
+
+/**
+ * 设置扩展站点访问模式（对齐 Edge：on_click / specific / all）。
+ * 实际过滤在 extensionBridge 的 webRequest/桥接层生效。
+ */
+function setExtensionSiteAccess(id, mode, site) {
+  const ext = getExtension(id);
+  if (!ext) throw new Error('扩展不存在');
+  if (!['on_click', 'specific', 'all'].includes(mode)) throw new Error('无效的访问模式');
+
+  ext.siteAccess = mode;
+  ext.siteAccessSite = mode === 'specific' ? toHostname(site) : '';
+  // 切换模式时清除点击授予
+  ext.clickGrantedSite = '';
+  ext.clickGrantedAt = 0;
+  saveInstalledExtensions(getInstalledExtensions());
+  return getExtensionMenuMeta(id);
+}
+
+/** 设置扩展工具栏固定状态（取消固定后图标隐藏，管理页可重新固定） */
+function setExtensionPinned(id, pinned) {
+  const ext = getExtension(id);
+  if (!ext) throw new Error('扩展不存在');
+  ext.pinned = !!pinned;
+  saveInstalledExtensions(getInstalledExtensions());
+  return getExtensionMenuMeta(id);
+}
+
+/**
+ * 判断某 URL 是否在该扩展的站点访问许可内（webRequest/桥接层调用）。
+ * - all: 全部放行
+ * - specific: 仅匹配指定站点
+ * - on_click: 仅在点击图标授予的站点（15 分钟内）放行
+ * - 旧记录（无 siteAccess）: 默认全访问，向后兼容
+ */
+function isSiteAccessAllowed(extId, url) {
+  if (!url) return true;
+  const ext = getExtension(extId);
+  if (!ext || !ext.siteAccess) return true;
+
+  const mode = ext.siteAccess;
+  if (mode === 'all') return true;
+
+  const host = toHostname(url);
+  if (!host) return true;
+
+  if (mode === 'specific') {
+    const siteHost = ext.siteAccessSite || '';
+    if (!siteHost) return false;
+    return host === siteHost || host.endsWith('.' + siteHost);
+  }
+
+  // on_click：点击授予的站点 15 分钟内有效（activeTab 语义近似）
+  if (ext.clickGrantedSite && ext.clickGrantedAt &&
+      Date.now() - ext.clickGrantedAt < 15 * 60 * 1000) {
+    const grantedHost = toHostname(ext.clickGrantedSite);
+    if (grantedHost && (host === grantedHost || host.endsWith('.' + grantedHost))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 点击工具栏图标时，对 on_click 模式扩展授予当前标签页站点访问 */
+function grantSiteAccessOnClick(extId, url) {
+  if (!url) return;
+  const ext = getExtension(extId);
+  if (!ext || (ext.siteAccess || 'all') !== 'on_click') return;
+  ext.clickGrantedSite = url;
+  ext.clickGrantedAt = Date.now();
+  saveInstalledExtensions(getInstalledExtensions());
+}
+
 module.exports = {
   initExtensions,
   getInstalledExtensions,
+  isDeveloperMode,
+  readArchiveBuffer,
+  parseArchiveBuffer,
   installExtensionFile,
   installUnpackedExtension,
   installFromEdgeStore,
@@ -577,4 +789,9 @@ module.exports = {
   findExtensionBackgroundWebContents,
   triggerExtensionActionClicked,
   triggerExtensionCommand,
+  getExtensionMenuMeta,
+  setExtensionSiteAccess,
+  setExtensionPinned,
+  isSiteAccessAllowed,
+  grantSiteAccessOnClick,
 };

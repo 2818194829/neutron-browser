@@ -71,9 +71,13 @@ function ensureWebRequestInit() {
 
 function createWebRequestHandler(evt) {
   return async (details, callback) => {
+    const { isSiteAccessAllowed } = require('./extensions');
     const targets = [];
     webRequestRegistry.forEach((reg, extId) => {
-      if (reg.events && reg.events[evt] && reg.events[evt].hasListener) targets.push(extId);
+      if (reg.events && reg.events[evt] && reg.events[evt].hasListener &&
+          isSiteAccessAllowed(extId, details.url)) {
+        targets.push(extId);
+      }
     });
     if (targets.length === 0) {
       if (callback) callback({});
@@ -260,8 +264,33 @@ function registerExtensionBridgeIpc() {
   });
 
   // ---- cookies ----
+  /** 从 IPC sender（扩展页面 webContents）提取扩展 ID */
+  function extIdFromSender(sender) {
+    try {
+      const url = sender && sender.getURL ? sender.getURL() : '';
+      const m = /^chrome-extension:\/\/([a-p]{32})\//.exec(url);
+      return m ? m[1] : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /** cookies 桥接的站点访问检查（无扩展 ID 时放行，向后兼容） */
+  function isCookieAccessAllowed(sender, url) {
+    const extId = extIdFromSender(sender);
+    if (!extId) return true;
+    const { isSiteAccessAllowed, getExtensionMenuMeta } = require('./extensions');
+    if (!url) {
+      // 无 URL 的 getAll：仅全站点模式允许
+      const meta = getExtensionMenuMeta(extId);
+      return !meta || meta.siteAccess === 'all';
+    }
+    return isSiteAccessAllowed(extId, url);
+  }
+
   ipcMain.handle(IPC_CHANNELS.EXT_COOKIES_GET, async (event, { url, name }) => {
     try {
+      if (!isCookieAccessAllowed(event.sender, url)) return null;
       const cookies = await session.defaultSession.cookies.get({ url });
       return cookies.find((c) => c.name === name) || null;
     } catch (e) {
@@ -270,6 +299,7 @@ function registerExtensionBridgeIpc() {
   });
   ipcMain.handle(IPC_CHANNELS.EXT_COOKIES_GET_ALL, async (event, { url }) => {
     try {
+      if (!isCookieAccessAllowed(event.sender, url)) return [];
       const cookies = await session.defaultSession.cookies.get(url ? { url } : {});
       return cookies.map((c) => ({
         name: c.name,
@@ -290,6 +320,7 @@ function registerExtensionBridgeIpc() {
   ipcMain.handle(IPC_CHANNELS.EXT_COOKIES_SET, async (event, { details }) => {
     try {
       const d = details || {};
+      if (!isCookieAccessAllowed(event.sender, d.url || d.domain)) return false;
       await session.defaultSession.cookies.set({
         url: d.url || '',
         name: d.name || '',
@@ -308,6 +339,7 @@ function registerExtensionBridgeIpc() {
   });
   ipcMain.handle(IPC_CHANNELS.EXT_COOKIES_REMOVE, async (event, { url, name }) => {
     try {
+      if (!isCookieAccessAllowed(event.sender, url)) return false;
       await session.defaultSession.cookies.remove(url || '', name || '');
       return true;
     } catch (e) {

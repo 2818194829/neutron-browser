@@ -135,6 +135,14 @@ const IPC_CHANNELS = {
   EXTENSIONS_INSTALL_FROM_EDGE: 'extensions:installFromEdge',
   EXTENSIONS_INSTALL_FILE: 'extensions:installFile',
   EXTENSIONS_DROP_FILE: 'extensions:dropFile',
+  // 扩展包拖拽安装（Edge 式全窗口拦截）：
+  // enter/leave 通知主进程显示/隐藏全窗拖放覆盖层，drop 携带文件路径统一走主进程转发
+  EXTENSIONS_DRAG_ENTER: 'extensions:dragEnter',
+  EXTENSIONS_DRAG_LEAVE: 'extensions:dragLeave',
+  EXTENSIONS_DRAG_DROP: 'extensions:dragDrop',
+  // 拖放诊断：渲染层上报事件 -> 主进程写日志并回传提示（用于排查真实拖放问题）
+  EXTENSIONS_DRAG_DEBUG: 'extensions:dragDebug',
+  EXTENSIONS_DRAG_DEBUG_EVENT: 'extensions:dragDebugEvent',
   EXTENSIONS_TOGGLE: 'extensions:toggle',
   EXTENSIONS_UNINSTALL: 'extensions:uninstall',
   // 扩展动作（工具栏图标/徽章/Popup）
@@ -145,6 +153,12 @@ const IPC_CHANNELS = {
   EXTENSIONS_ACTION_HIDE_POPUP: 'extensions:actionHidePopup',
   EXTENSIONS_ACTION_CLICKED: 'extensions:actionClicked',
   EXTENSIONS_INSPECT_VIEW: 'extensions:inspectView',
+  // 扩展右键菜单（对齐 Edge：网站访问权限/固定/选项）
+  EXTENSIONS_GET_MENU_META: 'extensions:getMenuMeta',
+  EXTENSIONS_SET_SITE_ACCESS: 'extensions:setSiteAccess',
+  EXTENSIONS_SET_PINNED: 'extensions:setPinned',
+  EXTENSIONS_OPEN_OPTIONS: 'extensions:openOptions',
+  EXTENSIONS_VIEW_WEB_PERMISSIONS: 'extensions:viewWebPermissions',
   // 扩展真实 API 桥接（webRequest/notifications/cookies/contextMenus）
   EXT_WEBREQUEST_REGISTER: 'ext:webRequestRegister',
   EXT_WEBREQUEST_UNREGISTER: 'ext:webRequestUnregister',

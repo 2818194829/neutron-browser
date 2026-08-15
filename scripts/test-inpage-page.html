@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>我的视频页面 - 正在播放</title>
+</head>
+<body>
+  <video id="v" src="data:video/mp4;base64,AAAA" style="width:400px;height:300px"></video>
+  <div id="status">视频播放中...</div>
+  <script>
+    // 模拟视频站点在播放期间使用的站内导航（不改 document.title）
+    window.__pushState = function () {
+      history.pushState({}, '', '/watch?v=123&t=45');
+      return true;
+    };
+    window.__replaceState = function () {
+      history.replaceState({}, '', '/watch?v=123&q=hd');
+      return true;
+    };
+    window.__hash = function () {
+      location.hash = 'p=2';
+      return true;
+    };
+  </script>
+</body>
+</html>
