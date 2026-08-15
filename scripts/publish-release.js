@@ -40,6 +40,9 @@ function request(method, url, { headers = {}, body = null } = {}) {
         host: u.host,
         path: u.pathname + u.search,
         method,
+        // agent:false —— 每次请求都新建连接（Node 19+ 默认 keep-alive 复用，
+        // 陈旧连接被 GitHub 边缘重置会导致大文件上传 ECONNRESET）
+        agent: false,
         headers: {
           'User-Agent': 'neutron-browser-release-script',
           Accept: 'application/vnd.github+json',
@@ -108,21 +111,35 @@ async function main() {
     { uploadName: `Neutron-Browser-Setup-${VERSION}.exe`, file: path.join(REPO_DIR, 'build', `Neutron Browser Setup ${VERSION}.exe`) },
     { uploadName: 'latest.yml', file: path.join(REPO_DIR, 'build', 'latest.yml') },
   ];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   for (const { uploadName, file } of assets) {
     const buf = fs.readFileSync(file);
     console.log('uploading', uploadName, buf.length, 'bytes ...');
-    await api(
-      'POST',
-      `https://uploads.github.com/repos/${OWNER}/${REPO}/releases/${release.id}/assets?name=${encodeURIComponent(uploadName)}`,
-      { ...auth, 'Content-Type': 'application/octet-stream' },
-      buf
-    ).catch(async (e) => {
-      if (String(e.message).includes('422')) {
-        console.log('asset already exists, skip:', uploadName);
-        return { status: 200, data: '{}' };
+    // 网络偶发重置：重试最多 8 次，退避 5s→60s
+    const backoffs = [5, 10, 20, 30, 45, 60, 60, 60];
+    let uploaded = false;
+    for (let attempt = 1; attempt <= backoffs.length + 1 && !uploaded; attempt++) {
+      try {
+        await api(
+          'POST',
+          `https://uploads.github.com/repos/${OWNER}/${REPO}/releases/${release.id}/assets?name=${encodeURIComponent(uploadName)}`,
+          { ...auth, 'Content-Type': 'application/octet-stream' },
+          buf
+        );
+        uploaded = true;
+      } catch (e) {
+        if (String(e.message).includes('422')) {
+          console.log('asset already exists, skip:', uploadName);
+          uploaded = true;
+        } else if (attempt <= backoffs.length) {
+          const wait = backoffs[attempt - 1] * 1000;
+          console.log(`upload failed (${e.message}), retry #${attempt} in ${backoffs[attempt - 1]}s ...`);
+          await sleep(wait);
+        } else {
+          throw e;
+        }
       }
-      throw e;
-    });
+    }
     console.log('uploaded:', uploadName);
   }
 
