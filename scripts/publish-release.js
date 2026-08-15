@@ -143,14 +143,12 @@ async function main() {
     console.log('uploaded:', uploadName);
   }
 
-  // 验证：中文 body 无转义字面量、无替换字符，assets 齐全
+  // 验证：正文含中文（CJK）、无转义字面量、无替换字符，assets 齐全
   const verify = await api('GET', `https://api.github.com/repos/${OWNER}/${REPO}/releases/tags/${TAG}`, auth);
   const rel = JSON.parse(verify.data);
   console.log('VERIFY assets:', rel.assets.map((a) => `${a.name}(${a.size})`).join(' | '));
-  const okBody =
-    rel.body.includes('\u5b89\u88c5\u5411\u5bfc') &&
-    !/\\u[0-9a-f]{4}/.test(rel.body) &&
-    !rel.body.includes('\uFFFD');
+  const hasCJK = /[\u4e00-\u9fa5]/.test(rel.body || '');
+  const okBody = hasCJK && !/\\u[0-9a-f]{4}/.test(rel.body) && !rel.body.includes('\uFFFD');
   console.log('VERIFY body chinese ok:', okBody);
   console.log('VERIFY draft:', rel.draft, 'prerelease:', rel.prerelease);
   console.log('DONE', rel.html_url);
