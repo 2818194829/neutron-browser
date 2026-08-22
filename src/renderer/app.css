@@ -87,10 +87,12 @@
   /* 状态栏文字：chromeContrast.js 按状态栏背景自适应 */
   --statusbar-fg: var(--text-tertiary);
 
-  /* chrome 图标按钮圆形浅白底纹：所有按钮统一白色玻璃圆底——
-     浅色主题配深色图标，深色主题配浅色图标（暗色主题另有覆盖），均清晰可见 */
-  --chrome-btn-bg: rgba(255, 255, 255, 0.68);
-  --chrome-btn-hover-bg: rgba(255, 255, 255, 0.94);
+  /* chrome 图标按钮默认透明，hover 时使用普通背景色 */
+  --chrome-btn-bg: transparent;
+  --chrome-btn-hover-bg: var(--bg-hover, rgba(0, 0, 0, 0.08));
+
+  /* chrome 图标描边光晕：动画画布/花纹皮肤上与背景分离（chromeContrast.js 按前景色自动写入黑/白） */
+  --chrome-icon-halo: rgba(0, 0, 0, 0.5);
 
   /* 强调色聚焦光环（默认蓝色） */
   --accent-ring: rgba(26, 115, 232, 0.15);
@@ -153,10 +155,6 @@
   --modal-backdrop: rgba(0, 0, 0, 0.6);
 
   --window-control-hover: rgba(255, 255, 255, 0.1);
-
-  /* 深色主题：按钮浅白底纹用低透明度，白色/浅灰图标依然清晰 */
-  --chrome-btn-bg: rgba(255, 255, 255, 0.14);
-  --chrome-btn-hover-bg: rgba(255, 255, 255, 0.26);
 
   --chrome-fg: var(--text-secondary);
   --chrome-fg-hover: var(--text-primary);
@@ -767,20 +765,20 @@ html.skin-live .skin-canvas {
   --chrome-fg-hover: #ffffff;
 }
 
-/* 动态皮肤跟随明暗主题：深色主题用浅色按钮，浅色主题用深色按钮
-   （按钮圆形浅白底纹由主题变量提供：浅色主题近白圆底，深色主题半透明白圆底） */
-[data-theme="light"][data-skin="aurora"],
-[data-theme="light"][data-skin="nebula"],
-[data-theme="light"][data-skin="ripple"],
-[data-theme="light"][data-skin="ember"],
-[data-theme="light"][data-skin="pixelrain"],
-[data-theme="light"][data-skin="snow"],
-[data-theme="light"][data-skin="rain"],
-[data-theme="light"][data-skin="fireflies"],
-[data-theme="light"][data-skin="clouds"],
-[data-theme="light"][data-skin="comet"] {
-  --chrome-fg: #202124;
-  --chrome-fg-hover: #202124;
+/* 动态皮肤：画布在明暗主题下均为深色底，按钮前景固定白色
+   （chromeContrast.js 会写入内联 --chrome-fg 覆盖，此规则仅为 JS 运行前的 CSS 兜底） */
+[data-skin="aurora"],
+[data-skin="nebula"],
+[data-skin="ripple"],
+[data-skin="ember"],
+[data-skin="pixelrain"],
+[data-skin="snow"],
+[data-skin="rain"],
+[data-skin="fireflies"],
+[data-skin="clouds"],
+[data-skin="comet"] {
+  --chrome-fg: #ffffff;
+  --chrome-fg-hover: #ffffff;
 }
 
 /* ==================== 全局重置 ==================== */
@@ -915,6 +913,17 @@ html.window-maximized .app {
 .window-control--close:hover {
   background: var(--window-control-close-hover);
   color: #ffffff;
+}
+
+/* chrome 图标描边光晕：动画画布高亮局部上仍能与背景分离（方案四，
+   --chrome-icon-halo 由 chromeContrast.js 随前景色自动写入黑/白光晕） */
+.title-bar__window-controls svg,
+.toolbar__nav-buttons svg,
+.toolbar__actions svg,
+.toolbar__extension-icons svg,
+.tab svg,
+.tab-new svg {
+  filter: drop-shadow(0 0 1px var(--chrome-icon-halo, rgba(0, 0, 0, 0.5)));
 }
 
 /* ==================== 窗口置顶按钮（图钉） ==================== */

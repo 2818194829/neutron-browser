@@ -118,6 +118,14 @@ window.NeutronChromeContrast = function (opts) {
     return L > 0.36 ? '#202124' : '#ffffff';
   }
 
+  /** 前景配套描边光晕：前景为白 → 深色描边（在动画高亮局部上分离），前景为深 → 浅色描边 */
+  function applyHalo(fg) {
+    document.documentElement.style.setProperty(
+      '--chrome-icon-halo',
+      fg === '#ffffff' ? 'rgba(0, 0, 0, 0.55)' : 'rgba(255, 255, 255, 0.6)'
+    );
+  }
+
   /** 从动态皮肤画布采样 chrome 区域实际像素（含顶部压暗效果） */
   function sampleCanvas() {
     if (!canvas || typeof canvas.getContext !== 'function') return null;
@@ -155,16 +163,17 @@ window.NeutronChromeContrast = function (opts) {
     // 精确判断动态皮肤：只有整个值恰为 transparent（花纹皮肤的渐变里含 transparent 关键字，勿误判）
     const isLive = toolbarBg === 'transparent' && titlebarBg === 'transparent';
     if (isLive) {
-      // 动态皮肤按钮前景跟随明暗主题：深色主题用浅色按钮，浅色主题用深色按钮。
+      // 动态皮肤：10 套画布无论明暗主题都是深色底（liveSkins.js 的 paintBase 在明暗
+      // 主题下均为深色配色），按钮前景固定白色，与 --chrome-text/--address-bar-fg
+      // 保持一致——浅色主题下深色按钮会融进深色画布几乎不可见。
       // 不按动画像素采样，避免高亮局部误导平均值和 1.5s 切换延迟。
-      const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark';
-      const fg = isDarkTheme ? '#ffffff' : '#202124';
-      document.documentElement.style.setProperty('--chrome-fg', fg);
-      document.documentElement.style.setProperty('--chrome-fg-hover', fg);
-      // 标签标题/地址栏/状态栏仍保持白色文字，动态画布本身仍是深色底。
+      document.documentElement.style.setProperty('--chrome-fg', '#ffffff');
+      document.documentElement.style.setProperty('--chrome-fg-hover', '#ffffff');
+      // 标签标题/地址栏/状态栏同样保持白色文字，动态画布本身仍是深色底。
       document.documentElement.style.setProperty('--chrome-text', '#ffffff');
       document.documentElement.style.setProperty('--statusbar-fg', 'rgba(255, 255, 255, 0.8)');
       document.documentElement.style.setProperty('--address-bar-fg', '#ffffff');
+      applyHalo('#ffffff');
       return;
     } else {
       // 工具栏与标题栏代表色取平均：单看其一会在边界色（如薄荷）上误判
@@ -188,6 +197,7 @@ window.NeutronChromeContrast = function (opts) {
       const soft = fg === '#ffffff' ? 'rgba(255, 255, 255, 0.78)' : 'rgba(32, 33, 36, 0.78)';
       document.documentElement.style.setProperty('--chrome-fg', fg);
       document.documentElement.style.setProperty('--chrome-fg-hover', fg);
+      applyHalo(fg);
       // chrome 文字（标签标题/分组头/书签文字）：与按钮前景同规则——深底浅字、浅底深字
       document.documentElement.style.setProperty('--chrome-text', fg);
       document.documentElement.style.setProperty('--statusbar-fg', soft);
