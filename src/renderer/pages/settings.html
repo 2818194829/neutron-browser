@@ -217,6 +217,32 @@
                     </button>
                   </div>
                 </div>
+
+                <div class="appearance-row">
+                  <div class="appearance-row__text">
+                    <div class="appearance-row__name">图标与文字颜色</div>
+                    <div class="appearance-row__desc">动态皮肤或花纹背景下图标文字看不清时，可强制使用浅色或深色前景</div>
+                  </div>
+                  <select class="settings-control" id="chromeFgOverride">
+                    <option value="auto">自动（按背景亮度）</option>
+                    <option value="light">强制浅色</option>
+                    <option value="dark">强制深色</option>
+                  </select>
+                </div>
+
+                <div class="appearance-row">
+                  <div class="appearance-row__text">
+                    <div class="appearance-row__name">动态皮肤蒙层强度</div>
+                    <div class="appearance-row__desc">调节动态皮肤顶部/底部压暗层的深浅，让图标和文字更易读</div>
+                  </div>
+                  <select class="settings-control" id="liveSkinScrim">
+                    <option value="auto">自动</option>
+                    <option value="none">无</option>
+                    <option value="light">弱</option>
+                    <option value="medium">中</option>
+                    <option value="heavy">强</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -539,6 +565,8 @@
       applyAccentAndSkin();
 
       document.getElementById('theme').value = settings.theme || 'system';
+      document.getElementById('chromeFgOverride').value = settings.chromeFgOverride || 'auto';
+      document.getElementById('liveSkinScrim').value = settings.liveSkinScrim || 'auto';
       document.getElementById('showBookmarkBar').value = String(settings.showBookmarkBar ?? true);
       document.getElementById('showBookmarksButton').value = String(settings.showBookmarksButton ?? true);
       document.getElementById('searchEngine').value = settings.searchEngine || 'google';
@@ -721,6 +749,14 @@
       saveSetting('theme', this.value);
       if (api.setTheme) api.setTheme(this.value);
       applyTheme(this.value);
+    });
+
+    document.getElementById('chromeFgOverride').addEventListener('change', function() {
+      saveSetting('chromeFgOverride', this.value);
+    });
+
+    document.getElementById('liveSkinScrim').addEventListener('change', function() {
+      saveSetting('liveSkinScrim', this.value);
     });
 
     document.querySelectorAll('.accent-swatch').forEach((btn) => {

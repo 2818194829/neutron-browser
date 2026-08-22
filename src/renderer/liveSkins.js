@@ -35,6 +35,15 @@ window.NeutronLiveSkins = function (opts) {
   let height = 0;
   let dpr = 1;
   let destroyed = false;
+  // 动态皮肤蒙层强度（顶部/底部压暗，保证 chrome 文字/图标在动画上可读，设置页可调）
+  let scrim = 'auto';
+  const SCRIM_LEVELS = {
+    none:   { top: 0,    bottom: 0 },
+    light:  { top: 0.30, bottom: 0.22 },
+    auto:   { top: 0.55, bottom: 0.42 },
+    medium: { top: 0.70, bottom: 0.55 },
+    heavy:  { top: 0.85, bottom: 0.70 },
+  };
 
   const mouse = { x: -9999, y: -9999, active: false };
   const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -66,11 +75,13 @@ window.NeutronLiveSkins = function (opts) {
     ctx.fillRect(0, 0, width, height);
   }
 
-  /** 顶部 + 底部压暗：保证 chrome 栏文字/图标在动画上可读 */
+  /** 顶部 + 底部压暗：保证 chrome 栏文字/图标在动画上可读（强度由 setScrim 控制） */
   function paintTopScrim() {
+    const lv = SCRIM_LEVELS[scrim] || SCRIM_LEVELS.auto;
+    if (!lv.top && !lv.bottom) return;
     // 顶部：覆盖标题栏 + 工具栏 + 书签栏
     const g = ctx.createLinearGradient(0, 0, 0, height * 0.45);
-    g.addColorStop(0, 'rgba(0, 0, 0, 0.55)');
+    g.addColorStop(0, `rgba(0, 0, 0, ${lv.top})`);
     g.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, width, height * 0.45);
@@ -78,7 +89,7 @@ window.NeutronLiveSkins = function (opts) {
     const bandH = Math.min(height * 0.09, 52);
     const b = ctx.createLinearGradient(0, height - bandH, 0, height);
     b.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    b.addColorStop(1, 'rgba(0, 0, 0, 0.42)');
+    b.addColorStop(1, `rgba(0, 0, 0, ${lv.bottom})`);
     ctx.fillStyle = b;
     ctx.fillRect(0, height - bandH, width, bandH);
   }
@@ -619,6 +630,13 @@ window.NeutronLiveSkins = function (opts) {
     theme = t === 'dark' ? 'dark' : 'light';
   }
 
+  /** 设置蒙层强度（'auto' | 'none' | 'light' | 'medium' | 'heavy'） */
+  function setScrim(level) {
+    scrim = SCRIM_LEVELS[level] ? level : 'auto';
+    // 静态帧模式（减少动效）下立即用新蒙层重绘；动画模式下一帧自动生效
+    if (prefersReduced && renderer) drawStatic();
+  }
+
   function onVisibility() {
     if (document.hidden) stop();
     else if (renderer && !prefersReduced) start();
@@ -660,5 +678,5 @@ window.NeutronLiveSkins = function (opts) {
     window.removeEventListener('mouseleave', onMouseLeave);
   }
 
-  return { init, setSkin, setTheme, destroy, isLive };
+  return { init, setSkin, setTheme, setScrim, destroy, isLive };
 };

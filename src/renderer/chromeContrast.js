@@ -153,6 +153,21 @@ window.NeutronChromeContrast = function (opts) {
 
   // ==================== 自适应计算 ====================
   function refresh() {
+    // 用户强制前景色覆盖（设置页「图标与文字颜色」，app.js 写入 data-chrome-fg）：
+    // 优先级最高，跳过一切亮度计算，保证任何背景下图标/文字清晰可辨
+    const fgOverride = document.documentElement.getAttribute('data-chrome-fg');
+    if (fgOverride === 'light' || fgOverride === 'dark') {
+      const fg = fgOverride === 'light' ? '#ffffff' : '#202124';
+      const soft = fgOverride === 'light' ? 'rgba(255, 255, 255, 0.78)' : 'rgba(32, 33, 36, 0.78)';
+      document.documentElement.style.setProperty('--chrome-fg', fg);
+      document.documentElement.style.setProperty('--chrome-fg-hover', fg);
+      document.documentElement.style.setProperty('--chrome-text', fg);
+      document.documentElement.style.setProperty('--statusbar-fg', soft);
+      document.documentElement.style.setProperty('--address-bar-fg', fg);
+      applyHalo(fg);
+      return;
+    }
+
     const rootStyle = getComputedStyle(document.documentElement);
     const toolbarBg = rootStyle.getPropertyValue('--toolbar-bg').trim();
     const titlebarBg = rootStyle.getPropertyValue('--titlebar-bg').trim();

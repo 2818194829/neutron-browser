@@ -1132,6 +1132,9 @@ html.window-maximized .app {
   border-right: 1px solid var(--border-color);
   padding: 6px 4px;
   gap: 2px;
+  /* 层级：定位元素绘制在动态皮肤画布之上，垂直标签不被画布盖住 */
+  position: relative;
+  z-index: 1;
 }
 
 .vertical-tab-strip[hidden] {
@@ -1166,6 +1169,9 @@ html.window-maximized .app {
   background: var(--titlebar-bg);
   border-right: 1px solid var(--border-color);
   overflow: hidden;
+  /* 层级：定位元素绘制在动态皮肤画布之上，收藏夹不被画布盖住 */
+  position: relative;
+  z-index: 1;
 }
 
 .sidebar[hidden] {
@@ -1321,6 +1327,10 @@ html.window-maximized .app {
   gap: 8px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border-color);
+  /* 层级：定位元素绘制在动态皮肤画布（absolute z-index:0）之上，
+     否则工具栏按钮/地址栏会被不透明画布盖住完全不可见 */
+  position: relative;
+  z-index: 1;
 }
 
 .toolbar__nav-buttons {
@@ -1592,6 +1602,10 @@ html.window-maximized .app {
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
   overflow: hidden;
+  /* 层级：定位元素绘制在动态皮肤画布（absolute z-index:0）之上，
+     否则整个书签栏（含 favicon/文字）会被画布盖住完全不可见 */
+  position: relative;
+  z-index: 1;
 }
 
 .bookmark-bar--hidden {
@@ -1627,6 +1641,16 @@ html.window-maximized .app {
   color: var(--chrome-fg-hover);
 }
 
+.bookmark-item:active {
+  background: var(--bg-active);
+}
+
+/* 键盘聚焦（Tab）时显示明显的强调色描边 */
+.bookmark-item:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -1px;
+}
+
 .bookmark-item--folder {
   color: var(--bookmark-folder-color);
 }
@@ -1660,6 +1684,20 @@ html.window-maximized .app {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Favicon 容器化：网站图标套浅色圆角底卡——深色/彩色 favicon 在深色书签栏上不再"隐形"。
+   文件夹图标保持透明继承前景色；★/地球兜底在浅色卡内自动转为深色以保持可读 */
+.bookmark-item__icon:not(.bookmark-item__folder-icon) {
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  color: rgba(32, 33, 36, 0.72);
+  font-size: 12px;
+  line-height: 1;
 }
 
 .bookmark-item__icon img {
@@ -1737,6 +1775,10 @@ html.window-maximized .app {
   font-size: 11px;
   color: var(--statusbar-fg);
   flex-shrink: 0;
+  /* 层级：定位元素绘制在动态皮肤画布（absolute z-index:0）之上，
+     否则状态栏文字会被画布盖住完全不可见 */
+  position: relative;
+  z-index: 1;
 }
 
 .status-bar__url {

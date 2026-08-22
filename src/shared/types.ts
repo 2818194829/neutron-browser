@@ -88,6 +88,8 @@ export interface Settings {
   theme: ThemeMode;
   accentColor: AccentColor;
   themeSkin: ThemeSkin;
+  chromeFgOverride: string;  // 'auto' | 'light' | 'dark' —— 强制 chrome 图标/文字前景色
+  liveSkinScrim: string;     // 'auto' | 'none' | 'light' | 'medium' | 'heavy' —— 动态皮肤蒙层强度
   searchEngine: string;
   searchEngines: Array<{ id: string; name: string; url: string }>;
   homePage: string;

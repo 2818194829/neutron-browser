@@ -243,12 +243,16 @@
 
     // 加载外观（主题 + 强调色 + 皮肤）
     state.theme = await api.getTheme();
-    const [accentColor, themeSkin] = await Promise.all([
+    const [accentColor, themeSkin, chromeFgOverride, liveSkinScrim] = await Promise.all([
       api.getSetting('accentColor'),
       api.getSetting('themeSkin'),
+      api.getSetting('chromeFgOverride'),
+      api.getSetting('liveSkinScrim'),
     ]);
     state.accentColor = accentColor || 'blue';
     state.themeSkin = themeSkin || 'default';
+    state.chromeFgOverride = chromeFgOverride || 'auto';
+    state.liveSkinScrim = liveSkinScrim || 'auto';
     applyAppearance();
 
     // 加载书签
@@ -362,12 +366,16 @@
 
     // 外观（面板需要正确的主题变量）
     state.theme = await api.getTheme();
-    const [accentColor, themeSkin] = await Promise.all([
+    const [accentColor, themeSkin, chromeFgOverride, liveSkinScrim] = await Promise.all([
       api.getSetting('accentColor'),
       api.getSetting('themeSkin'),
+      api.getSetting('chromeFgOverride'),
+      api.getSetting('liveSkinScrim'),
     ]);
     state.accentColor = accentColor || 'blue';
     state.themeSkin = themeSkin || 'default';
+    state.chromeFgOverride = chromeFgOverride || 'auto';
+    state.liveSkinScrim = liveSkinScrim || 'auto';
     applyAppearance();
 
     // 绑定面板相关事件（复用主窗口逻辑）
@@ -585,10 +593,13 @@
     document.documentElement.setAttribute('data-theme', resolveTheme(state.theme));
     document.documentElement.setAttribute('data-accent', state.accentColor || 'blue');
     document.documentElement.setAttribute('data-skin', state.themeSkin || 'default');
+    // 强制 chrome 图标/文字前景（设置页「图标与文字颜色」，chromeContrast.js 读取）
+    document.documentElement.setAttribute('data-chrome-fg', state.chromeFgOverride || 'auto');
     // 沉浸式动态皮肤：跟随皮肤/主题切换动画
     if (liveSkinsApi) {
       liveSkinsApi.setSkin(state.themeSkin || 'default');
       liveSkinsApi.setTheme(resolveTheme(state.theme));
+      liveSkinsApi.setScrim(state.liveSkinScrim || 'auto');
     }
     // chrome 按钮前景自适应：按背景亮度自动选黑/白（浅色花纹皮肤下白按钮不可见的老问题）
     if (chromeContrastApi) {
@@ -691,6 +702,12 @@
           applyAppearance();
         } else if (key === 'themeSkin') {
           state.themeSkin = value || 'default';
+          applyAppearance();
+        } else if (key === 'chromeFgOverride') {
+          state.chromeFgOverride = value || 'auto';
+          applyAppearance();
+        } else if (key === 'liveSkinScrim') {
+          state.liveSkinScrim = value || 'auto';
           applyAppearance();
         } else if (key === 'theme') {
           state.theme = value || 'system';
@@ -1549,6 +1566,7 @@
         : 'bookmark-item';
       el.title = item.title || (item.type === 'folder' ? '未命名文件夹' : '未命名书签');
       el.draggable = true;
+      el.tabIndex = 0; // 键盘可聚焦（focus-visible 描边反馈）
       el.dataset.bookmarkId = item.id;
 
       let icon;

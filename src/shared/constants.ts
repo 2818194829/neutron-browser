@@ -239,6 +239,8 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',           // 'light' | 'dark' | 'system'
   accentColor: 'blue',       // 强调色: 'blue' | 'red' | 'green' | 'purple' | 'orange' | 'pink' | 'teal'
   themeSkin: 'default',      // 主题皮肤: 'default' | 'ocean' | 'forest' | 'sunset' | 'midnight' | 'rose'
+  chromeFgOverride: 'auto',  // 强制 chrome 图标/文字前景: 'auto' | 'light' | 'dark'
+  liveSkinScrim: 'auto',     // 动态皮肤蒙层强度: 'auto' | 'none' | 'light' | 'medium' | 'heavy'
   searchEngine: 'google',
   searchEngines: [
     { id: 'google', name: 'Google', url: 'https://www.google.com/search?q=%s' },
